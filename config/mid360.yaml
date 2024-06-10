@@ -19,9 +19,9 @@
         preprocess:
             lidar_type: 4                # AVIA = 1, VELO16 = 2, OUST64 = 3, MID360 = 4, XT32 = 5, L515 = 6, VELO32 = 7
             scan_line:  4
-            blind: 0.5
-            timestamp_unit: 3
             scan_rate: 10
+            timestamp_unit: 3                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
+            blind: 0.5
 
         mapping:
             acc_cov: 0.1

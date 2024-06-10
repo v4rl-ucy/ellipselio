@@ -432,8 +432,8 @@ void Preprocess::mid360_handler(
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
         pl_full[i].curvature =
-            pl_orig.points[i].timestamp /
-            float(1000000);  // use curvature as time of each laser points
+            pl_orig.points[i].timestamp *
+            time_unit_scale;  // use curvature as time of each laser points
 
         bool is_new = false;
         if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
@@ -481,9 +481,9 @@ void Preprocess::mid360_handler(
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
         pl_full[i].curvature =
-            pl_orig.points[i].timestamp /
-            float(1000000);  // use curvature as time of each laser points,
-                             // curvature unit: ms
+            pl_orig.points[i].timestamp *
+            time_unit_scale;  // use curvature as time of each laser points,
+                              // curvature unit: ms
 
         if (valid_num % point_filter_num == 0) continue;
 
