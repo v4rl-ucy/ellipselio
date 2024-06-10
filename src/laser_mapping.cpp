@@ -33,7 +33,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 #include <Python.h>
-#include <ikd-Tree/ikd_Tree.h>
+#include <ikd_tree.h>
+#include <imu_processing.h>
 #include <math.h>
 #include <omp.h>
 #include <pcl/filters/voxel_grid.h>
@@ -41,6 +42,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <preprocess.h>
 #include <so3_math.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <unistd.h>
@@ -61,9 +63,6 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <thread>
 #include <visualization_msgs/msg/marker.hpp>
-
-#include "IMU_Processing.hpp"
-#include "preprocess.h"
 
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)

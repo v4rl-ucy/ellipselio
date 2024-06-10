@@ -1,4 +1,9 @@
-// #include <ros/ros.h>
+#pragma once
+
+#ifndef PREPROCESS_H
+#define PREPROCESS_H
+
+#include <pcl/common/common.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <livox_ros_driver2/msg/custom_msg.hpp>
@@ -187,3 +192,5 @@ private:
   double smallp_intersect, smallp_ratio;
   double vx, vy, vz;
 };
+
+#endif  // PREPROCESS_H

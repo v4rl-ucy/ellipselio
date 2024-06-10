@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef EXP_MAT_H
 #define EXP_MAT_H
 

@@ -2,7 +2,7 @@
 
   <arg name="rviz" default="true" />
 
-  <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" required="true" launch-prefix="gdb -ex run --args">
+  <node pkg="fast_lio" type="fastlio_mapping" name="laser_mapping" output="screen" required="true" launch-prefix="gdb -ex run --args">
 	<param name="imu_topic" type="string" value="/livox/imu" />
 	<param name="map_file_path" type="string" value=" " />
 	<param name="max_iteration" type="int" value="4" />

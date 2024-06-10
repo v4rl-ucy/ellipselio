@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
 
@@ -6,8 +8,10 @@
 #include <so3_math.h>
 
 #include <Eigen/Eigen>
+#include <deque>
 #include <fast_lio/msg/pose6_d.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
 using namespace std;
@@ -247,11 +251,11 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point,
   return true;
 }
 
-double get_time_sec(const builtin_interfaces::msg::Time &time) {
+inline double get_time_sec(const builtin_interfaces::msg::Time &time) {
   return rclcpp::Time(time).seconds();
 }
 
-rclcpp::Time get_ros_time(double timestamp) {
+inline rclcpp::Time get_ros_time(double timestamp) {
   int32_t sec = std::floor(timestamp);
   auto nanosec_d = (timestamp - std::floor(timestamp)) * 1e9;
   uint32_t nanosec = nanosec_d;
