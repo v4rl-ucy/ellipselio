@@ -12,7 +12,15 @@ using namespace std;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-enum LID_TYPE { AVIA = 1, VELO16, OUST64, MID360 };  //{1, 2, 3}
+enum LID_TYPE {
+  AVIA = 1,
+  VELO16 = 2,
+  OUST64 = 3,
+  MID360 = 4,
+  XT32 = 5,
+  L515 = 6,
+  VELO32 = 7
+};
 enum TIME_UNIT { SEC = 0, MS = 1, US = 2, NS = 3 };
 enum Feature {
   Nor,
@@ -51,11 +59,16 @@ struct EIGEN_ALIGN16 Point {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 }  // namespace velodyne_ros
+
+// clang-format off
 POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
-                                  (float, x, x)(float, y, y)(float, z, z)(
-                                      float, intensity,
-                                      intensity)(float, time, time)(uint16_t,
-                                                                    ring, ring))
+                                  (float, x, x)
+                                  (float, y, y)
+                                  (float, z, z)
+                                  (float, intensity,intensity)
+                                  (float, time, time)
+                                  (uint16_t, ring, ring)
+)
 
 namespace ouster_ros {
 struct EIGEN_ALIGN16 Point {
@@ -72,16 +85,37 @@ struct EIGEN_ALIGN16 Point {
 
 // clang-format off
 POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
-    (float, x, x)
-    (float, y, y)
-    (float, z, z)
-    (float, intensity, intensity)
-    // use std::uint32_t to avoid conflicting with pcl::uint32_t
-    (std::uint32_t, t, t)
-    (std::uint16_t, reflectivity, reflectivity)
-    (std::uint8_t, ring, ring)
-    (std::uint16_t, ambient, ambient)
-    (std::uint32_t, range, range)
+                                  (float, x, x)
+                                  (float, y, y)
+                                  (float, z, z)
+                                  (float, intensity, intensity)
+                                  (std::uint32_t, t, t)
+                                  (std::uint16_t, reflectivity, reflectivity)
+                                  (std::uint8_t, ring, ring)
+                                  (std::uint16_t, ambient, ambient)
+                                  (std::uint32_t, range, range)
+)
+
+namespace xt32_ros
+{
+struct EIGEN_ALIGN16 Point
+{
+  PCL_ADD_POINT4D;
+  float    intensity;
+  double   timestamp;
+  uint16_t ring;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+} // namespace xt32_ros
+
+// clang-format off
+POINT_CLOUD_REGISTER_POINT_STRUCT(xt32_ros::Point,
+                                  (float, x, x)
+                                  (float, y, y)
+                                  (float, z, z)
+                                  (float, intensity, intensity)
+                                  (double, timestamp,timestamp)
+                                  (uint16_t, ring, ring) 
 )
 
 namespace livox_ros
@@ -93,15 +127,18 @@ typedef struct {
   float reflectivity; /**< Reflectivity   */
   uint8_t tag;        /**< Livox point tag   */
   uint8_t line;       /**< Laser line id     */
-} LivoxPointXyzrtl;
+  double timestamp;   /**< Timestamp of point*/
+} LivoxPointXyzrtlt;
 }
-POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXyzrtl,
-    (float, x, x)
-    (float, y, y)
-    (float, z, z)
-    (float, reflectivity, reflectivity)
-    (uint8_t, tag, tag)
-    (uint8_t, line, line)
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXyzrtlt,
+                                  (float, x, x)
+                                  (float, y, y)
+                                  (float, z, z)
+                                  (float, reflectivity, reflectivity)
+                                  (uint8_t, tag, tag)
+                                  (uint8_t, line, line)
+                                  (double, timestamp, timestamp)
 )
 
 class Preprocess
@@ -116,29 +153,31 @@ class Preprocess
   void process(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
-  // sensor_msgs::PointCloud2::ConstPtr pointcloud;
-  PointCloudXYZI pl_full, pl_corn, pl_surf;
-  PointCloudXYZI pl_buff[128]; //maximum 128 line lidar
-  vector<orgtype> typess[128]; //maximum 128 line lidar
-  float time_unit_scale;
-  int lidar_type, point_filter_num, N_SCANS, SCAN_RATE, time_unit;
-  double blind;
-  bool feature_enabled, given_offset_time;
-  // ros::Publisher pub_full, pub_surf, pub_corn;
+  // sensor_msgs::msg::PointCloud2::UniquePtr pointcloud;
+  PointCloudXYZI    pl_full, pl_corn, pl_surf;
+  PointCloudXYZI    pl_buff[ 128 ]; // maximum 128 line lidar
+  vector< orgtype > typess[ 128 ];  // maximum 128 line lidar
+  int               lidar_type, point_filter_num, SCAN_RATE, N_SCANS, MAX_LINE_NUM, time_unit;
+  double            blind, blind_sqr;
+  double            time_unit_scale;
+  bool              feature_enabled, given_offset_time, calib_laser;
 
 private:
-  void avia_handler(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg);
-  void oust64_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
-  void velodyne_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
+  void avia_handler( const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg );
+  void velodyne_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
+  void oust64_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
   void mid360_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
+  void xt32_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
+  void l515_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
+  void velodyne32_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
   void default_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
-  void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
-  void pub_func(PointCloudXYZI &pl, const rclcpp::Time &ct);
-  int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);
-  bool small_plane(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct);
-  bool edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, Surround nor_dir);
-  
-  int group_size;
+  void give_feature( PointCloudXYZI &pl, vector< orgtype > &types );
+  void pub_func( PointCloudXYZI &pl, const rclcpp::Time &ct );
+  int  plane_judge( const PointCloudXYZI &pl, vector< orgtype > &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct );
+  bool small_plane( const PointCloudXYZI &pl, vector< orgtype > &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct );
+  bool edge_jump_judge( const PointCloudXYZI &pl, vector< orgtype > &types, uint i, Surround nor_dir );
+
+  int    group_size;
   double disA, disB, inf_bound;
   double limit_maxmid, limit_midmin, limit_maxmin;
   double p2l_ratio;

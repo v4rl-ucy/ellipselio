@@ -884,6 +884,8 @@ class LaserMappingNode : public rclcpp::Node {
     this->get_parameter_or<vector<double>>("mapping.extrinsic_R", extrinR,
                                            vector<double>());
 
+    p_pre->blind_sqr = p_pre->blind * p_pre->blind;
+
     RCLCPP_INFO(this->get_logger(), "p_pre->lidar_type %d", p_pre->lidar_type);
 
     path.header.stamp = this->get_clock()->now();
