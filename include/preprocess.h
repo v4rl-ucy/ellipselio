@@ -3,7 +3,7 @@
 #ifndef PREPROCESS_H
 #define PREPROCESS_H
 
-#include <pcl/common/common.h>
+#include <common_pcl.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <livox_ros_driver2/msg/custom_msg.hpp>
@@ -13,9 +13,6 @@
 using namespace std;
 
 #define IS_VALID(a) ((abs(a) > 1e8) ? true : false)
-
-typedef pcl::PointXYZINormal PointType;
-typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
 enum LID_TYPE {
   AVIA = 1,
@@ -154,13 +151,13 @@ class Preprocess
   Preprocess();
   ~Preprocess();
   
-  void process(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg, PointCloudXYZI::Ptr &pcl_out);
-  void process(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg, FastLioPointCloud::Ptr &pcl_out);
+  void process(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, FastLioPointCloud::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
   // sensor_msgs::msg::PointCloud2::UniquePtr pointcloud;
-  PointCloudXYZI    pl_full, pl_corn, pl_surf;
-  PointCloudXYZI    pl_buff[ 128 ]; // maximum 128 line lidar
+  FastLioPointCloud    pl_full, pl_corn, pl_surf;
+  FastLioPointCloud    pl_buff[ 128 ]; // maximum 128 line lidar
   vector< orgtype > typess[ 128 ];  // maximum 128 line lidar
   int               lidar_type, point_filter_num, SCAN_RATE, N_SCANS, MAX_LINE_NUM, time_unit;
   double            blind, blind_sqr;
@@ -176,11 +173,11 @@ private:
   void l515_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
   void velodyne32_handler( const sensor_msgs::msg::PointCloud2::UniquePtr &msg );
   void default_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
-  void give_feature( PointCloudXYZI &pl, vector< orgtype > &types );
-  void pub_func( PointCloudXYZI &pl, const rclcpp::Time &ct );
-  int  plane_judge( const PointCloudXYZI &pl, vector< orgtype > &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct );
-  bool small_plane( const PointCloudXYZI &pl, vector< orgtype > &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct );
-  bool edge_jump_judge( const PointCloudXYZI &pl, vector< orgtype > &types, uint i, Surround nor_dir );
+  void give_feature( FastLioPointCloud &pl, vector< orgtype > &types );
+  void pub_func( FastLioPointCloud &pl, const rclcpp::Time &ct );
+  int  plane_judge( const FastLioPointCloud &pl, vector< orgtype > &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct );
+  bool small_plane( const FastLioPointCloud &pl, vector< orgtype > &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct );
+  bool edge_jump_judge( const FastLioPointCloud &pl, vector< orgtype > &types, uint i, Surround nor_dir );
 
   int    group_size;
   double disA, disB, inf_bound;

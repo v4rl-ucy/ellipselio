@@ -33,14 +33,11 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 #include <Python.h>
+#include <common_pcl.h>
 #include <ikd_tree.h>
 #include <imu_processing.h>
 #include <math.h>
 #include <omp.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <preprocess.h>
 #include <so3_math.h>
@@ -114,17 +111,17 @@ vector<PointVector> Nearest_Points;
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
 deque<double> time_buffer;
-deque<PointCloudXYZI::Ptr> lidar_buffer;
+deque<FastLioPointCloud::Ptr> lidar_buffer;
 deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer;
 
-PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
-PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
-PointCloudXYZI::Ptr normvec(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(100000, 1));
-PointCloudXYZI::Ptr _featsArray;
+FastLioPointCloud::Ptr featsFromMap(new FastLioPointCloud());
+FastLioPointCloud::Ptr feats_undistort(new FastLioPointCloud());
+FastLioPointCloud::Ptr feats_down_body(new FastLioPointCloud());
+FastLioPointCloud::Ptr feats_down_world(new FastLioPointCloud());
+FastLioPointCloud::Ptr normvec(new FastLioPointCloud(100000, 1));
+FastLioPointCloud::Ptr laserCloudOri(new FastLioPointCloud(100000, 1));
+FastLioPointCloud::Ptr corr_normvect(new FastLioPointCloud(100000, 1));
+FastLioPointCloud::Ptr _featsArray;
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
@@ -310,7 +307,7 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
     is_first_lidar = false;
   }
 
-  PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+  FastLioPointCloud::Ptr ptr(new FastLioPointCloud());
   p_pre->process(msg, ptr);
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(cur_time);
@@ -351,7 +348,7 @@ void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::UniquePtr msg) {
            timediff_lidar_wrt_imu);
   }
 
-  PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+  FastLioPointCloud::Ptr ptr(new FastLioPointCloud());
   p_pre->process(msg, ptr);
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(last_timestamp_lidar);
@@ -494,16 +491,16 @@ void map_incremental() {
   kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI());
-PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
+FastLioPointCloud::Ptr pcl_wait_pub(new FastLioPointCloud());
+FastLioPointCloud::Ptr pcl_wait_save(new FastLioPointCloud());
 void publish_frame_world(
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
         pubLaserCloudFull) {
   if (scan_pub_en) {
-    PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
-                                                       : feats_down_body);
+    FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
+                                                          : feats_down_body);
     int size = laserCloudFullRes->points.size();
-    PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
+    FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
 
     for (int i = 0; i < size; i++) {
       RGBpointBodyToWorld(&laserCloudFullRes->points[i],
@@ -526,8 +523,8 @@ void publish_frame_world(
   if (pcd_save_en)
   {
       int size = feats_undistort->points.size();
-      PointCloudXYZI::Ptr laserCloudWorld( \
-                      new PointCloudXYZI(size, 1));
+      FastLioPointCloud::Ptr laserCloudWorld( \
+                      new FastLioPointCloud(size, 1));
 
       for (int i = 0; i < size; i++)
       {
@@ -557,7 +554,7 @@ void publish_frame_body(
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
         pubLaserCloudFull_body) {
   int size = feats_undistort->points.size();
-  PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
+  FastLioPointCloud::Ptr laserCloudIMUBody(new FastLioPointCloud(size, 1));
 
   for (int i = 0; i < size; i++) {
     RGBpointBodyLidarToIMU(&feats_undistort->points[i],
@@ -575,7 +572,8 @@ void publish_frame_body(
 void publish_effect_world(
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
         pubLaserCloudEffect) {
-  PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(effct_feat_num, 1));
+  FastLioPointCloud::Ptr laserCloudWorld(
+      new FastLioPointCloud(effct_feat_num, 1));
   for (int i = 0; i < effct_feat_num; i++) {
     RGBpointBodyToWorld(&laserCloudOri->points[i], &laserCloudWorld->points[i]);
   }
@@ -588,10 +586,10 @@ void publish_effect_world(
 
 void publish_map(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
                      pubLaserCloudMap) {
-  PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
-                                                     : feats_down_body);
+  FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
+                                                        : feats_down_body);
   int size = laserCloudFullRes->points.size();
-  PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
+  FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
 
   for (int i = 0; i < size; i++) {
     RGBpointBodyToWorld(&laserCloudFullRes->points[i],
@@ -899,7 +897,7 @@ class LaserMappingNode : public rclcpp::Node {
     FOV_DEG = (fov_deg + 10.0) > 179.9 ? 179.9 : (fov_deg + 10.0);
     HALF_FOV_COS = cos((FOV_DEG) * 0.5 * PI_M / 180.0);
 
-    _featsArray.reset(new PointCloudXYZI());
+    _featsArray.reset(new FastLioPointCloud());
 
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     memset(res_last, -1000.0f, sizeof(res_last));

@@ -3,8 +3,7 @@
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
 
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#include <common_pcl.h>
 #include <so3_math.h>
 
 #include <Eigen/Eigen>
@@ -39,9 +38,6 @@ using namespace Eigen;
 #define DEBUG_FILE_DIR(name) (string(string(ROOT_DIR) + "Log/" + name))
 
 typedef fast_lio::msg::Pose6D Pose6D;
-typedef pcl::PointXYZINormal PointType;
-typedef pcl::PointCloud<PointType> PointCloudXYZI;
-typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
 typedef Vector3d V3D;
 typedef Matrix3d M3D;
 typedef Vector3f V3F;
@@ -61,11 +57,11 @@ struct MeasureGroup  // Lidar data and imu dates for the curent process
 {
   MeasureGroup() {
     lidar_beg_time = 0.0;
-    this->lidar.reset(new PointCloudXYZI());
+    this->lidar.reset(new FastLioPointCloud());
   };
   double lidar_beg_time;
   double lidar_end_time;
-  PointCloudXYZI::Ptr lidar;
+  FastLioPointCloud::Ptr lidar;
   deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu;
 };
 

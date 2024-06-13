@@ -6,8 +6,6 @@
 #include <math.h>
 
 #include <Eigen/Core>
-#include <opencv2/core.hpp>
-// #include <common_lib.h>
 
 #define SKEW_SYM_MATRX(v) 0.0, -v[2], v[1], v[2], 0.0, -v[0], -v[1], v[0], 0.0
 
@@ -72,25 +70,5 @@ Eigen::Matrix<T, 3, 1> Log(const Eigen::Matrix<T, 3, 3> &R) {
   return (std::abs(theta) < 0.001) ? (0.5 * K)
                                    : (0.5 * theta / std::sin(theta) * K);
 }
-
-// template<typename T>
-// cv::Mat Exp(const T &v1, const T &v2, const T &v3)
-// {
-
-//     T norm = sqrt(v1 * v1 + v2 * v2 + v3 * v3);
-//     cv::Mat Eye3 = cv::Mat::eye(3, 3, CV_32F);
-//     if (norm > 0.0000001)
-//     {
-//         T r_ang[3] = {v1 / norm, v2 / norm, v3 / norm};
-//         cv::Mat K = (cv::Mat_<T>(3,3) << SKEW_SYM_MATRX(r_ang));
-
-//         /// Roderigous Tranformation
-//         return Eye3 + std::sin(norm) * K + (1.0 - std::cos(norm)) * K * K;
-//     }
-//     else
-//     {
-//         return Eye3;
-//     }
-// }
 
 #endif

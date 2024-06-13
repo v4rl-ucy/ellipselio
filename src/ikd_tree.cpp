@@ -1588,3 +1588,4 @@ bool KD_TREE<PointType>::point_cmp_z(PointType a, PointType b) {
 template class KD_TREE<pcl::PointXYZ>;
 template class KD_TREE<pcl::PointXYZI>;
 template class KD_TREE<pcl::PointXYZINormal>;
+template class KD_TREE<PointType>;

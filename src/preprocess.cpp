@@ -44,13 +44,13 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num) {
 
 void Preprocess::process(
     const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg,
-    PointCloudXYZI::Ptr& pcl_out) {
+    FastLioPointCloud::Ptr& pcl_out) {
   avia_handler(msg);
   *pcl_out = pl_surf;
 }
 
 void Preprocess::process(const sensor_msgs::msg::PointCloud2::UniquePtr& msg,
-                         PointCloudXYZI::Ptr& pcl_out) {
+                         FastLioPointCloud::Ptr& pcl_out) {
   switch (time_unit) {
     case SEC:
       time_unit_scale = 1.e3f;
@@ -271,7 +271,7 @@ void Preprocess::oust64_handler(
     }
 
     for (int j = 0; j < N_SCANS; j++) {
-      PointCloudXYZI& pl = pl_buff[j];
+      FastLioPointCloud& pl = pl_buff[j];
       int linesize = pl.size();
       vector<orgtype>& types = typess[j];
       types.clear();
@@ -588,7 +588,7 @@ void Preprocess::xt32_handler(
     }
 
     for (int j = 0; j < N_SCANS; j++) {
-      PointCloudXYZI& pl = pl_buff[j];
+      FastLioPointCloud& pl = pl_buff[j];
       int linesize = pl.size();
       if (linesize < 2) continue;
       vector<orgtype>& types = typess[j];
@@ -925,7 +925,7 @@ void Preprocess::give_feature(pcl::PointCloud<PointType>& pl,
   }
 }
 
-void Preprocess::pub_func(PointCloudXYZI& pl, const rclcpp::Time& ct) {
+void Preprocess::pub_func(FastLioPointCloud& pl, const rclcpp::Time& ct) {
   pl.height = 1;
   pl.width = pl.size();
   sensor_msgs::msg::PointCloud2 output;
@@ -934,7 +934,7 @@ void Preprocess::pub_func(PointCloudXYZI& pl, const rclcpp::Time& ct) {
   output.header.stamp = ct;
 }
 
-int Preprocess::plane_judge(const PointCloudXYZI& pl, vector<orgtype>& types,
+int Preprocess::plane_judge(const FastLioPointCloud& pl, vector<orgtype>& types,
                             uint i_cur, uint& i_nex,
                             Eigen::Vector3d& curr_direct) {
   double group_dis = disA * types[i_cur].range + disB;
@@ -1031,7 +1031,7 @@ int Preprocess::plane_judge(const PointCloudXYZI& pl, vector<orgtype>& types,
   return 1;
 }
 
-bool Preprocess::edge_jump_judge(const PointCloudXYZI& pl,
+bool Preprocess::edge_jump_judge(const FastLioPointCloud& pl,
                                  vector<orgtype>& types, uint i,
                                  Surround nor_dir) {
   if (nor_dir == 0) {

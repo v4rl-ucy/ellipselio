@@ -3,9 +3,9 @@
 #ifndef IKD_TREE_H
 #define IKD_TREE_H
 
+#include <common_pcl.h>
 #include <math.h>
 #include <memory.h>
-#include <pcl/point_types.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <time.h>

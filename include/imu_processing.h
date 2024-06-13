@@ -4,12 +4,8 @@
 #define IMU_PROCESSING_H
 
 #include <common_lib.h>
+#include <common_pcl.h>
 #include <math.h>
-#include <pcl/common/io.h>
-#include <pcl/common/transforms.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <so3_math.h>
 #include <use_ikfom.h>
@@ -58,7 +54,7 @@ class ImuProcess {
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,
                esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-               PointCloudXYZI::Ptr pcl_un_);
+               FastLioPointCloud::Ptr pcl_un_);
 
   ofstream fout_imu;
   V3D cov_acc;
@@ -74,9 +70,9 @@ class ImuProcess {
                 esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
   void UndistortPcl(const MeasureGroup &meas,
                     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                    PointCloudXYZI &pcl_in_out);
+                    FastLioPointCloud &pcl_in_out);
 
-  PointCloudXYZI::Ptr cur_pcl_un_;
+  FastLioPointCloud::Ptr cur_pcl_un_;
   // sensor_msgs::ImuConstPtr last_imu_;
   sensor_msgs::msg::Imu::ConstSharedPtr last_imu_;
   deque<sensor_msgs::msg::Imu::ConstSharedPtr> v_imu_;

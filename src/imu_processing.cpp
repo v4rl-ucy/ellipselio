@@ -29,7 +29,7 @@ void ImuProcess::Reset() {
   v_imu_.clear();
   IMUpose.clear();
   last_imu_.reset(new sensor_msgs::msg::Imu());
-  cur_pcl_un_.reset(new PointCloudXYZI());
+  cur_pcl_un_.reset(new FastLioPointCloud());
 }
 
 void ImuProcess::set_extrinsic(const MD(4, 4) & T) {
@@ -118,7 +118,7 @@ void ImuProcess::IMU_init(
 void ImuProcess::UndistortPcl(
     const MeasureGroup &meas,
     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-    PointCloudXYZI &pcl_out) {
+    FastLioPointCloud &pcl_out) {
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
   v_imu.push_front(last_imu_);
@@ -253,7 +253,7 @@ void ImuProcess::UndistortPcl(
 
 void ImuProcess::Process(const MeasureGroup &meas,
                          esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                         PointCloudXYZI::Ptr cur_pcl_un_) {
+                         FastLioPointCloud::Ptr cur_pcl_un_) {
   double t1, t2, t3;
   t1 = omp_get_wtime();
 

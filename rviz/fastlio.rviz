@@ -1,13 +1,16 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 78
+    Help Height: 138
     Name: Displays
     Property Tree Widget:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1/Frames1
+        - /CloudRegistered1
+        - /CloudRegistered1/Status1
       Splitter Ratio: 0.5
-    Tree Height: 752
+    Tree Height: 1175
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -33,92 +36,147 @@ Visualization Manager:
       Enabled: true
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         a3_imu:
-          Value: true
+          Value: false
         alphasense_imu:
-          Value: true
+          Value: false
         base:
-          Value: true
+          Value: false
         base_map:
-          Value: true
+          Value: false
         base_vilens:
           Value: true
         base_vilens_optimized:
-          Value: true
+          Value: false
         base_vilens_smoothed:
-          Value: true
+          Value: false
         body:
           Value: true
         cam_front_link:
-          Value: true
+          Value: false
         cam_front_optical_frame:
-          Value: true
+          Value: false
         cam_left_link:
-          Value: true
+          Value: false
         cam_left_optical_frame:
-          Value: true
+          Value: false
         cam_right_link:
-          Value: true
+          Value: false
         cam_right_optical_frame:
-          Value: true
+          Value: false
         camera_init:
           Value: true
         drone_base_link:
-          Value: true
+          Value: false
         frontier_mount:
-          Value: true
+          Value: false
         gps_antenna:
-          Value: true
+          Value: false
         hesai_base:
-          Value: true
+          Value: false
         imu_vilens:
-          Value: true
+          Value: false
         map:
-          Value: true
+          Value: false
         map_frontier:
-          Value: true
+          Value: false
         odom_frontier:
-          Value: true
+          Value: false
         odom_vilens:
           Value: true
         osprey_base:
-          Value: true
+          Value: false
         osprey_enu:
-          Value: true
+          Value: false
         osprey_flu:
-          Value: true
+          Value: false
         osprey_link:
-          Value: true
+          Value: false
         osprey_platform:
-          Value: true
+          Value: false
         osprey_start:
-          Value: true
+          Value: false
         osprey_vilens:
-          Value: true
+          Value: false
         pandar:
-          Value: true
+          Value: false
         see_bounds:
-          Value: true
+          Value: false
         see_constraints:
-          Value: true
+          Value: false
         see_nbv:
-          Value: true
+          Value: false
         sensor:
-          Value: true
+          Value: false
         sensor_vilens:
-          Value: true
+          Value: false
         world:
-          Value: true
+          Value: false
       Marker Scale: 5
       Name: TF
       Show Arrows: true
       Show Axes: true
-      Show Names: false
+      Show Names: true
       Tree:
-        camera_init:
-          body:
+        odom_vilens:
+          base_vilens:
+            osprey_vilens:
+              osprey_base:
+                drone_base_link:
+                  a3_imu:
+                    {}
+                  gps_antenna:
+                    {}
+                  osprey_platform:
+                    frontier_mount:
+                      alphasense_imu:
+                        cam_front_optical_frame:
+                          {}
+                        cam_left_optical_frame:
+                          {}
+                        cam_right_optical_frame:
+                          {}
+                      cam_front_link:
+                        {}
+                      cam_left_link:
+                        {}
+                      cam_right_link:
+                        {}
+                      hesai_base:
+                        pandar:
+                          sensor:
+                            {}
+            sensor_vilens:
+              {}
+          base_vilens_optimized:
+            base:
+              {}
+          base_vilens_smoothed:
             {}
+          camera_init:
+            body:
+              {}
+          imu_vilens:
+            {}
+          map:
+            base_map:
+              {}
+            map_frontier:
+              world:
+                see_bounds:
+                  {}
+                see_constraints:
+                  {}
+                see_nbv:
+                  {}
+          odom_frontier:
+            osprey_link:
+              osprey_enu:
+                osprey_flu:
+                  {}
+              osprey_start:
+                {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -203,7 +261,7 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 163
+      Max Intensity: 255
       Min Color: 0; 0; 0
       Min Intensity: 5
       Name: CloudRegistered
@@ -293,7 +351,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
-    Fixed Frame: camera_init
+    Fixed Frame: world
     Frame Rate: 30
   Name: root
   Tools:
@@ -336,33 +394,33 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 50.572715759277344
+      Distance: 72.58018493652344
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -11.377165794372559
-        Y: -0.786336362361908
-        Z: 1.1070009469985962
+        X: 15.886249542236328
+        Y: -0.8147141933441162
+        Z: 5.1832661628723145
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.47479963302612305
+      Pitch: 0.6747962832450867
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 4.00727653503418
+      Yaw: 4.478635311126709
     Saved: ~
 Window Geometry:
   Displays:
-    collapsed: false
-  Height: 1043
-  Hide Left Dock: false
+    collapsed: true
+  Height: 1652
+  Hide Left Dock: true
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd00000004000000000000015600000379fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b00000379000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f000002b0fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000002b0000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007800000003efc0100000002fb0000000800540069006d00650100000000000007800000025300fffffffb0000000800540069006d00650100000000000004500000000000000000000006240000037900000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001da00000585fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b000000ab00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c0061007900730000000069000005850000017800fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f000002b0fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000002b00000012300fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e1000001970000000300000c0000000051fc0100000002fb0000000800540069006d0065010000000000000c000000046000fffffffb0000000800540069006d0065010000000000000450000000000000000000000c000000058500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -371,6 +429,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 1920
-  X: 1920
-  Y: 0
+  Width: 3072
+  X: 0
+  Y: 54
