@@ -3,6 +3,7 @@
 #ifndef IMU_PROCESSING_H
 #define IMU_PROCESSING_H
 
+#include <cam_processing.h>
 #include <common_lib.h>
 #include <common_pcl.h>
 #include <math.h>
@@ -54,7 +55,7 @@ class ImuProcess {
   Eigen::Matrix<double, 12, 12> Q;
   void Process(const MeasureGroup &meas,
                esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-               FastLioPointCloud::Ptr pcl_un_);
+               FastLioPointCloud::Ptr pcl_un_, CamProcessVec p_cams);
 
   ofstream fout_imu;
   V3D cov_acc;
@@ -70,7 +71,7 @@ class ImuProcess {
                 esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
   void UndistortPcl(const MeasureGroup &meas,
                     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                    FastLioPointCloud &pcl_in_out);
+                    FastLioPointCloud &pcl_in_out, CamProcessVec p_cams);
 
   FastLioPointCloud::Ptr cur_pcl_un_;
   // sensor_msgs::ImuConstPtr last_imu_;

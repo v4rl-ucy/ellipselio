@@ -15,37 +15,43 @@
 #include <rclcpp/logging.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
-#include <sensor_msgs/msg/image.hpp">
 #include <sensor_msgs/msg/image.hpp>
 
 class CamProcess {
  public:
-  CamProcess(int queue_size, std::string cam_topic, std::string cam_info_yaml,
+  CamProcess(int queue_size, std::string cam_topic,
              rclcpp::Node::SharedPtr node);
-  void ColorPoint(FastLioPoint &pt, std::vector<Pose6D> &imu_poses,
-                  Pose6D &imu_head, Pose6D &imu_tail, double pcl_beg_time,
-                  double pcl_end_time);
+  void MatchImageswithIMU(std::vector<Pose6D> &imu_poses, double pcl_beg_time,
+                          double pcl_end_time);
+  void ColorPoint(FastLioPoint &pt, Pose6D &imu_head, Pose6D &imu_tail,
+                  double pcl_beg_time);
+  void SetExtrinsicAndIntrinsic(const V3D &T_cam_lidar, const M3D &R_cam_lidar,
+                                const V3D &T_imu_lidar, const M3D &R_imu_lidar,
+                                const M3D &cam_intrinsics);
 
  private:
-  struct CamImg {
+  struct MatchedImg {
     Pose6D head;
     Pose6D tail;
-    bool matched = false;
-    cv_bridge::CvImagePtr img;
+    cv_bridge::CvImagePtr cv_img;
   };
 
   V3D T_cam_lidar_;
   M3D R_cam_lidar_;
   V3D T_imu_lidar_;
   M3D R_imu_lidar_;
+  M3D cam_intrinsics_;
   rclcpp::Node::SharedPtr node_;
   image_transport::ImageTransport it_;
   image_transport::Subscriber cam_sub_;
-  boost::circular_buffer<CamImg> img_buffer_;
-  camera_info_manager::CameraInfoManager cam_info_;
+  std::vector<MatchedImg> matched_imgs_;
+  boost::circular_buffer<sensor_msgs::msg::Image::ConstSharedPtr> img_buffer_;
 
   void CamCallback(const sensor_msgs::msg::Image::ConstSharedPtr &msg);
   void GetTransform(double time, Pose6D &head, Pose6D &tail, M3D &R, V3D &T);
 };
+
+typedef std::shared_ptr<CamProcess> CamProcessPtr;
+typedef std::vector<CamProcessPtr> CamProcessVec;
 
 #endif  // SEE_CAM_PROCESSING_H

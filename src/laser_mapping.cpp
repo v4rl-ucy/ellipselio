@@ -33,6 +33,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 #include <Python.h>
+#include <cam_processing.h>
 #include <common_pcl.h>
 #include <ikd_tree.h>
 #include <imu_processing.h>
@@ -100,10 +101,16 @@ double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0,
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0,
     laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
+int cam_frame_rate = 20;
 bool point_selected_surf[100000] = {0};
 bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 bool is_first_lidar = true;
+
+vector<string> cam_topics;
+vector<double> cam_intrinsics;
+vector<double> T_cam_lidars;
+vector<double> R_cam_lidars;
 
 vector<vector<int>> pointSearchInd_surf;
 vector<BoxPointType> cub_needrm;
@@ -148,6 +155,7 @@ geometry_msgs::msg::PoseStamped msg_body_pose;
 
 shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<ImuProcess> p_imu(new ImuProcess());
+CamProcessVec p_cams;
 
 void SigHandle(int sig) {
   flg_exit = true;
@@ -834,6 +842,16 @@ class LaserMappingNode : public rclcpp::Node {
     this->declare_parameter<vector<double>>("mapping.extrinsic_R",
                                             vector<double>());
 
+    this->declare_parameter<int>("cameras.frame_rate", 20);
+    this->declare_parameter<vector<string>>("cameras.cam_topics",
+                                            vector<string>());
+    this->declare_parameter<vector<double>>("cameras.intrinsics",
+                                            vector<double>());
+    this->declare_parameter<vector<double>>("cameras.T_cam_lidar",
+                                            vector<double>());
+    this->declare_parameter<vector<double>>("cameras.R_cam_lidar",
+                                            vector<double>());
+
     this->get_parameter_or<bool>("publish.path_en", path_en, true);
     this->get_parameter_or<bool>("publish.effect_map_en", effect_pub_en, false);
     this->get_parameter_or<bool>("publish.map_en", map_pub_en, false);
@@ -882,6 +900,16 @@ class LaserMappingNode : public rclcpp::Node {
     this->get_parameter_or<vector<double>>("mapping.extrinsic_R", extrinR,
                                            vector<double>());
 
+    this->get_parameter_or<int>("cameras.frame_rate", cam_frame_rate, 20);
+    this->get_parameter_or<vector<string>>("cameras.cam_topics", cam_topics,
+                                           vector<string>());
+    this->get_parameter_or<vector<double>>("cameras.intrinsics", cam_intrinsics,
+                                           vector<double>());
+    this->get_parameter_or<vector<double>>("cameras.T_cam_lidars", T_cam_lidars,
+                                           vector<double>());
+    this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
+                                           vector<double>());
+
     p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 
     RCLCPP_INFO(this->get_logger(), "p_pre->lidar_type %d", p_pre->lidar_type);
@@ -916,6 +944,31 @@ class LaserMappingNode : public rclcpp::Node {
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+
+    for (int i = 0; i < cam_topics.size(); i++) {
+      p_cams.push_back(std::make_shared<CamProcess>(
+          round(cam_frame_rate / p_pre->SCAN_RATE) + 1, cam_topics[i],
+          shared_from_this()));
+
+      V3D Lidar_T_wrt_Cam(Zero3d);
+      M3D Lidar_R_wrt_Cam(Eye3d);
+      M3D cam_intrinsic_mat(Eye3d);
+
+      vector<double> T_cam_lidar(T_cam_lidars.begin() + i * 3,
+                                 T_cam_lidars.begin() + i * 3 + 3);
+      vector<double> R_cam_lidar(R_cam_lidars.begin() + i * 9,
+                                 R_cam_lidars.begin() + i * 9 + 9);
+      vector<double> cam_intrinsic(cam_intrinsics.begin() + i * 9,
+                                   cam_intrinsics.begin() + i * 9 + 9);
+
+      Lidar_T_wrt_Cam << VEC_FROM_ARRAY(T_cam_lidar);
+      Lidar_R_wrt_Cam << MAT_FROM_ARRAY(R_cam_lidar);
+      cam_intrinsic_mat << MAT_FROM_ARRAY(cam_intrinsic);
+
+      p_cams[i]->SetExtrinsicAndIntrinsic(Lidar_T_wrt_Cam, Lidar_R_wrt_Cam,
+                                          Lidar_T_wrt_IMU, Lidar_R_wrt_IMU,
+                                          cam_intrinsic_mat);
+    }
 
     fill(epsi, epsi + 23, 0.001);
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS,
@@ -1006,7 +1059,7 @@ class LaserMappingNode : public rclcpp::Node {
       svd_time = 0;
       t0 = omp_get_wtime();
 
-      p_imu->Process(Measures, kf, feats_undistort);
+      p_imu->Process(Measures, kf, feats_undistort, p_cams);
       state_point = kf.get_x();
       pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 

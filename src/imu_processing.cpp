@@ -118,7 +118,7 @@ void ImuProcess::IMU_init(
 void ImuProcess::UndistortPcl(
     const MeasureGroup &meas,
     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-    FastLioPointCloud &pcl_out) {
+    FastLioPointCloud &pcl_out, CamProcessVec p_cams) {
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
   v_imu.push_front(last_imu_);
@@ -199,6 +199,11 @@ void ImuProcess::UndistortPcl(
                                  imu_state.rot.toRotationMatrix()));
   }
 
+  /*** match the images with IMU poses ***/
+  for (auto p_cam : p_cams) {
+    p_cam->MatchImageswithIMU(IMUpose, pcl_beg_time, pcl_end_time);
+  }
+
   /*** calculated the pos and attitude prediction at the frame-end ***/
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
@@ -223,6 +228,10 @@ void ImuProcess::UndistortPcl(
 
     for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--) {
       dt = it_pcl->curvature / double(1000) - head->offset_time;
+
+      for (auto p_cam : p_cams) {
+        p_cam->ColorPoint(*it_pcl, *head, *tail, pcl_beg_time);
+      }
 
       /* Transform to the 'end' frame, using only the rotation
        * Note: Compensation direction is INVERSE of Frame's moving direction
@@ -253,7 +262,8 @@ void ImuProcess::UndistortPcl(
 
 void ImuProcess::Process(const MeasureGroup &meas,
                          esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                         FastLioPointCloud::Ptr cur_pcl_un_) {
+                         FastLioPointCloud::Ptr cur_pcl_un_,
+                         CamProcessVec p_cams) {
   double t1, t2, t3;
   t1 = omp_get_wtime();
 
@@ -286,7 +296,7 @@ void ImuProcess::Process(const MeasureGroup &meas,
     return;
   }
 
-  UndistortPcl(meas, kf_state, *cur_pcl_un_);
+  UndistortPcl(meas, kf_state, *cur_pcl_un_, p_cams);
 
   t2 = omp_get_wtime();
   t3 = omp_get_wtime();
