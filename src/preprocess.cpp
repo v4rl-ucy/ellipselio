@@ -139,7 +139,7 @@ void Preprocess::avia_handler(
     double t0 = omp_get_wtime();
     for (int j = 0; j < N_SCANS; j++) {
       if (pl_buff[j].size() <= 5) continue;
-      pcl::PointCloud<PointType>& pl = pl_buff[j];
+      FastLioPointCloud& pl = pl_buff[j];
       plsize = pl.size();
       vector<orgtype>& types = typess[j];
       types.clear();
@@ -216,7 +216,7 @@ void Preprocess::l515_handler(
     if (range < blind_sqr) continue;
 
     Eigen::Vector3d pt_vec;
-    PointType added_pt;
+    FastLioPoint added_pt;
     added_pt.x = pl_orig.points[i].x;
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
@@ -253,7 +253,7 @@ void Preprocess::oust64_handler(
                      pl_orig.points[i].z * pl_orig.points[i].z;
       if (range < (blind * blind)) continue;
       Eigen::Vector3d pt_vec;
-      PointType added_pt;
+      FastLioPoint added_pt;
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
@@ -301,7 +301,7 @@ void Preprocess::oust64_handler(
       if (range < (blind * blind)) continue;
 
       Eigen::Vector3d pt_vec;
-      PointType added_pt;
+      FastLioPoint added_pt;
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
@@ -328,7 +328,7 @@ void Preprocess::velodyne_handler(
   int plsize = pl_orig.points.size();
 
   for (int i = 0; i < pl_orig.size(); i++) {
-    PointType added_pt;
+    FastLioPoint added_pt;
     added_pt.x = pl_orig.points[i].x;
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
@@ -369,7 +369,7 @@ void Preprocess::velodyne32_handler(
   int plsize = pl_orig.points.size();
 
   for (int i = 0; i < pl_orig.size(); i++) {
-    PointType added_pt;
+    FastLioPoint added_pt;
     added_pt.x = pl_orig.points[i].x;
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
@@ -449,7 +449,7 @@ void Preprocess::mid360_handler(
     double t0 = omp_get_wtime();
     for (int j = 0; j < N_SCANS; j++) {
       if (pl_buff[j].size() <= 5) continue;
-      pcl::PointCloud<PointType>& pl = pl_buff[j];
+      FastLioPointCloud& pl = pl_buff[j];
       plsize = pl.size();
       vector<orgtype>& types = typess[j];
       types.clear();
@@ -547,7 +547,7 @@ void Preprocess::xt32_handler(
     }
 
     for (int i = 0; i < plsize; i++) {
-      PointType added_pt;
+      FastLioPoint added_pt;
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
       added_pt.normal_z = 0;
@@ -608,7 +608,7 @@ void Preprocess::xt32_handler(
     }
   } else {
     for (int i = 0; i < plsize; i++) {
-      PointType added_pt;
+      FastLioPoint added_pt;
 
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
@@ -645,7 +645,7 @@ void Preprocess::default_handler(
   pl_surf.reserve(plsize);
 
   for (uint i = 0; i < plsize; ++i) {
-    PointType added_pt;
+    FastLioPoint added_pt;
     added_pt.normal_x = 0;
     added_pt.normal_y = 0;
     added_pt.normal_z = 0;
@@ -667,8 +667,7 @@ void Preprocess::default_handler(
   }
 }
 
-void Preprocess::give_feature(pcl::PointCloud<PointType>& pl,
-                              vector<orgtype>& types) {
+void Preprocess::give_feature(FastLioPointCloud& pl, vector<orgtype>& types) {
   int plsize = pl.size();
   int plsize2;
   if (plsize == 0) {
@@ -890,7 +889,7 @@ void Preprocess::give_feature(pcl::PointCloud<PointType>& pl,
       }
 
       if (j == uint(last_surface + point_filter_num - 1)) {
-        PointType ap;
+        FastLioPoint ap;
         ap.x = pl[j].x;
         ap.y = pl[j].y;
         ap.z = pl[j].z;
@@ -905,7 +904,7 @@ void Preprocess::give_feature(pcl::PointCloud<PointType>& pl,
         pl_corn.push_back(std::move(pl[j]));
       }
       if (last_surface != -1) {
-        PointType ap;
+        FastLioPoint ap;
         for (uint k = last_surface; k < j; k++) {
           ap.x += pl[k].x;
           ap.y += pl[k].y;

@@ -40,8 +40,9 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
         float, normal_y, normal_y)(float, normal_z, normal_z)(float, rgb, rgb)(
         float, intensity, intensity)(float, curvature, curvature))
 
-typedef PointXYZRGBINormal PointType;
-typedef pcl::PointCloud<PointType> FastLioPointCloud;
-typedef std::vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
+typedef PointXYZRGBINormal FastLioPoint;
+typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;
+typedef std::vector<FastLioPoint, Eigen::aligned_allocator<FastLioPoint>>
+    PointVector;
 
 #endif  // COMMON_PCL_H

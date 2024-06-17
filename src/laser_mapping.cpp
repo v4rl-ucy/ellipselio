@@ -123,10 +123,10 @@ FastLioPointCloud::Ptr laserCloudOri(new FastLioPointCloud(100000, 1));
 FastLioPointCloud::Ptr corr_normvect(new FastLioPointCloud(100000, 1));
 FastLioPointCloud::Ptr _featsArray;
 
-pcl::VoxelGrid<PointType> downSizeFilterSurf;
-pcl::VoxelGrid<PointType> downSizeFilterMap;
+pcl::VoxelGrid<FastLioPoint> downSizeFilterSurf;
+pcl::VoxelGrid<FastLioPoint> downSizeFilterMap;
 
-KD_TREE<PointType> ikdtree;
+KD_TREE<FastLioPoint> ikdtree;
 
 V3F XAxisPoint_body(LIDAR_SP_LEN, 0.0, 0.0);
 V3F XAxisPoint_world(LIDAR_SP_LEN, 0.0, 0.0);
@@ -176,8 +176,8 @@ inline void dump_lio_state_to_log(FILE *fp) {
   fflush(fp);
 }
 
-void pointBodyToWorld_ikfom(PointType const *const pi, PointType *const po,
-                            state_ikfom &s) {
+void pointBodyToWorld_ikfom(FastLioPoint const *const pi,
+                            FastLioPoint *const po, state_ikfom &s) {
   V3D p_body(pi->x, pi->y, pi->z);
   V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
 
@@ -187,7 +187,7 @@ void pointBodyToWorld_ikfom(PointType const *const pi, PointType *const po,
   po->intensity = pi->intensity;
 }
 
-void pointBodyToWorld(PointType const *const pi, PointType *const po) {
+void pointBodyToWorld(FastLioPoint const *const pi, FastLioPoint *const po) {
   V3D p_body(pi->x, pi->y, pi->z);
   V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
                                   state_point.offset_T_L_I) +
@@ -211,7 +211,7 @@ void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po) {
   po[2] = p_global(2);
 }
 
-void RGBpointBodyToWorld(PointType const *const pi, PointType *const po) {
+void RGBpointBodyToWorld(FastLioPoint const *const pi, FastLioPoint *const po) {
   V3D p_body(pi->x, pi->y, pi->z);
   V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
                                   state_point.offset_T_L_I) +
@@ -223,7 +223,8 @@ void RGBpointBodyToWorld(PointType const *const pi, PointType *const po) {
   po->intensity = pi->intensity;
 }
 
-void RGBpointBodyLidarToIMU(PointType const *const pi, PointType *const po) {
+void RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
+                            FastLioPoint *const po) {
   V3D p_body_lidar(pi->x, pi->y, pi->z);
   V3D p_body_imu(state_point.offset_R_L_I * p_body_lidar +
                  state_point.offset_T_L_I);
@@ -454,7 +455,7 @@ void map_incremental() {
       const PointVector &points_near = Nearest_Points[i];
       bool need_add = true;
       BoxPointType Box_of_Point;
-      PointType downsample_result, mid_point;
+      FastLioPoint downsample_result, mid_point;
       mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) *
                         filter_size_map_min +
                     0.5 * filter_size_map_min;
@@ -688,8 +689,8 @@ void h_share_model(state_ikfom &s,
 #pragma omp parallel for
 #endif
   for (int i = 0; i < feats_down_size; i++) {
-    PointType &point_body = feats_down_body->points[i];
-    PointType &point_world = feats_down_world->points[i];
+    FastLioPoint &point_body = feats_down_body->points[i];
+    FastLioPoint &point_world = feats_down_world->points[i];
 
     /* transform to world frame */
     V3D p_body(point_body.x, point_body.y, point_body.z);
@@ -760,7 +761,7 @@ void h_share_model(state_ikfom &s,
   ekfom_data.h.resize(effct_feat_num);
 
   for (int i = 0; i < effct_feat_num; i++) {
-    const PointType &laser_p = laserCloudOri->points[i];
+    const FastLioPoint &laser_p = laserCloudOri->points[i];
     V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
     M3D point_be_crossmat;
     point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
@@ -769,7 +770,7 @@ void h_share_model(state_ikfom &s,
     point_crossmat << SKEW_SYM_MATRX(point_this);
 
     /*** get the normal vector of closest surface/corner ***/
-    const PointType &norm_p = corr_normvect->points[i];
+    const FastLioPoint &norm_p = corr_normvect->points[i];
     V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
     /*** calculate the Measuremnt Jacobian matrix H ***/

@@ -27,7 +27,7 @@
 
 #define MAX_INI_COUNT (10)
 
-inline const bool time_list(PointType &x, PointType &y) {
+inline const bool time_list(FastLioPoint &x, FastLioPoint &y) {
   return (x.curvature < y.curvature);
 };
 
