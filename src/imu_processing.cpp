@@ -118,7 +118,7 @@ void ImuProcess::IMU_init(
 void ImuProcess::UndistortPcl(
     const MeasureGroup &meas,
     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-    FastLioPointCloud &pcl_out, CamProcessVec p_cams) {
+    FastLioPointCloud &pcl_out, CamProcessVec &p_cams) {
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
   v_imu.push_front(last_imu_);
@@ -156,7 +156,7 @@ void ImuProcess::UndistortPcl(
     double tail_stamp = rclcpp::Time(tail->header.stamp).seconds();
     double head_stamp = rclcpp::Time(head->header.stamp).seconds();
 
-    if (tail_stamp < last_lidar_end_time_) continue;
+    // if (tail_stamp < last_lidar_end_time_) continue;
 
     angvel_avr << 0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
         0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
@@ -201,7 +201,7 @@ void ImuProcess::UndistortPcl(
 
   /*** match the images with IMU poses ***/
   for (auto p_cam : p_cams) {
-    p_cam->MatchImageswithIMU(IMUpose, pcl_beg_time, pcl_end_time);
+    p_cam->MatchImageswithIMU(IMUpose, pcl_beg_time);
   }
 
   /*** calculated the pos and attitude prediction at the frame-end ***/
@@ -244,8 +244,8 @@ void ImuProcess::UndistortPcl(
       V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt -
                imu_state.pos);
       V3D P_compensate =
-          imu_state.offset_R_L_I.conjugate() *
-          (imu_state.rot.conjugate() *
+          imu_state.offset_R_L_I.inverse() *
+          (imu_state.rot.inverse() *
                (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) +
                 T_ei) -
            imu_state.offset_T_L_I);  // not accurate!
@@ -263,7 +263,7 @@ void ImuProcess::UndistortPcl(
 void ImuProcess::Process(const MeasureGroup &meas,
                          esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
                          FastLioPointCloud::Ptr cur_pcl_un_,
-                         CamProcessVec p_cams) {
+                         CamProcessVec &p_cams) {
   double t1, t2, t3;
   t1 = omp_get_wtime();
 

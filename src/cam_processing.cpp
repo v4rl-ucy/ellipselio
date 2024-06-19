@@ -2,9 +2,10 @@
 
 CamProcess::CamProcess(int queue_size, std::string cam_topic,
                        rclcpp::Node::SharedPtr node)
-    : it_(node), node_(node), img_buffer_(queue_size) {
-  cam_sub_ =
-      it_.subscribe(cam_topic, queue_size, &CamProcess::CamCallback, this);
+    : node_(node), img_buffer_(queue_size) {
+  cam_sub_ = node_->create_subscription<sensor_msgs::msg::Image>(
+      cam_topic, 10,
+      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1));
 }
 
 void CamProcess::SetExtrinsicAndIntrinsic(const V3D &T_cam_lidar,
@@ -19,9 +20,8 @@ void CamProcess::SetExtrinsicAndIntrinsic(const V3D &T_cam_lidar,
   cam_intrinsics_ = cam_intrinsics;
 }
 
-void CamProcess::CamCallback(
-    const sensor_msgs::msg::Image::ConstSharedPtr &msg) {
-  img_buffer_.push_back(msg);
+void CamProcess::CamCallback(const sensor_msgs::msg::Image::UniquePtr msg) {
+  img_buffer_.push_back(std::make_shared<sensor_msgs::msg::Image>(*msg));
 }
 
 void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail, M3D &R,
@@ -42,35 +42,54 @@ void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail, M3D &R,
 }
 
 void CamProcess::MatchImageswithIMU(std::vector<Pose6D> &imu_poses,
-                                    double pcl_beg_time, double pcl_end_time) {
+                                    double pcl_beg_time) {
   double img_time, imu_time;
 
   matched_imgs_.clear();
-  for (auto img_it = img_buffer_.end() - 1; img_it != img_buffer_.begin();
-       img_it--) {
+  if (img_buffer_.empty()) {
+    return;
+  }
+  for (auto img_it = img_buffer_.rbegin(); img_it != img_buffer_.rend();
+       img_it++) {
     MatchedImg matched_img;
 
-    if (rclcpp::Time((*img_it)->header.stamp).seconds() < pcl_beg_time ||
-        rclcpp::Time((*img_it)->header.stamp).seconds() > pcl_end_time) {
+    img_time = rclcpp::Time((*img_it)->header.stamp).seconds();
+
+    if (img_time < (imu_poses.front().offset_time + pcl_beg_time)) {
+      continue;
+    }
+    if (img_time > (imu_poses.back().offset_time + pcl_beg_time)) {
       continue;
     }
 
-    img_time = rclcpp::Time((*img_it)->header.stamp).seconds() - pcl_beg_time;
-    for (auto imu_it = imu_poses.end() - 1; imu_it != imu_poses.begin();
-         imu_it--) {
-      auto head = imu_it - 1;
+    for (auto imu_it = imu_poses.rbegin(); imu_it != imu_poses.rend() - 1;
+         imu_it++) {
+      auto head = imu_it + 1;
       auto tail = imu_it;
-      imu_time = head->offset_time;
+      imu_time = head->offset_time + pcl_beg_time;
 
       if (imu_time < img_time) {
         matched_img.cv_img =
-            cv_bridge::toCvCopy(*img_it, sensor_msgs::image_encodings::BGR8);
+            cv_bridge::toCvShare(*img_it, sensor_msgs::image_encodings::BGR8);
         matched_img.head = *head;
         matched_img.tail = *tail;
         matched_imgs_.push_back(matched_img);
         break;
       }
     }
+  }
+
+  if (!matched_imgs_.size()) {
+    RCLCPP_INFO(node_->get_logger(), "Matched %d images with IMU poses",
+                matched_imgs_.size());
+    RCLCPP_INFO(node_->get_logger(), "Oldest img %f",
+                rclcpp::Time(img_buffer_.front()->header.stamp).seconds());
+    RCLCPP_INFO(node_->get_logger(), "Newest img %f",
+                rclcpp::Time(img_buffer_.back()->header.stamp).seconds());
+    RCLCPP_INFO(node_->get_logger(), "Oldest imu %f",
+                imu_poses.front().offset_time + pcl_beg_time);
+    RCLCPP_INFO(node_->get_logger(), "Newest imu %f",
+                imu_poses.back().offset_time + pcl_beg_time);
   }
 }
 
@@ -80,41 +99,51 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
   cv::Vec3b color;
   M3D R_pt, R_img;
   V3D T_pt, T_img;
-  MatchedImg *matched_img;
-  double img_time, pt_time = pt.curvature * 1e-3, diff_time = DBL_MAX;
+  double img_time, matched_img_time, pt_time = pt.curvature * 1e-3,
+                                     diff_time = DBL_MAX;
 
-  for (auto it = matched_imgs_.end() - 1; it != matched_imgs_.begin(); it--) {
+  if (matched_imgs_.empty()) {
+    return;
+  }
+  auto matched_it = matched_imgs_.rbegin();
+  for (auto it = matched_imgs_.rbegin(); it != matched_imgs_.rend(); it++) {
     img_time = rclcpp::Time(it->cv_img->header.stamp).seconds() - pcl_beg_time;
 
     if (fabs(img_time - pt_time) < diff_time) {
       diff_time = fabs(img_time - pt_time);
-      matched_img = &(*it);
+      matched_it = it;
     } else {
       break;
     }
   }
 
-  if (matched_img == nullptr) {
-    return;
-  }
-
+  matched_img_time =
+      rclcpp::Time(matched_it->cv_img->header.stamp).seconds() - pcl_beg_time;
   GetTransform(pt_time, pt_head, pt_tail, R_pt, T_pt);
-  GetTransform(img_time, matched_img->head, matched_img->tail, R_img, T_img);
+  GetTransform(matched_img_time, matched_it->head, matched_it->tail, R_img,
+               T_img);
 
   V3D p(pt.x, pt.y, pt.z);
   V3D T_img_pt(T_pt - T_img);
-  V3D p_img = R_imu_lidar_.conjugate() *
-              (R_img.conjugate() *
-                   (R_pt * (R_imu_lidar_ * p + T_imu_lidar_) + T_img_pt) -
-               T_imu_lidar_);
+  V3D p_img =
+      R_imu_lidar_.inverse() *
+      (R_img.inverse() * (R_pt * (R_imu_lidar_ * p + T_imu_lidar_) + T_img_pt) -
+       T_imu_lidar_);
   V3D p_cam = R_cam_lidar_ * p_img + T_cam_lidar_;
 
-  uv.x = round((cam_intrinsics_(0) * p_cam(0) / p_cam(2)) + cam_intrinsics_(2));
-  uv.y = round((cam_intrinsics_(4) * p_cam(1) / p_cam(2)) + cam_intrinsics_(5));
+  uv.x = round((cam_intrinsics_(0, 0) * p_cam(0) / p_cam(2)) +
+               cam_intrinsics_(0, 2));
+  uv.y = round((cam_intrinsics_(1, 1) * p_cam(1) / p_cam(2)) +
+               cam_intrinsics_(1, 2));
 
-  if (uv.x >= 0 && uv.x < matched_img->cv_img->image.cols && uv.y >= 0 &&
-      uv.y < matched_img->cv_img->image.rows) {
-    color = matched_img->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
-    pt.rgb = color[2] << 16 | color[1] << 8 | color[0];
+  if (uv.x >= 0 && uv.x < matched_it->cv_img->image.cols && uv.y >= 0 &&
+      uv.y < matched_it->cv_img->image.rows && p_cam(2) > 0) {
+    // RCLCPP_INFO(node_->get_logger(), "Coloring point");
+    color = matched_it->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
+    pt.r = color[2];
+    pt.g = color[1];
+    pt.b = color[0];
+    // RCLCPP_INFO(node_->get_logger(), "R: %d, G: %d, B: %d", pt.r, pt.g,
+    // pt.b);
   }
 }

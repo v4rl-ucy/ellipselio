@@ -192,6 +192,9 @@ void pointBodyToWorld_ikfom(FastLioPoint const *const pi,
   po->x = p_global(0);
   po->y = p_global(1);
   po->z = p_global(2);
+  po->r = pi->r;
+  po->g = pi->g;
+  po->b = pi->b;
   po->intensity = pi->intensity;
 }
 
@@ -200,10 +203,12 @@ void pointBodyToWorld(FastLioPoint const *const pi, FastLioPoint *const po) {
   V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
                                   state_point.offset_T_L_I) +
                state_point.pos);
-
   po->x = p_global(0);
   po->y = p_global(1);
   po->z = p_global(2);
+  po->r = pi->r;
+  po->g = pi->g;
+  po->b = pi->b;
   po->intensity = pi->intensity;
 }
 
@@ -224,10 +229,12 @@ void RGBpointBodyToWorld(FastLioPoint const *const pi, FastLioPoint *const po) {
   V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
                                   state_point.offset_T_L_I) +
                state_point.pos);
-
   po->x = p_global(0);
   po->y = p_global(1);
   po->z = p_global(2);
+  po->r = pi->r;
+  po->g = pi->g;
+  po->b = pi->b;
   po->intensity = pi->intensity;
 }
 
@@ -236,10 +243,12 @@ void RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
   V3D p_body_lidar(pi->x, pi->y, pi->z);
   V3D p_body_imu(state_point.offset_R_L_I * p_body_lidar +
                  state_point.offset_T_L_I);
-
   po->x = p_body_imu(0);
   po->y = p_body_imu(1);
   po->z = p_body_imu(2);
+  po->r = pi->r;
+  po->g = pi->g;
+  po->b = pi->b;
   po->intensity = pi->intensity;
 }
 
@@ -397,9 +406,22 @@ void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
 
 double lidar_mean_scantime = 0.0;
 int scan_num = 0;
-bool sync_packages(MeasureGroup &meas) {
+bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams) {
   if (lidar_buffer.empty() || imu_buffer.empty()) {
     return false;
+  }
+
+  for (auto &p_cam : p_cams) {
+    if (p_cam->img_buffer_.empty()) {
+      return false;
+    }
+  }
+
+  for (auto &p_cam : p_cams) {
+    if (rclcpp::Time(p_cam->img_buffer_.back()->header.stamp).seconds() <
+        time_buffer.front()) {
+      return false;
+    }
   }
 
   /*** push a lidar scan ***/
@@ -435,7 +457,7 @@ bool sync_packages(MeasureGroup &meas) {
   /*** push imu data, and pop from imu buffer ***/
   double imu_time = get_time_sec(imu_buffer.front()->header.stamp);
   meas.imu.clear();
-  while ((!imu_buffer.empty()) && (imu_time < lidar_end_time)) {
+  while ((!imu_buffer.empty()) && imu_time < lidar_end_time) {
     imu_time = get_time_sec(imu_buffer.front()->header.stamp);
     if (imu_time > lidar_end_time) break;
     meas.imu.push_back(imu_buffer.front());
@@ -845,11 +867,11 @@ class LaserMappingNode : public rclcpp::Node {
     this->declare_parameter<int>("cameras.frame_rate", 20);
     this->declare_parameter<vector<string>>("cameras.cam_topics",
                                             vector<string>());
-    this->declare_parameter<vector<double>>("cameras.intrinsics",
+    this->declare_parameter<vector<double>>("cameras.cam_intrinsics",
                                             vector<double>());
-    this->declare_parameter<vector<double>>("cameras.T_cam_lidar",
+    this->declare_parameter<vector<double>>("cameras.T_cam_lidars",
                                             vector<double>());
-    this->declare_parameter<vector<double>>("cameras.R_cam_lidar",
+    this->declare_parameter<vector<double>>("cameras.R_cam_lidars",
                                             vector<double>());
 
     this->get_parameter_or<bool>("publish.path_en", path_en, true);
@@ -903,8 +925,8 @@ class LaserMappingNode : public rclcpp::Node {
     this->get_parameter_or<int>("cameras.frame_rate", cam_frame_rate, 20);
     this->get_parameter_or<vector<string>>("cameras.cam_topics", cam_topics,
                                            vector<string>());
-    this->get_parameter_or<vector<double>>("cameras.intrinsics", cam_intrinsics,
-                                           vector<double>());
+    this->get_parameter_or<vector<double>>("cameras.cam_intrinsics",
+                                           cam_intrinsics, vector<double>());
     this->get_parameter_or<vector<double>>("cameras.T_cam_lidars", T_cam_lidars,
                                            vector<double>());
     this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
@@ -945,31 +967,6 @@ class LaserMappingNode : public rclcpp::Node {
     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
-    for (int i = 0; i < cam_topics.size(); i++) {
-      p_cams.push_back(std::make_shared<CamProcess>(
-          round(cam_frame_rate / p_pre->SCAN_RATE) + 1, cam_topics[i],
-          shared_from_this()));
-
-      V3D Lidar_T_wrt_Cam(Zero3d);
-      M3D Lidar_R_wrt_Cam(Eye3d);
-      M3D cam_intrinsic_mat(Eye3d);
-
-      vector<double> T_cam_lidar(T_cam_lidars.begin() + i * 3,
-                                 T_cam_lidars.begin() + i * 3 + 3);
-      vector<double> R_cam_lidar(R_cam_lidars.begin() + i * 9,
-                                 R_cam_lidars.begin() + i * 9 + 9);
-      vector<double> cam_intrinsic(cam_intrinsics.begin() + i * 9,
-                                   cam_intrinsics.begin() + i * 9 + 9);
-
-      Lidar_T_wrt_Cam << VEC_FROM_ARRAY(T_cam_lidar);
-      Lidar_R_wrt_Cam << MAT_FROM_ARRAY(R_cam_lidar);
-      cam_intrinsic_mat << MAT_FROM_ARRAY(cam_intrinsic);
-
-      p_cams[i]->SetExtrinsicAndIntrinsic(Lidar_T_wrt_Cam, Lidar_R_wrt_Cam,
-                                          Lidar_T_wrt_IMU, Lidar_R_wrt_IMU,
-                                          cam_intrinsic_mat);
-    }
-
     fill(epsi, epsi + 23, 0.001);
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS,
                       epsi);
@@ -992,26 +989,26 @@ class LaserMappingNode : public rclcpp::Node {
     if (p_pre->lidar_type == AVIA) {
       sub_pcl_livox_ =
           this->create_subscription<livox_ros_driver2::msg::CustomMsg>(
-              lid_topic, 20, livox_pcl_cbk);
+              lid_topic, 1, livox_pcl_cbk);
     } else {
       sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-          lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
+          lid_topic, 1, standard_pcl_cbk);
     }
     sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 10,
                                                                 imu_cbk);
     pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-        "/cloud_registered", 20);
+        "/cloud_registered", 1);
     pubLaserCloudFull_body_ =
         this->create_publisher<sensor_msgs::msg::PointCloud2>(
-            "/cloud_registered_body", 20);
+            "/cloud_registered_body", 1);
     pubLaserCloudEffect_ =
         this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected",
-                                                              20);
+                                                              1);
     pubLaserCloudMap_ =
-        this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 20);
+        this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 1);
     pubOdomAftMapped_ =
-        this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 20);
-    pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 20);
+        this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 1);
+    pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 1);
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     //------------------------------------------------------------------------------------------------------
@@ -1041,8 +1038,56 @@ class LaserMappingNode : public rclcpp::Node {
   }
 
  private:
+  void init_cam_process() {
+    if (!p_cams.empty()) {
+      return;
+    }
+    if (cam_topics.empty()) {
+      RCLCPP_INFO(this->get_logger(), "No camera topics, skip camera process");
+      return;
+    }
+    if (cam_topics.size() * 3 != T_cam_lidars.size()) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "The number of camera topics and T_cam_lidars are not "
+                   "consistent, skip camera process");
+      return;
+    }
+    if (cam_topics.size() * 9 != R_cam_lidars.size()) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "The number of camera topics and R_cam_lidars are not "
+                   "consistent, skip camera process");
+      return;
+    }
+    if (cam_topics.size() * 9 != cam_intrinsics.size()) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "The number of camera topics and cam_intrinsics are not "
+                   "consistent, skip camera process");
+      return;
+    }
+    for (int i = 0; i < cam_topics.size(); i++) {
+      p_cams.push_back(
+          std::make_shared<CamProcess>(10, cam_topics[i], shared_from_this()));
+      V3D Lidar_T_wrt_Cam(Zero3d);
+      M3D Lidar_R_wrt_Cam(Eye3d);
+      M3D cam_intrinsic_mat(Eye3d);
+      vector<double> T_cam_lidar(T_cam_lidars.begin() + i * 3,
+                                 T_cam_lidars.begin() + i * 3 + 3);
+      vector<double> R_cam_lidar(R_cam_lidars.begin() + i * 9,
+                                 R_cam_lidars.begin() + i * 9 + 9);
+      vector<double> cam_intrinsic(cam_intrinsics.begin() + i * 9,
+                                   cam_intrinsics.begin() + i * 9 + 9);
+      Lidar_T_wrt_Cam << VEC_FROM_ARRAY(T_cam_lidar);
+      Lidar_R_wrt_Cam << MAT_FROM_ARRAY(R_cam_lidar);
+      cam_intrinsic_mat << MAT_FROM_ARRAY(cam_intrinsic);
+      p_cams[i]->SetExtrinsicAndIntrinsic(Lidar_T_wrt_Cam, Lidar_R_wrt_Cam,
+                                          Lidar_T_wrt_IMU, Lidar_R_wrt_IMU,
+                                          cam_intrinsic_mat);
+    }
+  }
+
   void timer_callback() {
-    if (sync_packages(Measures)) {
+    init_cam_process();
+    if (sync_packages(Measures, p_cams)) {
       if (flg_first_scan) {
         first_lidar_time = Measures.lidar_beg_time;
         p_imu->first_lidar_time = first_lidar_time;
@@ -1058,6 +1103,14 @@ class LaserMappingNode : public rclcpp::Node {
       solve_const_H_time = 0;
       svd_time = 0;
       t0 = omp_get_wtime();
+
+      // for (auto &p_cam : p_cams) {
+      //   RCLCPP_ERROR(
+      //       this->get_logger(), "Newest img ext %f",
+      //       rclcpp::Time(p_cam->img_buffer_.back()->header.stamp).seconds());
+      // }
+      // RCLCPP_ERROR(this->get_logger(), "Oldest imu ext %f",
+      //              rclcpp::Time(Measures.imu.front()->header.stamp).seconds());
 
       p_imu->Process(Measures, kf, feats_undistort, p_cams);
       state_point = kf.get_x();
