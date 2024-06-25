@@ -138,9 +138,9 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
       uv.y < matched_it->cv_img->image.rows && pt_img(2) > 0) {
     // RCLCPP_INFO(node_->get_logger(), "Coloring point");
     color = matched_it->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
-    pt.r = color[2];
-    pt.g = color[1];
-    pt.b = color[0];
+    pt.r = fmax(color[2], 1);
+    pt.g = fmax(color[1], 1);
+    pt.b = fmax(color[0], 1);
     // RCLCPP_INFO(node_->get_logger(), "R: %d, G: %d, B: %d", pt.r, pt.g,
     // pt.b);
   }
