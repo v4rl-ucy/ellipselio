@@ -8,15 +8,13 @@ CamProcess::CamProcess(int queue_size, std::string cam_topic,
       std::bind(&CamProcess::CamCallback, this, std::placeholders::_1));
 }
 
-void CamProcess::SetExtrinsicAndIntrinsic(const V3D &T_cam_lidar,
-                                          const M3D &R_cam_lidar,
-                                          const V3D &T_imu_lidar,
-                                          const M3D &R_imu_lidar,
-                                          const M3D &cam_intrinsics) {
-  T_cam_lidar_ = T_cam_lidar;
-  R_cam_lidar_ = R_cam_lidar;
-  T_imu_lidar_ = T_imu_lidar;
-  R_imu_lidar_ = R_imu_lidar;
+void CamProcess::SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
+                                          V3D &t_imu_lidar, M3D &R_imu_lidar,
+                                          M3D &cam_intrinsics) {
+  T_cam_lidar_.linear() = R_cam_lidar;
+  T_cam_lidar_.translation() = t_cam_lidar;
+  T_imu_lidar_.linear() = R_imu_lidar;
+  T_imu_lidar_.translation() = t_imu_lidar;
   cam_intrinsics_ = cam_intrinsics;
 }
 
@@ -24,8 +22,8 @@ void CamProcess::CamCallback(const sensor_msgs::msg::Image::UniquePtr msg) {
   img_buffer_.push_back(std::make_shared<sensor_msgs::msg::Image>(*msg));
 }
 
-void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail, M3D &R,
-                              V3D &T) {
+void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail,
+                              Eigen::Isometry3d &T_world_imu) {
   M3D R_imu;
   V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
 
@@ -37,8 +35,8 @@ void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail, M3D &R,
   acc_imu << VEC_FROM_ARRAY(tail.acc);
   angvel_avr << VEC_FROM_ARRAY(tail.gyr);
 
-  R = R_imu * Exp(angvel_avr, dt);
-  T = pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
+  T_world_imu.linear() = R_imu * Exp(angvel_avr, dt);
+  T_world_imu.translation() = pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
 }
 
 void CamProcess::MatchImageswithIMU(std::vector<Pose6D> &imu_poses,
@@ -80,8 +78,7 @@ void CamProcess::MatchImageswithIMU(std::vector<Pose6D> &imu_poses,
   }
 
   if (!matched_imgs_.size()) {
-    RCLCPP_INFO(node_->get_logger(), "Matched %d images with IMU poses",
-                matched_imgs_.size());
+    RCLCPP_INFO(node_->get_logger(), "Matched no images with IMU poses");
     RCLCPP_INFO(node_->get_logger(), "Oldest img %f",
                 rclcpp::Time(img_buffer_.front()->header.stamp).seconds());
     RCLCPP_INFO(node_->get_logger(), "Newest img %f",
@@ -97,8 +94,8 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
                             double pcl_beg_time) {
   cv::Point2d uv;
   cv::Vec3b color;
-  M3D R_pt, R_img;
-  V3D T_pt, T_img;
+  Eigen::Vector3d pt_cap, pt_img;
+  Eigen::Isometry3d T_world_img, T_world_pt, T_img_pt;
   double img_time, matched_img_time, pt_time = pt.curvature * 1e-3,
                                      diff_time = DBL_MAX;
 
@@ -119,25 +116,26 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
 
   matched_img_time =
       rclcpp::Time(matched_it->cv_img->header.stamp).seconds() - pcl_beg_time;
-  GetTransform(pt_time, pt_head, pt_tail, R_pt, T_pt);
-  GetTransform(matched_img_time, matched_it->head, matched_it->tail, R_img,
-               T_img);
+  GetTransform(pt_time, pt_head, pt_tail, T_world_pt);
+  GetTransform(matched_img_time, matched_it->head, matched_it->tail,
+               T_world_img);
 
-  V3D p(pt.x, pt.y, pt.z);
-  V3D T_img_pt(T_pt - T_img);
-  V3D p_img =
-      R_imu_lidar_.inverse() *
-      (R_img.inverse() * (R_pt * (R_imu_lidar_ * p + T_imu_lidar_) + T_img_pt) -
-       T_imu_lidar_);
-  V3D p_cam = R_cam_lidar_ * p_img + T_cam_lidar_;
+  pt_cap << pt.x, pt.y, pt.z;
+  T_img_pt = T_world_img.inverse() * T_world_pt;
+  pt_img =
+      T_cam_lidar_ * T_imu_lidar_.inverse() * T_img_pt * T_imu_lidar_ * pt_cap;
 
-  uv.x = round((cam_intrinsics_(0, 0) * p_cam(0) / p_cam(2)) +
+  uv.x = round((cam_intrinsics_(0, 0) * pt_img(0) / pt_img(2)) +
                cam_intrinsics_(0, 2));
-  uv.y = round((cam_intrinsics_(1, 1) * p_cam(1) / p_cam(2)) +
+  uv.y = round((cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) +
                cam_intrinsics_(1, 2));
 
+  // RCLCPP_INFO(node_->get_logger(), "CI_0: %f, CI_1: %f, CI_2: %f, CI_3: %f",
+  //             cam_intrinsics_(0, 0), cam_intrinsics_(0, 2),
+  //             cam_intrinsics_(1, 1), cam_intrinsics_(1, 2));
+
   if (uv.x >= 0 && uv.x < matched_it->cv_img->image.cols && uv.y >= 0 &&
-      uv.y < matched_it->cv_img->image.rows && p_cam(2) > 0) {
+      uv.y < matched_it->cv_img->image.rows && pt_img(2) > 0) {
     // RCLCPP_INFO(node_->get_logger(), "Coloring point");
     color = matched_it->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
     pt.r = color[2];

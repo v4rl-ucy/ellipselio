@@ -213,6 +213,14 @@ void ImuProcess::UndistortPcl(
   last_imu_ = meas.imu.back();
   last_lidar_end_time_ = pcl_end_time;
 
+  Eigen::Vector3d P_i, P_dash;
+  Eigen::Isometry3d T_imu_lidar, T_world_imu_p, T_world_imu_e, T_imu_e_imu_p;
+
+  T_imu_lidar.linear() = imu_state.offset_R_L_I.toRotationMatrix();
+  T_imu_lidar.translation() = imu_state.offset_T_L_I;
+  T_world_imu_e.linear() = imu_state.rot.toRotationMatrix();
+  T_world_imu_e.translation() = imu_state.pos;
+
   /*** undistort each lidar point (backward propagation) ***/
   if (pcl_out.points.begin() == pcl_out.points.end()) return;
   auto it_pcl = pcl_out.points.end() - 1;
@@ -238,22 +246,34 @@ void ImuProcess::UndistortPcl(
        * So if we want to compensate a point at timestamp-i to the frame-e
        * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is
        * represented in global frame */
-      M3D R_i(R_imu * Exp(angvel_avr, dt));
+      // M3D R_i(R_imu * Exp(angvel_avr, dt));
 
-      V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
-      V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt -
-               imu_state.pos);
-      V3D P_compensate =
-          imu_state.offset_R_L_I.inverse() *
-          (imu_state.rot.inverse() *
-               (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) +
-                T_ei) -
-           imu_state.offset_T_L_I);  // not accurate!
+      // V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
+      //  V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt -
+      //           imu_state.pos);
+      //  V3D P_compensate =
+      //      imu_state.offset_R_L_I.inverse() *  // R_I_L
+      //      (imu_state.rot.inverse() *          // R_W_I
+      //           (R_i * (imu_state.offset_R_L_I * P_i +
+      //                   imu_state.offset_T_L_I) +  // t_pi_world in time j
+      //            T_ei) -
+      //       imu_state.offset_T_L_I);  // not accurate!
+
+      P_i << it_pcl->x, it_pcl->y, it_pcl->z;
+      T_world_imu_p.linear() = R_imu * Exp(angvel_avr, dt);
+      T_world_imu_p.translation() =
+          pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
+      T_imu_e_imu_p = T_world_imu_e.inverse() * T_world_imu_p;
+      P_dash = T_imu_lidar.inverse() * T_imu_e_imu_p * T_imu_lidar * P_i;
+
+      // std::cout << " P0: " << P_dash(0) - P_compensate(0)
+      //           << " P1: " << P_dash(1) - P_compensate(1)
+      //           << " P2: " << P_dash(2) - P_compensate(2) << std::endl;
 
       // save Undistorted points and their rotation
-      it_pcl->x = P_compensate(0);
-      it_pcl->y = P_compensate(1);
-      it_pcl->z = P_compensate(2);
+      it_pcl->x = P_dash(0);
+      it_pcl->y = P_dash(1);
+      it_pcl->z = P_dash(2);
 
       if (it_pcl == pcl_out.points.begin()) break;
     }
