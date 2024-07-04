@@ -3,9 +3,10 @@
 CamProcess::CamProcess(int queue_size, std::string cam_topic,
                        rclcpp::Node::SharedPtr node)
     : node_(node), img_buffer_(queue_size) {
-  cam_sub_ = node_->create_subscription<sensor_msgs::msg::Image>(
-      cam_topic, 10,
-      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1));
+  cam_sub_ = image_transport::create_subscription(
+      node_.get(), cam_topic,
+      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1), "raw",
+      rmw_qos_profile_default);
 }
 
 void CamProcess::SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
@@ -18,8 +19,9 @@ void CamProcess::SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
   cam_intrinsics_ = cam_intrinsics;
 }
 
-void CamProcess::CamCallback(const sensor_msgs::msg::Image::UniquePtr msg) {
-  img_buffer_.push_back(std::make_shared<sensor_msgs::msg::Image>(*msg));
+void CamProcess::CamCallback(
+    const sensor_msgs::msg::Image::ConstSharedPtr msg) {
+  img_buffer_.push_back(msg);
 }
 
 void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail,
@@ -130,18 +132,17 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
   uv.y = round((cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) +
                cam_intrinsics_(1, 2));
 
-  // RCLCPP_INFO(node_->get_logger(), "CI_0: %f, CI_1: %f, CI_2: %f, CI_3: %f",
-  //             cam_intrinsics_(0, 0), cam_intrinsics_(0, 2),
-  //             cam_intrinsics_(1, 1), cam_intrinsics_(1, 2));
-
   if (uv.x >= 0 && uv.x < matched_it->cv_img->image.cols && uv.y >= 0 &&
       uv.y < matched_it->cv_img->image.rows && pt_img(2) > 0) {
-    // RCLCPP_INFO(node_->get_logger(), "Coloring point");
     color = matched_it->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
+
+    if (pt.r != 0 || pt.g != 0 || pt.b != 0) {
+      pt.r = fmin(pt.r, color[2]);
+      pt.g = fmin(pt.g, color[1]);
+      pt.b = fmin(pt.b, color[0]);
+    }
     pt.r = fmax(color[2], 1);
     pt.g = fmax(color[1], 1);
     pt.b = fmax(color[0], 1);
-    // RCLCPP_INFO(node_->get_logger(), "R: %d, G: %d, B: %d", pt.r, pt.g,
-    // pt.b);
   }
 }

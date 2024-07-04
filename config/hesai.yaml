@@ -25,7 +25,7 @@
 
         cameras:
             frame_rate: 20
-            cam_topics: ["/alphasense_driver_ros/cam0/color/image", "/alphasense_driver_ros/cam1/color/image", "/alphasense_driver_ros/cam2/color/image"]
+            cam_topics: ["/alphasense_driver_ros/cam0/color/image_rect", "/alphasense_driver_ros/cam1/color/image_rect", "/alphasense_driver_ros/cam2/color/image_rect"]
             cam_intrinsics : [704.504153913163, 0.0, 703.6790228113778, 0.0, 708.8501128392297, 562.7041625276061, 0.0, 0.0, 1.0,
                               706.2598489736399, 0.0, 705.2120115507148, 0.0, 721.3570861335752, 541.7756390155482, 0.0, 0.0, 1.0,
                               701.1738642199008, 0.0, 700.2460544875661, 0.0, 719.7612949714033, 532.0306325030654, 0.0, 0.0, 1.0]
@@ -37,10 +37,10 @@
                            0.9999302, -0.0118147, 0.0001027, 0.0001875, 0.0071730, -0.9999743, 0.0118136, 0.9999045, 0.0071748]
 
         mapping:
-            acc_cov: 0.1
-            gyr_cov: 0.1
-            b_acc_cov: 0.0001
-            b_gyr_cov: 0.0001
+            acc_cov: 0.001202028502700754
+            gyr_cov: 0.0003655255870559997
+            b_acc_cov: 5.2639003774643306e-05
+            b_gyr_cov: 7.394478709479997e-06
             fov_degree:    180.0
             det_range:     150.0
             extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic

@@ -62,6 +62,7 @@ find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(image_transport REQUIRED)
 
 set(dependencies
   cv_bridge
@@ -76,6 +77,7 @@ set(dependencies
   pcl_ros
   pcl_conversions
   livox_ros_driver2
+  image_transport
 )
 
 # Thirdparty libraries

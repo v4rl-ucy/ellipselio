@@ -10,6 +10,7 @@
 #include <boost/circular_buffer.hpp>
 #include <cfloat>
 #include <cmath>
+#include <image_transport/image_transport.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -38,11 +39,12 @@ class CamProcess {
   Eigen::Isometry3d T_cam_lidar_;
   Eigen::Isometry3d T_imu_lidar_;
   Eigen::Matrix3d cam_intrinsics_;
-  rclcpp::Node::SharedPtr node_;
-  std::vector<MatchedImg> matched_imgs_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr cam_sub_;
 
-  void CamCallback(const sensor_msgs::msg::Image::UniquePtr msg);
+  rclcpp::Node::SharedPtr node_;
+  image_transport::Subscriber cam_sub_;
+  std::vector<MatchedImg> matched_imgs_;
+
+  void CamCallback(const sensor_msgs::msg::Image::ConstSharedPtr msg);
   void GetTransform(double time, Pose6D &head, Pose6D &tail,
                     Eigen::Isometry3d &T_world_imu);
 };

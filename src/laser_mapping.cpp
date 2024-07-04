@@ -1065,8 +1065,8 @@ class LaserMappingNode : public rclcpp::Node {
       return;
     }
     for (int i = 0; i < cam_topics.size(); i++) {
-      p_cams.push_back(
-          std::make_shared<CamProcess>(10, cam_topics[i], shared_from_this()));
+      p_cams.push_back(std::make_shared<CamProcess>(
+          cam_frame_rate, cam_topics[i], shared_from_this()));
       V3D Lidar_T_wrt_Cam(Zero3d);
       M3D Lidar_R_wrt_Cam(Eye3d);
       M3D cam_intrinsic_mat(Eye3d);
