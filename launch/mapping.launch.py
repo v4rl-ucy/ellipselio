@@ -56,10 +56,15 @@ def generate_launch_description():
         arguments=['-d', rviz_cfg],
         condition=IfCondition(rviz_use)
     )
-    tf2_node = Node(
+    odom_tf_node = Node(
         package = "tf2_ros", 
         executable = "static_transform_publisher",
-        arguments = "-0.005 -0.010 0.044 0.001 0.001 0.713 0.701 odom_vilens camera_init".split(' ')
+        arguments = "-0.010 0.005 0.080 0.001 -0.001 0.701 0.713 odom_vilens odom_fastlio".split(' ')
+    )
+    base_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "-0.005 -0.010 -0.080 -0.001 0.001 -0.701 0.713 imu_fastlio base_fastlio".split(' ')
     )
 
     ld = LaunchDescription()
@@ -71,6 +76,7 @@ def generate_launch_description():
 
     ld.add_action(fast_lio_node)
     ld.add_action(rviz_node)
-    ld.add_action(tf2_node)
+    ld.add_action(odom_tf_node)
+    ld.add_action(base_tf_node)
 
     return ld

@@ -4,10 +4,7 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /Global Options1
-        - /Status1
-        - /TF1/Frames1
-        - /CloudRegistered1
+        - /CloudRegistered1/Status1
       Splitter Ratio: 0.5
     Tree Height: 300
   - Class: rviz_common/Selection
@@ -42,6 +39,8 @@ Visualization Manager:
           Value: false
         base:
           Value: false
+        base_fastlio:
+          Value: true
         base_map:
           Value: false
         base_vilens:
@@ -50,8 +49,6 @@ Visualization Manager:
           Value: false
         base_vilens_smoothed:
           Value: false
-        body:
-          Value: true
         cam_front_link:
           Value: false
         cam_front_optical_frame:
@@ -64,8 +61,6 @@ Visualization Manager:
           Value: false
         cam_right_optical_frame:
           Value: false
-        camera_init:
-          Value: true
         drone_base_link:
           Value: false
         frontier_mount:
@@ -74,12 +69,16 @@ Visualization Manager:
           Value: false
         hesai_base:
           Value: false
+        imu_fastlio:
+          Value: false
         imu_vilens:
           Value: false
         map:
           Value: false
         map_frontier:
           Value: false
+        odom_fastlio:
+          Value: true
         odom_frontier:
           Value: false
         odom_vilens:
@@ -164,11 +163,12 @@ Visualization Manager:
               {}
           base_vilens_smoothed:
             {}
-          camera_init:
-            body:
-              {}
           imu_vilens:
             {}
+          odom_fastlio:
+            imu_fastlio:
+              base_fastlio:
+                {}
           odom_frontier:
             osprey_link:
               osprey_enu:
@@ -407,25 +407,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 44.23307800292969
+      Distance: 27.992765426635742
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 15.886249542236328
-        Y: -0.8147141933441162
-        Z: 5.1832661628723145
+        X: 17.056133270263672
+        Y: -7.942735195159912
+        Z: 3.5776491165161133
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.13479670882225037
+      Pitch: 0.4247967302799225
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.258638381958008
+      Yaw: 3.9136407375335693
     Saved: ~
 Window Geometry:
   Displays:
