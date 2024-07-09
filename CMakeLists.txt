@@ -47,6 +47,9 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 find_package(PythonLibs REQUIRED)
 find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h")
 
+find_package(ament_cmake_auto REQUIRED)
+ament_auto_find_build_dependencies()
+
 # ROS dependencies
 find_package(ament_cmake REQUIRED)
 find_package(cv_bridge REQUIRED)
@@ -89,16 +92,19 @@ find_package(PCL REQUIRED COMPONENTS common io)
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 message(STATUS "PCL: ${PCL_INCLUDE_DIRS}")
 
-set(msg_files
+rosidl_generate_interfaces(fastlio_mapping_msgs
   "msg/Pose6D.msg"
+  LIBRARY_NAME fastlio_mapping
 )
+rosidl_get_typesupport_target(cpp_typesupport_target
+fastlio_mapping_msgs "rosidl_typesupport_cpp")
 
-rosidl_generate_interfaces(${PROJECT_NAME}
-  ${msg_files}
-)
-ament_export_dependencies(rosidl_default_runtime)
+# ament_export_dependencies(rosidl_default_runtime)
 
-add_executable(fastlio_mapping src/laser_mapping.cpp src/ikd_tree.cpp src/preprocess.cpp src/imu_processing.cpp src/cam_processing.cpp)
+ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/ikd_tree.cpp src/preprocess.cpp src/imu_processing.cpp src/cam_processing.cpp)
+target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(fastlio_mapping "${cpp_typesupport_target}")
+
 target_include_directories(fastlio_mapping PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -108,30 +114,16 @@ target_include_directories(fastlio_mapping PUBLIC
   ${Boost_INCLUDE_DIRS}
 )
 target_link_libraries(fastlio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES})
-target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
-
-list(APPEND EOL_LIST "foxy" "galactic" "eloquent" "dashing" "crystal")
-
-if($ENV{ROS_DISTRO} IN_LIST EOL_LIST)
-  # Custommsg to support foxy & galactic
-  rosidl_target_interfaces(fastlio_mapping
-    ${PROJECT_NAME} "rosidl_typesupport_cpp")
-else()
-  rosidl_get_typesupport_target(cpp_typesupport_target
-    ${PROJECT_NAME} "rosidl_typesupport_cpp")
-  target_link_libraries(fastlio_mapping ${cpp_typesupport_target})
-endif()
 
 ament_target_dependencies(fastlio_mapping ${dependencies})
 
-# ---------------- Install --------------- #
-install(TARGETS fastlio_mapping
-  DESTINATION lib/${PROJECT_NAME}
+rclcpp_components_register_node(fastlio_mapping
+PLUGIN "fastlio::LaserMappingNode"
+EXECUTABLE fastlio_mapping_node
 )
 
-install(
-  DIRECTORY config launch rviz
-  DESTINATION share/${PROJECT_NAME}
+ament_auto_package(INSTALL_TO_SHARE
+config
+launch
+rviz
 )
-
-ament_package()
