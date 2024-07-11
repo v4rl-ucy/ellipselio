@@ -422,6 +422,8 @@ void Preprocess::mid360_handler(
   }
   uint valid_num = 0;
 
+  double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
+
   if (feature_enabled) {
     for (uint i = 1; i < plsize; i++) {
       if ((pl_orig.points[i].line < N_SCANS) &&
@@ -432,8 +434,8 @@ void Preprocess::mid360_handler(
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
         pl_full[i].curvature =
-            pl_orig.points[i].timestamp *
-            time_unit_scale;  // use curvature as time of each laser points
+            (pl_orig.points[i].timestamp *
+            time_unit_scale) - (time_stamp * 1000.f);  // use curvature as time of each laser points
 
         bool is_new = false;
         if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
@@ -481,8 +483,8 @@ void Preprocess::mid360_handler(
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
         pl_full[i].curvature =
-            pl_orig.points[i].timestamp *
-            time_unit_scale;  // use curvature as time of each laser points,
+             (pl_orig.points[i].timestamp *
+            time_unit_scale) - (time_stamp * 1000.f) // use curvature as time of each laser points,
                               // curvature unit: ms
 
         if (valid_num % point_filter_num == 0) continue;
