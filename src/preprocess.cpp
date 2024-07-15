@@ -485,10 +485,10 @@ void Preprocess::mid360_handler(
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
         pl_full[i].curvature =
             (pl_orig.points[i].timestamp * time_unit_scale) -
-            (time_stamp * 1000.f)  // use curvature as time of each laser
-                                   // points, curvature unit: ms
+            (time_stamp * 1000.f);  // use curvature as time of each laser
+                                    // points, curvature unit: ms
 
-            if (valid_num % point_filter_num == 0) continue;
+        if (valid_num % point_filter_num == 0) continue;
 
         double range = pl_full.points[i].x * pl_full.points[i].x +
                        pl_full.points[i].y * pl_full.points[i].y +
