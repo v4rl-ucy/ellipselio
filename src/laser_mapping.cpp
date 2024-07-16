@@ -865,8 +865,7 @@ LaserMappingNode::LaserMappingNode(
       rclcpp::create_timer(this, this->get_clock(), period_ms,
                            std::bind(&LaserMappingNode::timer_callback, this));
 
-  auto map_period_ms =
-      std::chrono::milliseconds(static_cast<int64_t>(1000.0 / 10.0));
+  auto map_period_ms = std::chrono::milliseconds(static_cast<int64_t>(1000.0));
   map_pub_timer_ = rclcpp::create_timer(
       this, this->get_clock(), map_period_ms,
       std::bind(&LaserMappingNode::map_publish_callback, this));
