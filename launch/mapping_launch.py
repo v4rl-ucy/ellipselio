@@ -45,7 +45,7 @@ def generate_launch_description():
 
     fast_lio_node = Node(
         package='fast_lio',
-        executable='fastlio_mapping',
+        executable='fastlio_mapping_node',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
         output='screen'
