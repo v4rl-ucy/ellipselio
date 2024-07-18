@@ -94,31 +94,21 @@ class LaserMappingNode : public rclcpp::Node {
   void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams);
   void map_incremental();
-  void publish_frame_world(
-      rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-          pubLaserCloudFull);
-  void publish_frame_body(
-      rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-          pubLaserCloudFull_body);
-  void publish_effect_world(
-      rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-          pubLaserCloudEffect);
-  void publish_map(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-                       pubLaserCloudMap);
+  void publish_frame_world();
+  void publish_frame_body();
+  void publish_effect_world();
+  void publish_map();
   void save_to_pcd();
   template <typename T>
   void set_posestamp(T &out);
-  void publish_odometry(
-      const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr
-          pubOdomAftMapped,
-      std::unique_ptr<tf2_ros::TransformBroadcaster> &tf_br);
-  void publish_path(rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath);
+  void publish_odometry();
+  void publish_path();
   void h_share_model(state_ikfom &s,
                      esekfom::dyn_share_datastruct<double> &ekfom_data);
 
   void init_cam_process();
   void timer_callback();
-  void map_publish_callback();
+  //   void map_publish_callback();
   void map_save_callback(std_srvs::srv::Trigger::Request::ConstSharedPtr req,
                          std_srvs::srv::Trigger::Response::SharedPtr res);
 
@@ -136,9 +126,13 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr
       sub_pcl_livox_;
 
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::TimerBase::SharedPtr map_pub_timer_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_br_;
+  rclcpp::TimerBase::SharedPtr loop_timer_;
+  rclcpp::TimerBase::SharedPtr pub_odom_timer_;
+  rclcpp::TimerBase::SharedPtr pub_path_timer_;
+  rclcpp::TimerBase::SharedPtr pub_scan_timer_;
+  rclcpp::TimerBase::SharedPtr pub_map_timer_;
+  rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_srv_;
 
   bool effect_pub_en = false, map_pub_en = false;
@@ -183,8 +177,7 @@ class LaserMappingNode : public rclcpp::Node {
          filter_size_map_min = 0, fov_deg = 0;
   double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0,
          lidar_end_time = 0, first_lidar_time = 0.0, last_publish_time = 0.0;
-  int effct_feat_num = 0, time_log_counter = 0, scan_count = 0,
-      publish_count = 0;
+  int effct_feat_num = 0, time_log_counter = 0, scan_count = 0;
   int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0,
       laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
   int cam_frame_rate = 20;

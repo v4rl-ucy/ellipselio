@@ -7,7 +7,8 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch.conditions import IfCondition
 
-from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.descriptions import ComposableNode
 
 
 def generate_launch_description():
@@ -43,13 +44,30 @@ def generate_launch_description():
         description='RViz config file path'
     )
 
-    fast_lio_node = Node(
+    # fast_lio_node = Node(
+    #     package='fast_lio',
+    #     executable='fastlio_mapping_node',
+    #     parameters=[PathJoinSubstitution([config_path, config_file]),
+    #                 {'use_sim_time': use_sim_time}],
+    #     output='screen'
+    # )
+    fast_lio_node = ComposableNode(
         package='fast_lio',
-        executable='fastlio_mapping_node',
+        plugin='fastlio::LaserMappingNode',
+        name='fast_lio_node',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
+        # extra_arguments=[{'use_intra_process_comms': True}],
+    )
+    fast_lio_container = ComposableNodeContainer(
+        namespace='',
+        package='rclcpp_components',
+        name='fast_lio_container',
+        executable='component_container_mt',
+        composable_node_descriptions=[fast_lio_node],
         output='screen'
     )
+
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -74,7 +92,7 @@ def generate_launch_description():
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_rviz_config_path_cmd)
 
-    ld.add_action(fast_lio_node)
+    ld.add_action(fast_lio_container)
     ld.add_action(rviz_node)
     ld.add_action(odom_tf_node)
     ld.add_action(base_tf_node)

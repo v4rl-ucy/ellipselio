@@ -4,7 +4,11 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Global Options1
+        - /Status1
         - /CloudRegistered1/Status1
+        - /CloudMap1
+        - /CloudMap1/Status1
       Splitter Ratio: 0.5
     Tree Height: 300
   - Class: rviz_common/Selection
@@ -33,148 +37,24 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
-        a3_imu:
-          Value: false
-        alphasense_imu:
-          Value: false
-        base:
-          Value: false
         base_fastlio:
           Value: true
-        base_map:
-          Value: false
-        base_vilens:
-          Value: true
-        base_vilens_optimized:
-          Value: false
-        base_vilens_smoothed:
-          Value: false
-        cam_front_link:
-          Value: false
-        cam_front_optical_frame:
-          Value: false
-        cam_left_link:
-          Value: false
-        cam_left_optical_frame:
-          Value: false
-        cam_right_link:
-          Value: false
-        cam_right_optical_frame:
-          Value: false
-        drone_base_link:
-          Value: false
-        frontier_mount:
-          Value: false
-        gps_antenna:
-          Value: false
-        hesai_base:
-          Value: false
         imu_fastlio:
-          Value: false
-        imu_vilens:
-          Value: false
-        map:
-          Value: false
-        map_frontier:
           Value: false
         odom_fastlio:
           Value: true
-        odom_frontier:
-          Value: false
         odom_vilens:
           Value: true
-        osprey_base:
-          Value: false
-        osprey_enu:
-          Value: false
-        osprey_flu:
-          Value: false
-        osprey_link:
-          Value: false
-        osprey_platform:
-          Value: false
-        osprey_start:
-          Value: false
-        osprey_vilens:
-          Value: false
-        pandar:
-          Value: false
-        see_bounds:
-          Value: false
-        see_constraints:
-          Value: false
-        see_nbv:
-          Value: false
-        sensor:
-          Value: false
-        sensor_vilens:
-          Value: false
-        world:
-          Value: false
       Marker Scale: 5
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          base_map:
-            {}
-          map_frontier:
-            world:
-              see_bounds:
-                {}
-              see_constraints:
-                {}
-              see_nbv:
-                {}
         odom_vilens:
-          base_vilens:
-            osprey_vilens:
-              osprey_base:
-                drone_base_link:
-                  a3_imu:
-                    {}
-                  gps_antenna:
-                    {}
-                  osprey_platform:
-                    frontier_mount:
-                      alphasense_imu:
-                        cam_front_optical_frame:
-                          {}
-                        cam_left_optical_frame:
-                          {}
-                        cam_right_optical_frame:
-                          {}
-                      cam_front_link:
-                        {}
-                      cam_left_link:
-                        {}
-                      cam_right_link:
-                        {}
-                      hesai_base:
-                        pandar:
-                          sensor:
-                            {}
-            sensor_vilens:
-              {}
-          base_vilens_optimized:
-            base:
-              {}
-          base_vilens_smoothed:
-            {}
-          imu_vilens:
-            {}
           odom_fastlio:
             imu_fastlio:
               base_fastlio:
-                {}
-          odom_frontier:
-            osprey_link:
-              osprey_enu:
-                osprey_flu:
-                  {}
-              osprey_start:
                 {}
       Update Interval: 0
       Value: true
@@ -255,14 +135,14 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: RGB8
+      Color Transformer: Intensity
       Decay Time: 1e+08
-      Enabled: true
+      Enabled: false
       Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 255
+      Max Intensity: 150
       Min Color: 0; 0; 0
-      Min Intensity: 6
+      Min Intensity: 0
       Name: CloudRegistered
       Position Transformer: XYZ
       Selectable: true
@@ -278,7 +158,7 @@ Visualization Manager:
         Value: /cloud_registered
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -316,19 +196,19 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: -9999
-        Min Value: 9999
+        Max Value: 20.88189125061035
+        Min Value: -2.621716022491455
         Value: true
       Axis: Z
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: AxisColor
+      Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 255
+      Max Intensity: 164
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: CloudMap
@@ -346,7 +226,7 @@ Visualization Manager:
         Value: /Laser_map
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
       Max Value: 1
@@ -364,7 +244,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
-    Fixed Frame: world
+    Fixed Frame: odom_fastlio
     Frame Rate: 30
   Name: root
   Tools:
@@ -407,25 +287,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 27.992765426635742
+      Distance: 98.03302764892578
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 17.056133270263672
-        Y: -7.942735195159912
-        Z: 3.5776491165161133
+        X: 17.024072647094727
+        Y: 2.5181989669799805
+        Z: -1.474428415298462
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.4247967302799225
+      Pitch: 1.0747963190078735
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.9136407375335693
+      Yaw: 2.398650884628296
     Saved: ~
 Window Geometry:
   Displays:

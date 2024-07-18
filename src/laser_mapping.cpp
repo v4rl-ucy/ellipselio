@@ -249,7 +249,6 @@ void LaserMappingNode::livox_pcl_cbk(
 }
 
 void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
-  publish_count++;
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
 
   msg->header.stamp =
@@ -391,32 +390,25 @@ void LaserMappingNode::map_incremental() {
   kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
-void LaserMappingNode::publish_frame_world(
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-        pubLaserCloudFull) {
-  if (scan_pub_en) {
-    FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
-                                                          : feats_down_body);
-    int size = laserCloudFullRes->points.size();
-    FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
+void LaserMappingNode::publish_frame_world() {
+  FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
+                                                        : feats_down_body);
+  int size = laserCloudFullRes->points.size();
+  FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
 
-    for (int i = 0; i < size; i++) {
-      RGBpointBodyToWorld(&laserCloudFullRes->points[i],
-                          &laserCloudWorld->points[i]);
-    }
-
-    sensor_msgs::msg::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-    laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
-    laserCloudmsg.header.frame_id = "odom_fastlio";
-    pubLaserCloudFull->publish(laserCloudmsg);
-    publish_count -= PUBFRAME_PERIOD;
+  for (int i = 0; i < size; i++) {
+    RGBpointBodyToWorld(&laserCloudFullRes->points[i],
+                        &laserCloudWorld->points[i]);
   }
+
+  sensor_msgs::msg::PointCloud2 laserCloudmsg;
+  pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
+  laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
+  laserCloudmsg.header.frame_id = "odom_fastlio";
+  pubLaserCloudFull_->publish(laserCloudmsg);
 }
 
-void LaserMappingNode::publish_frame_body(
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-        pubLaserCloudFull_body) {
+void LaserMappingNode::publish_frame_body() {
   int size = feats_undistort->points.size();
   FastLioPointCloud::Ptr laserCloudIMUBody(new FastLioPointCloud(size, 1));
 
@@ -429,13 +421,10 @@ void LaserMappingNode::publish_frame_body(
   pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
   laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
   laserCloudmsg.header.frame_id = "imu_fastlio";
-  pubLaserCloudFull_body->publish(laserCloudmsg);
-  publish_count -= PUBFRAME_PERIOD;
+  pubLaserCloudFull_body_->publish(laserCloudmsg);
 }
 
-void LaserMappingNode::publish_effect_world(
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-        pubLaserCloudEffect) {
+void LaserMappingNode::publish_effect_world() {
   FastLioPointCloud::Ptr laserCloudWorld(
       new FastLioPointCloud(effct_feat_num, 1));
   for (int i = 0; i < effct_feat_num; i++) {
@@ -445,12 +434,10 @@ void LaserMappingNode::publish_effect_world(
   pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
   laserCloudFullRes3.header.stamp = get_ros_time(lidar_end_time);
   laserCloudFullRes3.header.frame_id = "odom_fastlio";
-  pubLaserCloudEffect->publish(laserCloudFullRes3);
+  pubLaserCloudEffect_->publish(laserCloudFullRes3);
 }
 
-void LaserMappingNode::publish_map(
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-        pubLaserCloudMap) {
+void LaserMappingNode::publish_map() {
   FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
                                                         : feats_down_body);
   int size = laserCloudFullRes->points.size();
@@ -466,7 +453,7 @@ void LaserMappingNode::publish_map(
   pcl::toROSMsg(*pcl_wait_pub, laserCloudmsg);
   laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
   laserCloudmsg.header.frame_id = "odom_fastlio";
-  pubLaserCloudMap->publish(laserCloudmsg);
+  pubLaserCloudMap_->publish(laserCloudmsg);
 }
 
 void LaserMappingNode::save_to_pcd() {
@@ -485,15 +472,12 @@ void LaserMappingNode::set_posestamp(T &out) {
   out.pose.orientation.w = geoQuat.w;
 }
 
-void LaserMappingNode::publish_odometry(
-    const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr
-        pubOdomAftMapped,
-    std::unique_ptr<tf2_ros::TransformBroadcaster> &tf_br) {
+void LaserMappingNode::publish_odometry() {
   odomAftMapped.header.frame_id = "odom_fastlio";
   odomAftMapped.child_frame_id = "imu_fastlio";
   odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
   set_posestamp(odomAftMapped.pose);
-  pubOdomAftMapped->publish(odomAftMapped);
+  pubOdomAftMapped_->publish(odomAftMapped);
   auto P = kf.get_P();
   for (int i = 0; i < 6; i++) {
     int k = i < 3 ? i + 3 : i - 3;
@@ -516,11 +500,10 @@ void LaserMappingNode::publish_odometry(
   trans.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
   trans.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
   trans.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
-  tf_br->sendTransform(trans);
+  tf_br_->sendTransform(trans);
 }
 
-void LaserMappingNode::publish_path(
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath) {
+void LaserMappingNode::publish_path() {
   path.header.stamp = get_ros_time(lidar_end_time);
   path.header.frame_id = "odom_fastlio";
 
@@ -529,13 +512,8 @@ void LaserMappingNode::publish_path(
       get_ros_time(lidar_end_time);  // ros::Time().fromSec(lidar_end_time);
   msg_body_pose.header.frame_id = "odom_fastlio";
 
-  /*** if path is too large, the rvis will crash ***/
-  static int jjj = 0;
-  jjj++;
-  if (jjj % 10 == 0) {
-    path.poses.push_back(msg_body_pose);
-    pubPath->publish(path);
-  }
+  path.poses.push_back(msg_body_pose);
+  pubPath_->publish(path);
 }
 
 void LaserMappingNode::h_share_model(
@@ -824,51 +802,58 @@ LaserMappingNode::LaserMappingNode(
   else
     cout << "~~~~" << ROOT_DIR << " doesn't exist" << endl;
 
-  RCLCPP_INFO(this->get_logger(), "2");
-
   /*** ROS subscribe initialization ***/
   if (p_pre->lidar_type == AVIA) {
     sub_pcl_livox_ =
         this->create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            lid_topic, 1,
+            lid_topic, rclcpp::SensorDataQoS(),
             std::bind(&LaserMappingNode::livox_pcl_cbk, this,
                       std::placeholders::_1));
   } else {
     sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        lid_topic, 1,
+        lid_topic, rclcpp::SensorDataQoS(),
         std::bind(&LaserMappingNode::standard_pcl_cbk, this,
                   std::placeholders::_1));
   }
   sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic, 10,
+      imu_topic, rclcpp::SensorDataQoS(),
       std::bind(&LaserMappingNode::imu_cbk, this, std::placeholders::_1));
   pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/cloud_registered", 1);
-  pubLaserCloudFull_body_ =
-      this->create_publisher<sensor_msgs::msg::PointCloud2>(
-          "/cloud_registered_body", 1);
-  pubLaserCloudEffect_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/cloud_effected", 1);
-  pubLaserCloudMap_ =
-      this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 1);
-  pubOdomAftMapped_ =
-      this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 1);
-  pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 1);
-  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+      "/cloud_registered", rclcpp::SystemDefaultsQoS());
+  // pubLaserCloudFull_body_ =
+  //     this->create_publisher<sensor_msgs::msg::PointCloud2>(
+  //         "/cloud_registered_body", rclcpp::SensorDataQoS());
+  // pubLaserCloudEffect_ =
+  // this->create_publisher<sensor_msgs::msg::PointCloud2>(
+  //     "/cloud_effected", rclcpp::SensorDataQoS());
+  pubLaserCloudMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      "/Laser_map", rclcpp::SystemDefaultsQoS());
+  pubOdomAftMapped_ = this->create_publisher<nav_msgs::msg::Odometry>(
+      "/Odometry", rclcpp::SystemDefaultsQoS());
+  pubPath_ = this->create_publisher<nav_msgs::msg::Path>(
+      "/path", rclcpp::SystemDefaultsQoS());
+  tf_br_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-  RCLCPP_INFO(this->get_logger(), "3");
+  pub_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
-  //------------------------------------------------------------------------------------------------------
-  auto period_ms =
-      std::chrono::milliseconds(static_cast<int64_t>(1000.0 / 100.0));
-  timer_ =
-      rclcpp::create_timer(this, this->get_clock(), period_ms,
-                           std::bind(&LaserMappingNode::timer_callback, this));
-
-  auto map_period_ms = std::chrono::milliseconds(static_cast<int64_t>(1000.0));
-  map_pub_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), map_period_ms,
-      std::bind(&LaserMappingNode::map_publish_callback, this));
+  loop_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(10),
+      std::bind(&LaserMappingNode::timer_callback, this));
+  pub_odom_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(100),
+      std::bind(&LaserMappingNode::publish_odometry, this),
+      pub_callback_group_);
+  pub_path_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(100),
+      std::bind(&LaserMappingNode::publish_path, this), pub_callback_group_);
+  pub_scan_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(100),
+      std::bind(&LaserMappingNode::publish_frame_world, this),
+      pub_callback_group_);
+  pub_map_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(1000),
+      std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
 
   map_save_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "map_save", std::bind(&LaserMappingNode::map_save_callback, this,
@@ -1121,18 +1106,18 @@ void LaserMappingNode::timer_callback() {
   }
 }
 
-void LaserMappingNode::map_publish_callback() {
-  /******* Publish points *******/
-  if (lidar_end_time > last_publish_time) {
-    last_publish_time = lidar_end_time;
-    publish_odometry(pubOdomAftMapped_, tf_broadcaster_);
-    if (path_en) publish_path(pubPath_);
-    if (scan_pub_en) publish_frame_world(pubLaserCloudFull_);
-    if (scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body_);
-    if (effect_pub_en) publish_effect_world(pubLaserCloudEffect_);
-    if (map_pub_en) publish_map(pubLaserCloudMap_);
-  }
-}
+// void LaserMappingNode::map_publish_callback() {
+//   /******* Publish points *******/
+//   if (lidar_end_time > last_publish_time) {
+//     last_publish_time = lidar_end_time;
+//     publish_odometry(pubOdomAftMapped_, tf_broadcaster_);
+//     if (path_en) publish_path(pubPath_);
+//     if (scan_pub_en) publish_frame_world(pubLaserCloudFull_);
+//     if (scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body_);
+//     if (effect_pub_en) publish_effect_world(pubLaserCloudEffect_);
+//     if (map_pub_en) publish_map(pubLaserCloudMap_);
+//   }
+// }
 
 void LaserMappingNode::map_save_callback(
     std_srvs::srv::Trigger::Request::ConstSharedPtr req,
