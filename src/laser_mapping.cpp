@@ -843,7 +843,7 @@ LaserMappingNode::LaserMappingNode(
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
-      std::bind(&LaserMappingNode::timer_callback, this), loop_callback_group_);
+      std::bind(&LaserMappingNode::timer_callback, this));
   pub_odom_timer_ =
       rclcpp::create_timer(this, this->get_clock(),
                            std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),

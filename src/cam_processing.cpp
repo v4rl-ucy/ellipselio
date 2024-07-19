@@ -80,15 +80,15 @@ void CamProcess::MatchImageswithIMU(std::vector<Pose6D> &imu_poses,
   }
 
   if (!matched_imgs_.size()) {
-    RCLCPP_INFO(node_->get_logger(), "Matched no images with IMU poses");
-    RCLCPP_INFO(node_->get_logger(), "Oldest img %f",
-                rclcpp::Time(img_buffer_.front()->header.stamp).seconds());
-    RCLCPP_INFO(node_->get_logger(), "Newest img %f",
-                rclcpp::Time(img_buffer_.back()->header.stamp).seconds());
-    RCLCPP_INFO(node_->get_logger(), "Oldest imu %f",
-                imu_poses.front().offset_time + pcl_beg_time);
-    RCLCPP_INFO(node_->get_logger(), "Newest imu %f",
-                imu_poses.back().offset_time + pcl_beg_time);
+    RCLCPP_WARN(node_->get_logger(), "Matched no images with IMU poses");
+    // RCLCPP_WARN(node_->get_logger(), "Oldest img %f",
+    //             rclcpp::Time(img_buffer_.front()->header.stamp).seconds());
+    // RCLCPP_WARN(node_->get_logger(), "Newest img %f",
+    //             rclcpp::Time(img_buffer_.back()->header.stamp).seconds());
+    // RCLCPP_WARN(node_->get_logger(), "Oldest imu %f",
+    //             imu_poses.front().offset_time + pcl_beg_time);
+    // RCLCPP_WARN(node_->get_logger(), "Newest imu %f",
+    //             imu_poses.back().offset_time + pcl_beg_time);
   }
 }
 
