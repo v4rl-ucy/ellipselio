@@ -574,7 +574,8 @@ void Preprocess::xt32_handler(
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.curvature = pl_orig.points[i].timestamp / 1000.0;  // units: ms
+      added_pt.curvature = (pl_orig.points[i].timestamp - time_head) *
+                           time_unit_scale;  // units: ms
 
       if (!given_offset_time) {
         double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.2957;
@@ -634,7 +635,8 @@ void Preprocess::xt32_handler(
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.curvature = (pl_orig.points[i].timestamp - time_head) * 1000.f;
+      added_pt.curvature =
+          (pl_orig.points[i].timestamp - time_head) * time_unit_scale;
 
       if (i % point_filter_num != 0) continue;
 
