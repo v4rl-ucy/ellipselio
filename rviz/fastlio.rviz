@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /CloudRegistered1/Status1
         - /CloudMap1/Status1
       Splitter Ratio: 0.5
     Tree Height: 300
@@ -123,7 +124,7 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /path
       Value: true
-    - Alpha: 0.10000000149011612
+    - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
         Max Value: 28.436710357666016
@@ -134,11 +135,11 @@ Visualization Manager:
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
       Color Transformer: Intensity
-      Decay Time: 1e+08
+      Decay Time: 0
       Enabled: true
       Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 215.1999969482422
+      Max Intensity: 164
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: CloudRegistered
@@ -206,7 +207,7 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 163
+      Max Intensity: 255
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: CloudMap
@@ -285,25 +286,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 98.03302764892578
+      Distance: 124.8221206665039
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 17.024072647094727
-        Y: 2.5181989669799805
-        Z: -1.474428415298462
+        X: 6.759734630584717
+        Y: -8.924578666687012
+        Z: -16.61343765258789
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.0747963190078735
+      Pitch: 1.0397976636886597
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 2.398650884628296
+      Yaw: 2.1536693572998047
     Saved: ~
 Window Geometry:
   Displays:

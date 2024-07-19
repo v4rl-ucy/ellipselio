@@ -21,7 +21,7 @@
             scan_line: 64
             scan_rate: 10
             timestamp_unit: 3                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-            blind: 1.0
+            blind: 1.5
 
         cameras:
             frame_rate: 20
@@ -50,10 +50,13 @@
                             0.0000240,  0.0028286,  0.9999960 ]
 
         publish:
-            path_en:  false
+            path_en: true                # true: publish Path
+            effect_map_en: false         # true: publish Effects
+            map_en: true                 # true: publish Map cloud
             scan_publish_en:  true       # false: close all the point cloud output
-            dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
-            scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+            dense_publish_en: false      # false: low down the points number in a global-frame point clouds scan.
+            scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
+            pub_map_n_secs: 10            # publish rate of map cloud
 
         pcd_save:
             pcd_save_en: false

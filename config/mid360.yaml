@@ -21,7 +21,7 @@
             scan_line: 4
             scan_rate: 10
             timestamp_unit: 3                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-            blind: 1.0
+            blind: 1.5
 
         mapping:
             acc_cov: 0.1
