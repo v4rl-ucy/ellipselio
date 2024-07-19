@@ -429,6 +429,14 @@ void Preprocess::mid360_handler(
   pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.points.size();
 
+  pl_corn.reserve(plsize);
+  pl_surf.reserve(plsize);
+  pl_full.resize(plsize);
+
+  for (int i = 0; i < N_SCANS; i++) {
+    pl_buff[i].clear();
+    pl_buff[i].reserve(plsize);
+  }
   uint valid_num = 0;
 
   if (feature_enabled) {
