@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /CloudMap1/Status1
       Splitter Ratio: 0.5
     Tree Height: 300
   - Class: rviz_common/Selection
@@ -25,7 +26,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: CloudRegistered
 Visualization Manager:
   Class: ""
   Displays:
@@ -50,7 +51,9 @@ Visualization Manager:
       Tree:
         odom_vilens:
           odom_fastlio:
-            {}
+            imu_fastlio:
+              base_fastlio:
+                {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -135,7 +138,7 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 150
+      Max Intensity: 215.1999969482422
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: CloudRegistered
@@ -200,10 +203,10 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
-      Invert Rainbow: false
+      Enabled: true
+      Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 164
+      Max Intensity: 163
       Min Color: 0; 0; 0
       Min Intensity: 0
       Name: CloudMap
@@ -221,7 +224,7 @@ Visualization Manager:
         Value: /Laser_map
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
       Max Value: 1

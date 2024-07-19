@@ -653,6 +653,7 @@ LaserMappingNode::LaserMappingNode(
       Lidar_R_wrt_IMU(Eye3d),
       p_pre(new Preprocess()),
       p_imu(new ImuProcess()) {
+  this->declare_parameter<int>("publish.pub_map_n_secs", 1);
   this->declare_parameter<bool>("publish.path_en", true);
   this->declare_parameter<bool>("publish.effect_map_en", false);
   this->declare_parameter<bool>("publish.map_en", false);
@@ -701,6 +702,7 @@ LaserMappingNode::LaserMappingNode(
   this->declare_parameter<vector<double>>("cameras.R_cam_lidars",
                                           vector<double>());
 
+  this->get_parameter_or<int>("publish.pub_map_n_secs", pub_map_n_secs, 1);
   this->get_parameter_or<bool>("publish.path_en", path_en, true);
   this->get_parameter_or<bool>("publish.effect_map_en", effect_pub_en, false);
   this->get_parameter_or<bool>("publish.map_en", map_pub_en, false);
@@ -818,41 +820,46 @@ LaserMappingNode::LaserMappingNode(
   sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
       imu_topic, rclcpp::SensorDataQoS(),
       std::bind(&LaserMappingNode::imu_cbk, this, std::placeholders::_1));
+
   pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/cloud_registered", rclcpp::SystemDefaultsQoS());
+      "/cloud_registered", 1);
   // pubLaserCloudFull_body_ =
   //     this->create_publisher<sensor_msgs::msg::PointCloud2>(
   //         "/cloud_registered_body", rclcpp::SensorDataQoS());
   // pubLaserCloudEffect_ =
   // this->create_publisher<sensor_msgs::msg::PointCloud2>(
   //     "/cloud_effected", rclcpp::SensorDataQoS());
-  pubLaserCloudMap_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/Laser_map", rclcpp::SystemDefaultsQoS());
-  pubOdomAftMapped_ = this->create_publisher<nav_msgs::msg::Odometry>(
-      "/Odometry", rclcpp::SystemDefaultsQoS());
-  pubPath_ = this->create_publisher<nav_msgs::msg::Path>(
-      "/path", rclcpp::SystemDefaultsQoS());
+  pubLaserCloudMap_ =
+      this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 1);
+  pubOdomAftMapped_ =
+      this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 1);
+  pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 1);
   tf_br_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
+  loop_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   pub_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
-      std::bind(&LaserMappingNode::timer_callback, this));
-  pub_odom_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(100),
-      std::bind(&LaserMappingNode::publish_odometry, this),
-      pub_callback_group_);
+      std::bind(&LaserMappingNode::timer_callback, this), loop_callback_group_);
+  pub_odom_timer_ =
+      rclcpp::create_timer(this, this->get_clock(),
+                           std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
+                           std::bind(&LaserMappingNode::publish_odometry, this),
+                           pub_callback_group_);
   pub_path_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(100),
+      this, this->get_clock(),
+      std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
       std::bind(&LaserMappingNode::publish_path, this), pub_callback_group_);
   pub_scan_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(100),
+      this, this->get_clock(),
+      std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
       std::bind(&LaserMappingNode::publish_frame_world, this),
       pub_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(1000),
+      this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
 
   map_save_srv_ = this->create_service<std_srvs::srv::Trigger>(

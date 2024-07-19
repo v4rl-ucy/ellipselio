@@ -44,20 +44,13 @@ def generate_launch_description():
         description='RViz config file path'
     )
 
-    # fast_lio_node = Node(
-    #     package='fast_lio',
-    #     executable='fastlio_mapping_node',
-    #     parameters=[PathJoinSubstitution([config_path, config_file]),
-    #                 {'use_sim_time': use_sim_time}],
-    #     output='screen'
-    # )
     fast_lio_node = ComposableNode(
         package='fast_lio',
         plugin='fastlio::LaserMappingNode',
         name='fast_lio_node',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
-        # extra_arguments=[{'use_intra_process_comms': True}],
+        extra_arguments=[{'use_intra_process_comms': True}],
     )
     fast_lio_container = ComposableNodeContainer(
         namespace='',

@@ -132,6 +132,7 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr pub_path_timer_;
   rclcpp::TimerBase::SharedPtr pub_scan_timer_;
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
+  rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_srv_;
 
@@ -154,7 +155,7 @@ class LaserMappingNode : public rclcpp::Node {
       s_plot10[MAXN], s_plot11[MAXN];
   double match_time = 0, solve_time = 0, solve_const_H_time = 0;
   int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0,
-      kdtree_delete_counter = 0;
+      kdtree_delete_counter = 0, pub_map_n_secs = 0;
   bool runtime_pos_log = false, pcd_save_en = false, time_sync_en = false,
        extrinsic_est_en = true, path_en = true;
   /**************************/

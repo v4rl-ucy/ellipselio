@@ -19,6 +19,7 @@
         preprocess:
             lidar_type: 4                # AVIA = 1, VELO16 = 2, OUST64 = 3, MID360 = 4, XT32 = 5, L515 = 6, VELO32 = 7
             scan_line: 4
+            scan_rate: 10
             timestamp_unit: 3                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
             blind: 1.0
 
@@ -42,6 +43,7 @@
             scan_publish_en:  true       # false: close all the point cloud output
             dense_publish_en: false      # false: low down the points number in a global-frame point clouds scan.
             scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
+            pub_map_n_secs: 10            # publish rate of map cloud
 
         pcd_save:
             pcd_save_en: false

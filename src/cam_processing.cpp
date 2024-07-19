@@ -6,7 +6,7 @@ CamProcess::CamProcess(int queue_size, std::string cam_topic,
   cam_sub_ = image_transport::create_subscription(
       node_.get(), cam_topic,
       std::bind(&CamProcess::CamCallback, this, std::placeholders::_1), "raw",
-      rmw_qos_profile_default);
+      rmw_qos_profile_sensor_data);
 }
 
 void CamProcess::SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
