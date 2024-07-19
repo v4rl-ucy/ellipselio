@@ -45,6 +45,24 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num) {
 void Preprocess::process(
     const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg,
     FastLioPointCloud::Ptr& pcl_out) {
+  switch (time_unit) {
+    case SEC:
+      time_unit_scale = 1.e3f;
+      break;
+    case MS:
+      time_unit_scale = 1.f;
+      break;
+    case US:
+      time_unit_scale = 1.e-3f;
+      break;
+    case NS:
+      time_unit_scale = 1.e-6f;
+      break;
+    default:
+      time_unit_scale = 1.f;
+      break;
+  }
+
   avia_handler(msg);
   *pcl_out = pl_surf;
 }
@@ -122,8 +140,8 @@ void Preprocess::avia_handler(
         pl_full[i].z = msg->points[i].z;
         pl_full[i].intensity = msg->points[i].reflectivity;
         pl_full[i].curvature =
-            msg->points[i].offset_time /
-            float(1000000);  // use curvature as time of each laser points
+            msg->points[i].offset_time *
+            time_unit_scale;  // use curvature as time of each laser points
 
         bool is_new = false;
         if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
@@ -171,9 +189,9 @@ void Preprocess::avia_handler(
         pl_full[i].z = msg->points[i].z;
         pl_full[i].intensity = msg->points[i].reflectivity;
         pl_full[i].curvature =
-            msg->points[i].offset_time /
-            float(1000000);  // use curvature as time of each laser points,
-                             // curvature unit: ms
+            msg->points[i].offset_time *
+            time_unit_scale;  // use curvature as time of each laser points,
+                              // curvature unit: ms
 
         if (valid_num % point_filter_num == 0) continue;
 
@@ -407,22 +425,11 @@ void Preprocess::mid360_handler(
   pl_corn.clear();
   pl_full.clear();
 
-  pcl::PointCloud<livox_ros::LivoxPointXyzrtlt> pl_orig;
+  pcl::PointCloud<livox_ros::LivoxPointXYZRTLT> pl_orig;
   pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.points.size();
-  if (plsize == 0) return;
 
-  pl_corn.reserve(plsize);
-  pl_surf.reserve(plsize);
-  pl_full.resize(plsize);
-
-  for (int i = 0; i < N_SCANS; i++) {
-    pl_buff[i].clear();
-    pl_buff[i].reserve(plsize);
-  }
   uint valid_num = 0;
-
-  double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
 
   if (feature_enabled) {
     for (uint i = 1; i < plsize; i++) {
@@ -434,9 +441,8 @@ void Preprocess::mid360_handler(
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
         pl_full[i].curvature =
-            (pl_orig.points[i].timestamp * time_unit_scale) -
-            (time_stamp *
-             1000.f);  // use curvature as time of each laser points
+            pl_orig.points[i].offset_time *
+            time_unit_scale;  // use curvature as time of each laser points
 
         bool is_new = false;
         if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
@@ -474,26 +480,34 @@ void Preprocess::mid360_handler(
     printf("Feature extraction time: %lf \n", time / count);
   } else {
     for (uint i = 1; i < plsize; i++) {
-      valid_num++;
+      if ((pl_orig.points[i].line < N_SCANS) &&
+          ((pl_orig.points[i].tag & 0x30) == 0x10 ||
+           (pl_orig.points[i].tag & 0x30) == 0x00)) {
+        valid_num++;
 
-      pl_full[i].x = pl_orig.points[i].x;
-      pl_full[i].y = pl_orig.points[i].y;
-      pl_full[i].z = pl_orig.points[i].z;
-      pl_full[i].intensity = pl_orig.points[i].reflectivity;
-      pl_full[i].curvature =
-          (pl_orig.points[i].timestamp * time_unit_scale) -
-          (time_stamp * 1000.f);  // use curvature as time of each laser
-                                  // points, curvature unit: ms
+        pl_full[i].x = pl_orig.points[i].x;
+        pl_full[i].y = pl_orig.points[i].y;
+        pl_full[i].z = pl_orig.points[i].z;
+        pl_full[i].intensity = pl_orig.points[i].reflectivity;
+        pl_full[i].curvature =
+            pl_orig.points[i].offset_time *
+            time_unit_scale;  // use curvature as time of each laser points,
+                              // curvature unit: ms
 
-      if (valid_num % point_filter_num == 0) continue;
+        if (valid_num % point_filter_num == 0) continue;
 
-      double range = pl_full.points[i].x * pl_full.points[i].x +
-                     pl_full.points[i].y * pl_full.points[i].y +
-                     pl_full.points[i].z * pl_full.points[i].z;
+        double range = pl_full.points[i].x * pl_full.points[i].x +
+                       pl_full.points[i].y * pl_full.points[i].y +
+                       pl_full.points[i].z * pl_full.points[i].z;
 
-      if (range < (blind * blind)) continue;
+        if (range < (blind * blind)) continue;
 
-      pl_surf.push_back(std::move(pl_full[i]));
+        if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
+            (abs(pl_full[i].y - pl_full[i - 1].y) > 1e-7) ||
+            (abs(pl_full[i].z - pl_full[i - 1].z) > 1e-7)) {
+          pl_surf.push_back(std::move(pl_full[i]));
+        }
+      }
     }
   }
 }

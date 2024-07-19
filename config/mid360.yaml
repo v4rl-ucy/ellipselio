@@ -6,7 +6,7 @@
         filter_size_surf: 0.5
         filter_size_map: 0.5
         cube_side_length: 1000.0
-        runtime_pos_log_enable: true
+        runtime_pos_log_enable: false
         map_file_path: "./test.pcd"
 
         common:
@@ -17,7 +17,7 @@
                                         # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
         preprocess:
-            lidar_type: 4                # AVIA = 1, VELO16 = 2, OUST64 = 3, MID360 = 4, XT32 = 5, L515 = 6, VELO32 = 7
+            lidar_type: 1                # AVIA = 1, VELO16 = 2, OUST64 = 3, MID360 = 4, XT32 = 5, L515 = 6, VELO32 = 7
             timestamp_unit: 3                 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
             blind: 1.0
 

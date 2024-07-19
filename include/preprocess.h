@@ -4,7 +4,6 @@
 #define PREPROCESS_H
 
 #include <common_pcl.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -120,27 +119,28 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(xt32_ros::Point,
                                   (uint16_t, ring, ring) 
 )
 
-namespace livox_ros
+namespace livox_ros 
 {
-typedef struct {
-  float x;            /**< X axis, Unit:m */
-  float y;            /**< Y axis, Unit:m */
-  float z;            /**< Z axis, Unit:m */
-  float reflectivity; /**< Reflectivity   */
-  uint8_t tag;        /**< Livox point tag   */
-  uint8_t line;       /**< Laser line id     */
-  double timestamp;   /**< Timestamp of point*/
-} LivoxPointXyzrtlt;
-}
+struct EIGEN_ALIGN16 LivoxPointXYZRTLT {
+  float x;              /**< X axis, Unit:m */
+  float y;              /**< Y axis, Unit:m */
+  float z;              /**< Z axis, Unit:m */
+  uint8_t reflectivity; /**< Reflectivity   */
+  uint8_t tag;          /**< Livox point tag   */
+  uint8_t line;         /**< Laser line id     */
+  uint32_t offset_time; /**< Time offset, Unit:ns */
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+}  // namespace livox_ros
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXyzrtlt,
+POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros::LivoxPointXYZRTLT,
                                   (float, x, x)
                                   (float, y, y)
                                   (float, z, z)
-                                  (float, reflectivity, reflectivity)
+                                  (uint8_t, reflectivity, reflectivity)
                                   (uint8_t, tag, tag)
                                   (uint8_t, line, line)
-                                  (double, timestamp, timestamp)
+                                  (uint32_t, offset_time, offset_time)
 )
 
 class Preprocess

@@ -11,6 +11,7 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
 
 #include <Eigen/Core>
 #include <pcl/common/impl/io.hpp>
@@ -19,7 +20,7 @@
 #include <pcl/io/impl/pcd_io.hpp>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 
-struct PointXYZRGBINormal {
+struct EIGEN_ALIGN16 PointXYZRGBINormal {
   PCL_ADD_POINT4D;
   PCL_ADD_NORMAL4D;
   union {
@@ -32,7 +33,7 @@ struct PointXYZRGBINormal {
   };
   PCL_ADD_EIGEN_MAPS_RGB
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-} EIGEN_ALIGN16;
+};
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZRGBINormal,
