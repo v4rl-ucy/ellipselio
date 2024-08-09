@@ -234,8 +234,8 @@ void ImuProcess::UndistortPcl(
     acc_imu << VEC_FROM_ARRAY(tail->acc);
     angvel_avr << VEC_FROM_ARRAY(tail->gyr);
 
-    for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--) {
-      dt = it_pcl->curvature / double(1000) - head->offset_time;
+    for (; it_pcl->offset_time / double(1000) > head->offset_time; it_pcl--) {
+      dt = it_pcl->offset_time / double(1000) - head->offset_time;
 
       it_pcl->r = 0;
       it_pcl->g = 0;

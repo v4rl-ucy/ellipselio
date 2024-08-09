@@ -301,15 +301,15 @@ bool LaserMappingNode::sync_packages(MeasureGroup &meas,
     {
       lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
       std::cerr << "Too few input point cloud!\n";
-    } else if (meas.lidar->points.back().curvature / double(1000) <
+    } else if (meas.lidar->points.back().offset_time / double(1000) <
                0.5 * lidar_mean_scantime) {
       lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
     } else {
       scan_num++;
       lidar_end_time = meas.lidar_beg_time +
-                       meas.lidar->points.back().curvature / double(1000);
+                       meas.lidar->points.back().offset_time / double(1000);
       lidar_mean_scantime +=
-          (meas.lidar->points.back().curvature / double(1000) -
+          (meas.lidar->points.back().offset_time / double(1000) -
            lidar_mean_scantime) /
           scan_num;
     }

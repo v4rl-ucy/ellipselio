@@ -29,7 +29,7 @@
 #define MAX_INI_COUNT (10)
 
 inline const bool time_list(FastLioPoint &x, FastLioPoint &y) {
-  return (x.curvature < y.curvature);
+  return (x.offset_time < y.offset_time);
 };
 
 /// *************IMU Process and undistortion

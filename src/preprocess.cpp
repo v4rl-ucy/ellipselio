@@ -139,9 +139,9 @@ void Preprocess::avia_handler(
         pl_full[i].y = msg->points[i].y;
         pl_full[i].z = msg->points[i].z;
         pl_full[i].intensity = msg->points[i].reflectivity;
-        pl_full[i].curvature =
+        pl_full[i].offset_time =
             msg->points[i].offset_time *
-            time_unit_scale;  // use curvature as time of each laser points
+            time_unit_scale;  // use offset_time as time of each laser points
 
         bool is_new = false;
         if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
@@ -188,10 +188,10 @@ void Preprocess::avia_handler(
         pl_full[i].y = msg->points[i].y;
         pl_full[i].z = msg->points[i].z;
         pl_full[i].intensity = msg->points[i].reflectivity;
-        pl_full[i].curvature =
+        pl_full[i].offset_time =
             msg->points[i].offset_time *
-            time_unit_scale;  // use curvature as time of each laser points,
-                              // curvature unit: ms
+            time_unit_scale;  // use offset_time as time of each laser points,
+                              // offset_time unit: ms
 
         if (valid_num % point_filter_num == 0) continue;
 
@@ -242,7 +242,7 @@ void Preprocess::l515_handler(
     added_pt.normal_y = pl_orig.points[i].g;
     added_pt.normal_z = pl_orig.points[i].b;
 
-    added_pt.curvature = 0.0;
+    added_pt.offset_time = 0.0;
     pl_surf.push_back(std::move(added_pt));
   }
 
@@ -282,7 +282,7 @@ void Preprocess::oust64_handler(
       double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.3;
       if (yaw_angle >= 180.0) yaw_angle -= 360.0;
       if (yaw_angle <= -180.0) yaw_angle += 360.0;
-      added_pt.curvature = pl_orig.points[i].t * time_unit_scale;
+      added_pt.offset_time = pl_orig.points[i].t * time_unit_scale;
       if (pl_orig.points[i].ring < N_SCANS) {
         pl_buff[pl_orig.points[i].ring].push_back(std::move(added_pt));
       }
@@ -327,8 +327,8 @@ void Preprocess::oust64_handler(
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
       added_pt.normal_z = 0;
-      added_pt.curvature =
-          pl_orig.points[i].t * time_unit_scale;  // curvature unit: ms
+      added_pt.offset_time =
+          pl_orig.points[i].t * time_unit_scale;  // offset_time unit: ms
 
       pl_surf.push_back(std::move(added_pt));
     }
@@ -392,7 +392,7 @@ void Preprocess::velodyne32_handler(
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
     added_pt.intensity = pl_orig.points[i].intensity;
-    added_pt.curvature = pl_orig.points[i].time * time_unit_scale;
+    added_pt.offset_time = pl_orig.points[i].time * time_unit_scale;
 
     float angle = atan(added_pt.z / sqrt(added_pt.x * added_pt.x +
                                          added_pt.y * added_pt.y)) *
@@ -448,9 +448,9 @@ void Preprocess::mid360_handler(
         pl_full[i].y = pl_orig.points[i].y;
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
-        pl_full[i].curvature =
+        pl_full[i].offset_time =
             pl_orig.points[i].offset_time *
-            time_unit_scale;  // use curvature as time of each laser points
+            time_unit_scale;  // use offset_time as time of each laser points
 
         bool is_new = false;
         if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7) ||
@@ -497,10 +497,10 @@ void Preprocess::mid360_handler(
         pl_full[i].y = pl_orig.points[i].y;
         pl_full[i].z = pl_orig.points[i].z;
         pl_full[i].intensity = pl_orig.points[i].reflectivity;
-        pl_full[i].curvature =
+        pl_full[i].offset_time =
             pl_orig.points[i].offset_time *
-            time_unit_scale;  // use curvature as time of each laser points,
-                              // curvature unit: ms
+            time_unit_scale;  // use offset_time as time of each laser points,
+                              // offset_time unit: ms
 
         if (valid_num % point_filter_num == 0) continue;
 
@@ -574,8 +574,8 @@ void Preprocess::xt32_handler(
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.curvature = (pl_orig.points[i].timestamp - time_head) *
-                           time_unit_scale;  // units: ms
+      added_pt.offset_time = (pl_orig.points[i].timestamp - time_head) *
+                             time_unit_scale;  // units: ms
 
       if (!given_offset_time) {
         double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.2957;
@@ -583,23 +583,23 @@ void Preprocess::xt32_handler(
           // printf("layer: %d; is first: %d", layer, is_first[layer]);
           yaw_fp[layer] = yaw_angle;
           is_first[layer] = false;
-          added_pt.curvature = 0.0;
+          added_pt.offset_time = 0.0;
           yaw_last[layer] = yaw_angle;
-          time_last[layer] = added_pt.curvature;
+          time_last[layer] = added_pt.offset_time;
           continue;
         }
 
         if (yaw_angle <= yaw_fp[layer]) {
-          added_pt.curvature = (yaw_fp[layer] - yaw_angle) / omega_l;
+          added_pt.offset_time = (yaw_fp[layer] - yaw_angle) / omega_l;
         } else {
-          added_pt.curvature = (yaw_fp[layer] - yaw_angle + 360.0) / omega_l;
+          added_pt.offset_time = (yaw_fp[layer] - yaw_angle + 360.0) / omega_l;
         }
 
-        if (added_pt.curvature < time_last[layer])
-          added_pt.curvature += 360.0 / omega_l;
+        if (added_pt.offset_time < time_last[layer])
+          added_pt.offset_time += 360.0 / omega_l;
 
         yaw_last[layer] = yaw_angle;
-        time_last[layer] = added_pt.curvature;
+        time_last[layer] = added_pt.offset_time;
       }
 
       pl_buff[layer].points.push_back(std::move(added_pt));
@@ -635,7 +635,7 @@ void Preprocess::xt32_handler(
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.curvature =
+      added_pt.offset_time =
           (pl_orig.points[i].timestamp - time_head) * time_unit_scale;
 
       if (i % point_filter_num != 0) continue;
@@ -672,7 +672,7 @@ void Preprocess::default_handler(
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
     added_pt.intensity = pl_orig.points[i].intensity;
-    added_pt.curvature = 0.;
+    added_pt.offset_time = 0.;
 
     if (i % point_filter_num != 0) continue;
 
@@ -913,7 +913,7 @@ void Preprocess::give_feature(FastLioPointCloud& pl, vector<orgtype>& types) {
         ap.y = pl[j].y;
         ap.z = pl[j].z;
         ap.intensity = pl[j].intensity;
-        ap.curvature = pl[j].curvature;
+        ap.offset_time = pl[j].offset_time;
         pl_surf.push_back(std::move(ap));
 
         last_surface = -1;
@@ -929,13 +929,13 @@ void Preprocess::give_feature(FastLioPointCloud& pl, vector<orgtype>& types) {
           ap.y += pl[k].y;
           ap.z += pl[k].z;
           ap.intensity += pl[k].intensity;
-          ap.curvature += pl[k].curvature;
+          ap.offset_time += pl[k].offset_time;
         }
         ap.x /= (j - last_surface);
         ap.y /= (j - last_surface);
         ap.z /= (j - last_surface);
         ap.intensity /= (j - last_surface);
-        ap.curvature /= (j - last_surface);
+        ap.offset_time /= (j - last_surface);
         pl_surf.push_back(std::move(ap));
       }
       last_surface = -1;

@@ -27,7 +27,7 @@ struct EIGEN_ALIGN16 PointXYZRGBINormal {
     struct {
       PCL_ADD_UNION_RGB
       float intensity;
-      float curvature;
+      float offset_time;
     };
     float data_c[4];
   };
@@ -39,7 +39,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZRGBINormal,
     (float, x, x)(float, y, y)(float, z, z)(float, normal_x, normal_x)(
         float, normal_y, normal_y)(float, normal_z, normal_z)(float, rgb, rgb)(
-        float, intensity, intensity)(float, curvature, curvature))
+        float, intensity, intensity)(float, offset_time, offset_time))
 
 typedef PointXYZRGBINormal FastLioPoint;
 typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;
