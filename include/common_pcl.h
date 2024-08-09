@@ -28,6 +28,7 @@ struct EIGEN_ALIGN16 PointXYZRGBINormal {
       PCL_ADD_UNION_RGB
       float intensity;
       float offset_time;
+      float has_color;
     };
     float data_c[4];
   };
