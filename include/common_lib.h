@@ -247,6 +247,60 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point,
   return true;
 }
 
+template <typename T>
+bool esti_color_grad(Matrix<T, 4, 1> &dp, const PointVector &neighbours,
+                     const FastLioPoint &point) {
+  double c_s, c_p;
+  V3F s, n_p, p, f_s;
+  Matrix<T, NUM_MATCH_POINTS, 3> A;
+  Matrix<T, NUM_MATCH_POINTS, 1> b;
+  A.setZero();
+  b.setOnes();
+
+  V3D rgb_to_intensity(0.2126, 0.7152, 0.0722);
+
+  if (!point.has_color) {
+    return false;
+  }
+
+  // std::cerr << "Target point has color" << std::endl;
+
+  p = point.getVector3fMap();
+  n_p = point.getNormalVector3fMap();
+  c_p = point.getRGBVector3i().cast<double>().dot(rgb_to_intensity) / 255.0;
+
+  for (int j = NUM_MATCH_POINTS - 1; j >= 0; j--) {
+    if (!neighbours[j].has_color) {
+      return false;
+    }
+
+    s = neighbours[j].getVector3fMap();
+    c_s = neighbours[j].getRGBVector3i().cast<double>().dot(rgb_to_intensity) /
+          255.0;
+
+    f_s = s - n_p * (s - p).transpose() * n_p;
+    A(j, 0) = f_s(0) - p(0);
+    A(j, 1) = f_s(1) - p(1);
+    A(j, 2) = f_s(2) - p(2);
+    b(j, 0) = c_s - c_p;
+  }
+
+  Matrix<T, 3, 1> result = A.colPivHouseholderQr().solve(b);
+
+  // if (!(A * result).isApprox(b, 0.1f)) {
+  //   return false;
+  // }
+
+  result.normalize();
+
+  dp(0) = result(0);
+  dp(1) = result(1);
+  dp(2) = result(2);
+  dp(3) = c_p + result.transpose() * (f_s - p) - c_s;
+
+  return true;
+}
+
 inline double get_time_sec(const builtin_interfaces::msg::Time &time) {
   return rclcpp::Time(time).seconds();
 }

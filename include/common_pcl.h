@@ -6,6 +6,7 @@
 #define PCL_NO_PRECOMPILE
 
 #include <pcl/common/io.h>
+#include <pcl/filters/random_sample.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -15,6 +16,7 @@
 
 #include <Eigen/Core>
 #include <pcl/common/impl/io.hpp>
+#include <pcl/filters/impl/random_sample.hpp>
 #include <pcl/filters/impl/voxel_grid.hpp>
 #include <pcl/impl/point_types.hpp>
 #include <pcl/io/impl/pcd_io.hpp>
@@ -40,7 +42,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZRGBINormal,
     (float, x, x)(float, y, y)(float, z, z)(float, normal_x, normal_x)(
         float, normal_y, normal_y)(float, normal_z, normal_z)(float, rgb, rgb)(
-        float, intensity, intensity)(float, offset_time, offset_time))
+        float, intensity, intensity)(float, offset_time,
+                                     offset_time)(float, has_color, has_color))
 
 typedef PointXYZRGBINormal FastLioPoint;
 typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;

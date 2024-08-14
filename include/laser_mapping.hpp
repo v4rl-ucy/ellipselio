@@ -138,9 +138,11 @@ class LaserMappingNode : public rclcpp::Node {
 
   bool effect_pub_en = false, map_pub_en = false;
   int effect_feat_num = 0, frame_num = 0;
-  double deltaT, deltaR, aver_time_consu = 0, aver_time_icp = 0,
-                         aver_time_match = 0, aver_time_incre = 0,
-                         aver_time_solve = 0, aver_time_const_H_time = 0;
+  double deltaT, deltaR,
+      aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0,
+      aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0,
+      max_time_consu = 0, max_time_icp = 0, max_time_match = 0,
+      max_time_incre = 0, max_time_solve = 0, max_time_const_H_time = 0;
   bool flg_EKF_converged, EKF_stop_flg = 0;
   double epsi[23] = {0.001};
 
@@ -178,7 +180,8 @@ class LaserMappingNode : public rclcpp::Node {
          filter_size_map_min = 0, fov_deg = 0;
   double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0,
          lidar_end_time = 0, first_lidar_time = 0.0, last_publish_time = 0.0;
-  int effct_feat_num = 0, time_log_counter = 0, scan_count = 0;
+  int effct_feat_num = 0, color_feat_num = 0, time_log_counter = 0,
+      scan_count = 0;
   int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0,
       laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
   int cam_frame_rate = 20;
@@ -207,12 +210,14 @@ class LaserMappingNode : public rclcpp::Node {
   FastLioPointCloud::Ptr feats_down_body;
   FastLioPointCloud::Ptr feats_down_world;
   FastLioPointCloud::Ptr normvec;
+  FastLioPointCloud::Ptr colorvec;
   FastLioPointCloud::Ptr laserCloudOri;
   FastLioPointCloud::Ptr corr_normvect;
+  FastLioPointCloud::Ptr corr_colorvect;
   FastLioPointCloud::Ptr _featsArray;
 
-  pcl::VoxelGrid<FastLioPoint> downSizeFilterSurf;
-  pcl::VoxelGrid<FastLioPoint> downSizeFilterMap;
+  pcl::RandomSample<FastLioPoint> downSizeFilterSurf;
+  pcl::RandomSample<FastLioPoint> downSizeFilterMap;
 
   KD_TREE<FastLioPoint> ikdtree;
 

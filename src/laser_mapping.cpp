@@ -69,6 +69,8 @@ void LaserMappingNode::pointBodyToWorld_ikfom(FastLioPoint const *const pi,
   po->g = pi->g;
   po->b = pi->b;
   po->intensity = pi->intensity;
+  po->offset_time = pi->offset_time;
+  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::pointBodyToWorld(FastLioPoint const *const pi,
@@ -84,6 +86,8 @@ void LaserMappingNode::pointBodyToWorld(FastLioPoint const *const pi,
   po->g = pi->g;
   po->b = pi->b;
   po->intensity = pi->intensity;
+  po->offset_time = pi->offset_time;
+  po->has_color = pi->has_color;
 }
 
 template <typename T>
@@ -112,6 +116,8 @@ void LaserMappingNode::RGBpointBodyToWorld(FastLioPoint const *const pi,
   po->g = pi->g;
   po->b = pi->b;
   po->intensity = pi->intensity;
+  po->offset_time = pi->offset_time;
+  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
@@ -126,6 +132,8 @@ void LaserMappingNode::RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
   po->g = pi->g;
   po->b = pi->b;
   po->intensity = pi->intensity;
+  po->offset_time = pi->offset_time;
+  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::points_cache_collect() {
@@ -521,7 +529,9 @@ void LaserMappingNode::h_share_model(
   double match_start = omp_get_wtime();
   laserCloudOri->clear();
   corr_normvect->clear();
+  corr_colorvect->clear();
   total_residual = 0.0;
+  color_feat_num = 0;
 
 /** closest surface search and residual computation **/
 #ifdef MP_EN
@@ -532,6 +542,10 @@ void LaserMappingNode::h_share_model(
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
 
+    // if (feats_down_body->points[i].has_color > 0) {
+    //   RCLCPP_WARN(this->get_logger(), "Point has color");
+    // }
+
     /* transform to world frame */
     V3D p_body(point_body.x, point_body.y, point_body.z);
     V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
@@ -539,6 +553,10 @@ void LaserMappingNode::h_share_model(
     point_world.y = p_global(1);
     point_world.z = p_global(2);
     point_world.intensity = point_body.intensity;
+    point_world.r = point_body.r;
+    point_world.g = point_body.g;
+    point_world.b = point_body.b;
+    point_world.has_color = point_body.has_color;
 
     vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
 
@@ -557,6 +575,7 @@ void LaserMappingNode::h_share_model(
     if (!point_selected_surf[i]) continue;
 
     VF(4) pabcd;
+    VF(4) dp;
     point_selected_surf[i] = false;
     if (esti_plane(pabcd, points_near, 0.1f)) {
       float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
@@ -570,9 +589,27 @@ void LaserMappingNode::h_share_model(
         normvec->points[i].z = pabcd(2);
         normvec->points[i].intensity = pd2;
         res_last[i] = abs(pd2);
+        // std::cerr << "Dist res: " << pd2 << std::endl;
+
+        point_world.normal_x = pabcd(0);
+        point_world.normal_y = pabcd(1);
+        point_world.normal_z = pabcd(2);
+        colorvec->points[i].has_color = 0;
+        if (esti_color_grad(dp, points_near, point_world)) {
+          color_feat_num++;
+          colorvec->points[i].has_color = 1;
+          colorvec->points[i].x = dp(0);
+          colorvec->points[i].y = dp(1);
+          colorvec->points[i].z = dp(2);
+          colorvec->points[i].intensity = dp(3);
+          // std::cerr << "Color res: " << dp(3) << std::endl;
+          res_last[i] = 0.5 * res_last[i] + 0.5 * abs(dp(3));
+        }
       }
     }
   }
+
+  std::cerr << "Color points: " << color_feat_num << std::endl;
 
   effct_feat_num = 0;
 
@@ -580,6 +617,7 @@ void LaserMappingNode::h_share_model(
     if (point_selected_surf[i]) {
       laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
       corr_normvect->points[effct_feat_num] = normvec->points[i];
+      corr_colorvect->points[effct_feat_num] = colorvec->points[i];
       total_residual += res_last[i];
       effct_feat_num++;
     }
@@ -616,18 +654,38 @@ void LaserMappingNode::h_share_model(
     /*** calculate the Measuremnt Jacobian matrix H ***/
     V3D C(s.rot.conjugate() * norm_vec);
     V3D A(point_crossmat * C);
+
+    double res = norm_p.intensity;
+
+    if (corr_colorvect->points[i].has_color) {
+      const FastLioPoint &color_p = corr_colorvect->points[i];
+      V3D color_vec(color_p.x, color_p.y, color_p.z);
+
+      std::cerr << "Norm vec: " << norm_vec << std::endl;
+      std::cerr << "Color vec: " << color_vec << std::endl;
+
+      /*** calculate the Measuremnt Jacobian matrix H ***/
+      M3D M = M3D::Identity() - C * C.transpose();
+      V3D dpM = (s.rot.conjugate() * color_vec).transpose() * M;
+      V3D B(point_crossmat * dpM);
+
+      A = 0.5 * A + 0.5 * B;
+      norm_vec = 0.5 * norm_vec + 0.5 * color_vec;
+      res = 0.5 * norm_p.intensity + 0.5 * color_p.intensity;
+    }
+
     if (extrinsic_est_en) {
       V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() *
             C);  // s.rot.conjugate()*norm_vec);
-      ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z,
-          VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+      ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec(0), norm_vec(1),
+          norm_vec(2), VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
     } else {
-      ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z,
-          VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+      ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec(0), norm_vec(1),
+          norm_vec(2), VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
     }
 
     /*** Measuremnt: distance to the closest surface/corner ***/
-    ekfom_data.h(i) = -norm_p.intensity;
+    ekfom_data.h(i) = -res;
   }
   solve_time += omp_get_wtime() - solve_start_;
 }
@@ -640,8 +698,10 @@ LaserMappingNode::LaserMappingNode(
       feats_down_body(new FastLioPointCloud()),
       feats_down_world(new FastLioPointCloud()),
       normvec(new FastLioPointCloud(100000, 1)),
+      colorvec(new FastLioPointCloud(100000, 1)),
       laserCloudOri(new FastLioPointCloud(100000, 1)),
       corr_normvect(new FastLioPointCloud(100000, 1)),
+      corr_colorvect(new FastLioPointCloud(100000, 1)),
       pcl_wait_pub(new FastLioPointCloud()),
       pcl_wait_save(new FastLioPointCloud()),
       extrinT(3, 0.0),
@@ -768,12 +828,12 @@ LaserMappingNode::LaserMappingNode(
 
   memset(point_selected_surf, true, sizeof(point_selected_surf));
   memset(res_last, -1000.0f, sizeof(res_last));
-  downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min,
-                                 filter_size_surf_min);
-  downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min,
-                                filter_size_map_min);
-  memset(point_selected_surf, true, sizeof(point_selected_surf));
-  memset(res_last, -1000.0f, sizeof(res_last));
+  // downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min,
+  //                                filter_size_surf_min);
+  // downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min,
+  //                               filter_size_map_min);
+  downSizeFilterSurf.setSample(3000);
+  downSizeFilterMap.setSample(3000);
 
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
@@ -1019,6 +1079,7 @@ void LaserMappingNode::timer_callback() {
     }
 
     normvec->resize(feats_down_size);
+    colorvec->resize(feats_down_size);
     feats_down_world->resize(feats_down_size);
 
     V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
@@ -1042,6 +1103,11 @@ void LaserMappingNode::timer_callback() {
     Nearest_Points.resize(feats_down_size);
     int rematch_num = 0;
     bool nearest_search_en = true;  //
+
+    // RCLCPP_WARN(this->get_logger(), "Undistorted points: %d",
+    //             feats_undistort->points.size());
+    // RCLCPP_WARN(this->get_logger(), "Sampled points: %d",
+    //             feats_down_body->points.size());
 
     t2 = omp_get_wtime();
 
@@ -1081,6 +1147,12 @@ void LaserMappingNode::timer_callback() {
       aver_time_const_H_time =
           aver_time_const_H_time * (frame_num - 1) / frame_num +
           solve_time / frame_num;
+      max_time_consu = fmax(max_time_consu, t5 - t0);
+      max_time_icp = fmax(max_time_icp, t_update_end - t_update_start);
+      max_time_match = fmax(max_time_match, match_time);
+      max_time_incre = fmax(max_time_incre, kdtree_incremental_time);
+      max_time_solve = fmax(max_time_solve, solve_time + solve_H_time);
+      max_time_const_H_time = fmax(max_time_const_H_time, solve_time);
       T1[time_log_counter] = Measures.lidar_beg_time;
       s_plot[time_log_counter] = t5 - t0;
       s_plot2[time_log_counter] = feats_undistort->points.size();
@@ -1093,12 +1165,19 @@ void LaserMappingNode::timer_callback() {
       s_plot9[time_log_counter] = aver_time_consu;
       s_plot10[time_log_counter] = add_point_size;
       time_log_counter++;
+      // printf(
+      //     "[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match:
+      //     "
+      //     "%0.6f ave solve: %0.6f icp: %0.6f map incre: %0.6f ave "
+      //     "total: %0.6f avg icp: %0.6f avg construct H: %0.6f \n",
+      //     t1 - t0, aver_time_match, aver_time_solve, t3 - t1, t5 - t3,
+      //     aver_time_consu, aver_time_icp, aver_time_const_H_time);
       printf(
-          "[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: "
-          "%0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave "
-          "total: %0.6f icp: %0.6f construct H: %0.6f \n",
-          t1 - t0, aver_time_match, aver_time_solve, t3 - t1, t5 - t3,
-          aver_time_consu, aver_time_icp, aver_time_const_H_time);
+          "[ mapping ]: time: IMU + Map + Input Downsample: %0.6f max match: "
+          "%0.6f max solve: %0.6f icp: %0.6f map incre: %0.6f max "
+          "total: %0.6f max icp: %0.6f max construct H: %0.6f \n",
+          t1 - t0, max_time_match, max_time_solve, t3 - t1, t5 - t3,
+          max_time_consu, max_time_icp, max_time_const_H_time);
       ext_euler = SO3ToEuler(state_point.offset_R_L_I);
       fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " "
                << euler_cur.transpose() << " " << state_point.pos.transpose()
