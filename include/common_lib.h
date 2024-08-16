@@ -247,56 +247,94 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point,
   return true;
 }
 
-template <typename T>
-bool esti_color_grad(Matrix<T, 4, 1> &dp, const PointVector &neighbours,
-                     const FastLioPoint &point) {
-  double c_s, c_p;
-  V3F s, n_p, p, f_s;
-  Matrix<T, NUM_MATCH_POINTS, 3> A;
-  Matrix<T, NUM_MATCH_POINTS, 1> b;
-  A.setZero();
-  b.setOnes();
-
-  V3D rgb_to_intensity(0.2126, 0.7152, 0.0722);
+inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
+                            const PointVector &neighbours,
+                            const FastLioPoint &point) {
+  M3F QR_mat, QP_mat;
+  M3F::Index r_idx, g_idx, b_idx;
+  float n_d, p_d, q_d, qp_t, pr_d;
+  VF(NUM_MATCH_POINTS) qp_d, qr_d, qr_dot;
+  MF(NUM_MATCH_POINTS, 3) QP, QR, QR_tmp;
+  V3F n, p, p_c, p_proj, q, q_c, q_proj, qp_proj, r_c, pr_c, qr_c, pr_proj,
+      pr_vec, result, qr_vec, qp_vec, qp_scale;
 
   if (!point.has_color) {
     return false;
   }
 
-  // std::cerr << "Target point has color" << std::endl;
+  qp_t = 0.0;
+  r_c << 0, 0, 0;
+  n << pabcd(0), pabcd(1), pabcd(2);
+  n_d = pabcd(3);
 
   p = point.getVector3fMap();
-  n_p = point.getNormalVector3fMap();
-  c_p = point.getRGBVector3i().cast<double>().dot(rgb_to_intensity) / 255.0;
+  p_c = point.getRGBVector3i().cast<float>() / 255.0;
+  p_d = pabcd(0) * p(0) + pabcd(1) * p(1) + pabcd(2) * p(2) + pabcd(3);
+  p_proj = p - p_d * n;
 
-  for (int j = NUM_MATCH_POINTS - 1; j >= 0; j--) {
+  for (int j = 0; j < NUM_MATCH_POINTS; j++) {
     if (!neighbours[j].has_color) {
       return false;
     }
 
-    s = neighbours[j].getVector3fMap();
-    c_s = neighbours[j].getRGBVector3i().cast<double>().dot(rgb_to_intensity) /
-          255.0;
-
-    f_s = s - n_p * (s - p).transpose() * n_p;
-    A(j, 0) = f_s(0) - p(0);
-    A(j, 1) = f_s(1) - p(1);
-    A(j, 2) = f_s(2) - p(2);
-    b(j, 0) = c_s - c_p;
+    q = neighbours[j].getVector3fMap();
+    q_c = neighbours[j].getRGBVector3i().cast<float>() / 255.0;
+    q_d = pabcd(0) * q(0) + pabcd(1) * q(1) + pabcd(2) * q(2) + pabcd(3);
+    q_proj = q - q_d * n;
+    qp_proj = q_proj - p_proj;
+    QP.row(j) = qp_proj.normalized();
+    qp_d(j) = qp_proj.norm();
+    qp_t += 1.0 / qp_d(j);
+    r_c += (1.0 / qp_d(j)) * q_c;
   }
 
-  Matrix<T, 3, 1> result = A.colPivHouseholderQr().solve(b);
+  r_c *= 1.0 / qp_t;
+  pr_c = p_c - r_c;
+  pr_d = pr_c.norm();
+  pr_c.normalize();
 
-  // if (!(A * result).isApprox(b, 0.1f)) {
-  //   return false;
-  // }
+  for (int j = 0; j < NUM_MATCH_POINTS; j++) {
+    q_c = neighbours[j].getRGBVector3i().cast<float>() / 255.0;
+    qr_c = q_c - r_c;
+    QR.row(j) = qr_c.normalized();
+    qr_d(j) = qr_c.norm();
+  }
 
-  result.normalize();
+  qr_dot = QR * pr_c;
+  // std::cerr << "qr_dot: " << qr_dot << std::endl;
 
-  dp(0) = result(0);
-  dp(1) = result(1);
-  dp(2) = result(2);
-  dp(3) = c_p + result.transpose() * (f_s - p) - c_s;
+  qr_dot.maxCoeff(&r_idx);
+  qr_dot(r_idx) = -1;
+  qr_dot.maxCoeff(&g_idx);
+  qr_dot(g_idx) = -1;
+  qr_dot.maxCoeff(&b_idx);
+
+  QR_mat.col(0) = QR.row(r_idx);
+  QR_mat.col(1) = QR.row(g_idx);
+  QR_mat.col(2) = QR.row(b_idx);
+  qr_vec = pr_c;
+
+  result = QR_mat.colPivHouseholderQr().solve(qr_vec);
+
+  if (!(QR_mat * pr_d * result).isApprox(pr_d * qr_vec, 0.1f)) {
+    return false;
+  }
+
+  QP_mat.col(0) = QP.row(r_idx);
+  QP_mat.col(1) = QP.row(g_idx);
+  QP_mat.col(2) = QP.row(b_idx);
+  qp_scale(0) = qp_d(r_idx) / qr_d(r_idx);
+  qp_scale(1) = qp_d(g_idx) / qr_d(g_idx);
+  qp_scale(2) = qp_d(b_idx) / qr_d(b_idx);
+  qp_vec = qp_scale.cwiseProduct(pr_d * result);
+
+  pr_proj = QP_mat * qp_vec;
+  pr_vec = p - p_proj + pr_proj;
+  if (pr_vec.normalized().dot(n) < 0.0) {
+    col_result << -pr_vec.normalized(), -pr_vec.norm();
+  } else {
+    col_result << pr_vec.normalized(), pr_vec.norm();
+  }
 
   return true;
 }

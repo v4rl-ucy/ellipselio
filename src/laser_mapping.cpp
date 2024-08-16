@@ -575,7 +575,7 @@ void LaserMappingNode::h_share_model(
     if (!point_selected_surf[i]) continue;
 
     VF(4) pabcd;
-    VF(4) dp;
+    VF(4) col_grad;
     point_selected_surf[i] = false;
     if (esti_plane(pabcd, points_near, 0.1f)) {
       float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
@@ -589,21 +589,19 @@ void LaserMappingNode::h_share_model(
         normvec->points[i].z = pabcd(2);
         normvec->points[i].intensity = pd2;
         res_last[i] = abs(pd2);
-        // std::cerr << "Dist res: " << pd2 << std::endl;
 
-        point_world.normal_x = pabcd(0);
-        point_world.normal_y = pabcd(1);
-        point_world.normal_z = pabcd(2);
         colorvec->points[i].has_color = 0;
-        if (esti_color_grad(dp, points_near, point_world)) {
+        if (esti_color_grad(col_grad, pabcd, points_near, point_world)) {
+          float c = 1 - 0.9 * fabs(col_grad(3)) / sqrt(p_body.norm());
           color_feat_num++;
-          colorvec->points[i].has_color = 1;
-          colorvec->points[i].x = dp(0);
-          colorvec->points[i].y = dp(1);
-          colorvec->points[i].z = dp(2);
-          colorvec->points[i].intensity = dp(3);
-          // std::cerr << "Color res: " << dp(3) << std::endl;
-          res_last[i] = 0.5 * res_last[i] + 0.5 * abs(dp(3));
+          if (c > 0.9) {
+            colorvec->points[i].has_color = 1;
+            colorvec->points[i].x = col_grad(0);
+            colorvec->points[i].y = col_grad(1);
+            colorvec->points[i].z = col_grad(2);
+            colorvec->points[i].intensity = col_grad(3);
+            res_last[i] = abs(col_grad(3));
+          }
         }
       }
     }
@@ -661,17 +659,15 @@ void LaserMappingNode::h_share_model(
       const FastLioPoint &color_p = corr_colorvect->points[i];
       V3D color_vec(color_p.x, color_p.y, color_p.z);
 
-      std::cerr << "Norm vec: " << norm_vec << std::endl;
-      std::cerr << "Color vec: " << color_vec << std::endl;
+      // std::cerr << "Norm vec: " << norm_vec << std::endl;
+      // std::cerr << "Color vec: " << color_vec << std::endl;
+      // std::cerr << "Norm int: " << norm_p.intensity << std::endl;
+      // std::cerr << "Color int: " << color_p.intensity << std::endl;
 
-      /*** calculate the Measuremnt Jacobian matrix H ***/
-      M3D M = M3D::Identity() - C * C.transpose();
-      V3D dpM = (s.rot.conjugate() * color_vec).transpose() * M;
-      V3D B(point_crossmat * dpM);
-
-      A = 0.5 * A + 0.5 * B;
-      norm_vec = 0.5 * norm_vec + 0.5 * color_vec;
-      res = 0.5 * norm_p.intensity + 0.5 * color_p.intensity;
+      norm_vec = color_vec;
+      C = s.rot.conjugate() * color_vec;
+      A = point_crossmat * C;
+      res = color_p.intensity;
     }
 
     if (extrinsic_est_en) {
