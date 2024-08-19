@@ -253,10 +253,18 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
   M3F QR_mat, QP_mat;
   M3F::Index r_idx, g_idx, b_idx;
   float n_d, p_d, q_d, qp_t, pr_d;
-  VF(NUM_MATCH_POINTS) qp_d, qr_d, qr_dot;
+  VF(NUM_MATCH_POINTS) qp_d, qr_d, qr_dot, pq_norm;
   MF(NUM_MATCH_POINTS, 3) QP, QR, QR_tmp;
   V3F n, p, p_c, p_proj, q, q_c, q_proj, qp_proj, r_c, pr_c, qr_c, pr_proj,
       pr_vec, result, qr_vec, qp_vec, qp_scale;
+
+  QP.setZero();
+  QR.setZero();
+  QR_tmp.setZero();
+  qp_d.setZero();
+  qr_d.setZero();
+  qr_dot.setZero();
+  pq_norm.setZero();
 
   if (!point.has_color) {
     return false;
@@ -279,13 +287,21 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
 
     q = neighbours[j].getVector3fMap();
     q_c = neighbours[j].getRGBVector3i().cast<float>() / 255.0;
-    q_d = pabcd(0) * q(0) + pabcd(1) * q(1) + pabcd(2) * q(2) + pabcd(3);
-    q_proj = q - q_d * n;
-    qp_proj = q_proj - p_proj;
-    QP.row(j) = qp_proj.normalized();
-    qp_d(j) = qp_proj.norm();
-    qp_t += 1.0 / qp_d(j);
-    r_c += (1.0 / qp_d(j)) * q_c;
+    if ((p_c - q_c).norm() < 1.00) {
+      q_d = pabcd(0) * q(0) + pabcd(1) * q(1) + pabcd(2) * q(2) + pabcd(3);
+      q_proj = q - q_d * n;
+      qp_proj = q_proj - p_proj;
+      QP.row(j) = qp_proj.normalized();
+      qp_d(j) = qp_proj.norm();
+      qp_t += 1.0 / qp_d(j);
+      r_c += (1.0 / qp_d(j)) * q_c;
+      pq_norm(j) = 1;
+    }
+  }
+
+  if (pq_norm.sum() < 3) {
+    // std::cerr << "Not enough similar color points" << std::endl;
+    return false;
   }
 
   r_c *= 1.0 / qp_t;
@@ -294,6 +310,9 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
   pr_c.normalize();
 
   for (int j = 0; j < NUM_MATCH_POINTS; j++) {
+    if (pq_norm(j) == 0) {
+      continue;
+    }
     q_c = neighbours[j].getRGBVector3i().cast<float>() / 255.0;
     qr_c = q_c - r_c;
     QR.row(j) = qr_c.normalized();
@@ -301,13 +320,21 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
   }
 
   qr_dot = QR * pr_c;
-  // std::cerr << "qr_dot: " << qr_dot << std::endl;
 
   qr_dot.maxCoeff(&r_idx);
+  if (qr_dot(r_idx) <= 0) {
+    return false;
+  }
   qr_dot(r_idx) = -1;
   qr_dot.maxCoeff(&g_idx);
+  if (qr_dot(g_idx) <= 0) {
+    return false;
+  }
   qr_dot(g_idx) = -1;
   qr_dot.maxCoeff(&b_idx);
+  if (qr_dot(b_idx) <= 0) {
+    return false;
+  }
 
   QR_mat.col(0) = QR.row(r_idx);
   QR_mat.col(1) = QR.row(g_idx);
@@ -327,6 +354,10 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
   qp_scale(1) = qp_d(g_idx) / qr_d(g_idx);
   qp_scale(2) = qp_d(b_idx) / qr_d(b_idx);
   qp_vec = qp_scale.cwiseProduct(pr_d * result);
+
+  // if (qp_vec.minCoeff() < 0.0 || qp_vec.maxCoeff() > 0.1) {
+  //   return false;
+  // }
 
   pr_proj = QP_mat * qp_vec;
   pr_vec = p - p_proj + pr_proj;
