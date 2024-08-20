@@ -533,11 +533,11 @@ void LaserMappingNode::h_share_model(
   total_residual = 0.0;
   color_feat_num = 0;
 
-/** closest surface search and residual computation **/
-#ifdef MP_EN
-  omp_set_num_threads(MP_PROC_NUM);
-#pragma omp parallel for
-#endif
+  /** closest surface search and residual computation **/
+  // #ifdef MP_EN
+  //   omp_set_num_threads(MP_PROC_NUM);
+  // #pragma omp parallel for
+  // #endif
   for (int i = 0; i < feats_down_size; i++) {
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];

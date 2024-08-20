@@ -299,6 +299,9 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
     }
   }
 
+  // std::cerr << "Min dist: " << qp_d.minCoeff() << std::endl;
+  // std::cerr << "Mean dist: " << qp_d.mean() << std::endl;
+  // std::cerr << "Max dist: " << qp_d.maxCoeff() << std::endl;
   if (pq_norm.sum() < 3) {
     // std::cerr << "Not enough similar color points" << std::endl;
     return false;
@@ -360,7 +363,8 @@ inline bool esti_color_grad(VF(4) & col_result, VF(4) & pabcd,
   // }
 
   pr_proj = QP_mat * qp_vec;
-  pr_vec = p - p_proj + pr_proj;
+  // std::cerr << "PR proj: " << pr_proj.norm() << std::endl;
+  pr_vec = p - p_proj;  // + pr_proj;
   if (pr_vec.normalized().dot(n) < 0.0) {
     col_result << -pr_vec.normalized(), -pr_vec.norm();
   } else {
