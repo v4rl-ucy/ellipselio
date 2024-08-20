@@ -533,11 +533,11 @@ void LaserMappingNode::h_share_model(
   total_residual = 0.0;
   color_feat_num = 0;
 
-  /** closest surface search and residual computation **/
-  // #ifdef MP_EN
-  //   omp_set_num_threads(MP_PROC_NUM);
-  // #pragma omp parallel for
-  // #endif
+/** closest surface search and residual computation **/
+#ifdef MP_EN
+  omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
   for (int i = 0; i < feats_down_size; i++) {
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
@@ -591,23 +591,23 @@ void LaserMappingNode::h_share_model(
         res_last[i] = abs(pd2);
 
         colorvec->points[i].has_color = 0;
-        if (esti_color_grad(col_grad, pabcd, points_near, point_world)) {
-          float c = 1 - 0.9 * fabs(col_grad(3)) / sqrt(p_body.norm());
-          color_feat_num++;
-          if (c > 0.9) {
-            colorvec->points[i].has_color = 1;
-            colorvec->points[i].x = col_grad(0);
-            colorvec->points[i].y = col_grad(1);
-            colorvec->points[i].z = col_grad(2);
-            colorvec->points[i].intensity = col_grad(3);
-            res_last[i] = abs(col_grad(3));
-          }
-        }
+        // if (esti_color_grad(col_grad, pabcd, points_near, point_world)) {
+        //   float c = 1 - 0.9 * fabs(col_grad(3)) / sqrt(p_body.norm());
+        //   color_feat_num++;
+        //   if (c > 0.9) {
+        //     colorvec->points[i].has_color = 1;
+        //     colorvec->points[i].x = col_grad(0);
+        //     colorvec->points[i].y = col_grad(1);
+        //     colorvec->points[i].z = col_grad(2);
+        //     colorvec->points[i].intensity = col_grad(3);
+        //     res_last[i] = abs(col_grad(3));
+        //   }
+        // }
       }
     }
   }
 
-  std::cerr << "Color points: " << color_feat_num << std::endl;
+  // std::cerr << "Color points: " << color_feat_num << std::endl;
 
   effct_feat_num = 0;
 
@@ -620,6 +620,8 @@ void LaserMappingNode::h_share_model(
       effct_feat_num++;
     }
   }
+
+  std::cerr << "Effective points: " << effct_feat_num << std::endl;
 
   if (effct_feat_num < 1) {
     ekfom_data.valid = false;
