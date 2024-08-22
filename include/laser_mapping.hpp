@@ -94,6 +94,7 @@ class LaserMappingNode : public rclcpp::Node {
   void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams);
   void map_incremental();
+  void update_octree();
   void publish_frame_world();
   void publish_frame_body();
   void publish_effect_world();
@@ -207,6 +208,7 @@ class LaserMappingNode : public rclcpp::Node {
 
   FastLioPointCloud::Ptr featsFromMap;
   FastLioPointCloud::Ptr feats_undistort;
+  FastLioPointCloud::Ptr feats_undistort_world;
   FastLioPointCloud::Ptr feats_down_body;
   FastLioPointCloud::Ptr feats_down_world;
   FastLioPointCloud::Ptr normvec;
@@ -216,8 +218,11 @@ class LaserMappingNode : public rclcpp::Node {
   FastLioPointCloud::Ptr corr_colorvect;
   FastLioPointCloud::Ptr _featsArray;
 
-  pcl::RandomSample<FastLioPoint> downSizeFilterSurf;
-  pcl::RandomSample<FastLioPoint> downSizeFilterMap;
+  FastLioPointCloudPtr fast_lio_pt_ptr_;
+  FastLioPointOctreePtr fast_lio_oct_ptr_;
+
+  pcl::UniformSampling<FastLioPoint> downSizeFilterSurf;
+  pcl::UniformSampling<FastLioPoint> downSizeFilterMap;
 
   KD_TREE<FastLioPoint> ikdtree;
 

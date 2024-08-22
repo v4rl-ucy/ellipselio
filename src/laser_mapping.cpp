@@ -398,6 +398,31 @@ void LaserMappingNode::map_incremental() {
   kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
+void LaserMappingNode::update_octree() {
+  std::vector<int> N_idx;
+  std::vector<float> N_dst;
+
+  feats_undistort_world->resize(feats_undistort->size());
+  if (flg_EKF_inited) {
+    for (int i = 0; i < feats_undistort->size(); i++) {
+      if (feats_undistort->points[i].has_color) {
+        /* transform to world frame */
+        pointBodyToWorld(&(feats_undistort->points[i]),
+                         &(feats_undistort_world->points[i]));
+
+        /* decide if need add to map */
+        fast_lio_oct_ptr_->radiusSearch(feats_undistort_world->points[i],
+                                        filter_size_corner_min, N_idx, N_dst,
+                                        1);
+        if (!N_idx.size()) {
+          fast_lio_oct_ptr_->addPointToCloud(feats_undistort_world->points[i],
+                                             fast_lio_pt_ptr_);
+        }
+      }
+    }
+  }
+}
+
 void LaserMappingNode::publish_frame_world() {
   FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
                                                         : feats_down_body);
@@ -529,22 +554,13 @@ void LaserMappingNode::h_share_model(
   double match_start = omp_get_wtime();
   laserCloudOri->clear();
   corr_normvect->clear();
-  corr_colorvect->clear();
   total_residual = 0.0;
-  color_feat_num = 0;
 
-/** closest surface search and residual computation **/
-#ifdef MP_EN
-  omp_set_num_threads(MP_PROC_NUM);
+  /** closest surface search and residual computation **/
 #pragma omp parallel for
-#endif
   for (int i = 0; i < feats_down_size; i++) {
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
-
-    // if (feats_down_body->points[i].has_color > 0) {
-    //   RCLCPP_WARN(this->get_logger(), "Point has color");
-    // }
 
     /* transform to world frame */
     V3D p_body(point_body.x, point_body.y, point_body.z);
@@ -575,7 +591,6 @@ void LaserMappingNode::h_share_model(
     if (!point_selected_surf[i]) continue;
 
     VF(4) pabcd;
-    VF(4) col_grad;
     point_selected_surf[i] = false;
     if (esti_plane(pabcd, points_near, 0.1f)) {
       float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
@@ -583,31 +598,60 @@ void LaserMappingNode::h_share_model(
       float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
       if (s > 0.9) {
+        if (point_world.has_color) {
+          int min_idx = -1;
+          float color_diff, dist_diff, min_val = 1e6;
+          Eigen::Vector3f normvec;
+          std::vector<int> N_idx;
+          std::vector<float> N_dst;
+          FastLioPoint point_world_proj, N_j_proj;
+          point_world_proj.x = point_world.x - pd2 * pabcd(0);
+          point_world_proj.y = point_world.y - pd2 * pabcd(1);
+          point_world_proj.z = point_world.z - pd2 * pabcd(2);
+
+          fast_lio_oct_ptr_->radiusSearch(
+              point_world_proj, 2.0 * filter_size_corner_min, N_idx, N_dst);
+
+          for (int j = 0; j < N_idx.size(); j++) {
+            N_j_proj.x = fast_lio_pt_ptr_->points[N_idx[j]].x - pd2 * pabcd(0);
+            N_j_proj.y = fast_lio_pt_ptr_->points[N_idx[j]].y - pd2 * pabcd(1);
+            N_j_proj.z = fast_lio_pt_ptr_->points[N_idx[j]].z - pd2 * pabcd(2);
+            float color_diff =
+                (point_world.getRGBVector3i() -
+                 fast_lio_pt_ptr_->points[N_idx[j]].getRGBVector3i())
+                    .norm() /
+                255.0;
+            float dist_diff =
+                (point_world_proj.getVector3fMap() - N_j_proj.getVector3fMap())
+                    .norm();
+            if (color_diff * dist_diff < min_val) {
+              min_val = color_diff * dist_diff;
+              min_idx = j;
+            }
+          }
+          if (min_idx >= 0) {
+            N_j_proj.x =
+                fast_lio_pt_ptr_->points[N_idx[min_idx]].x - pd2 * pabcd(0);
+            N_j_proj.y =
+                fast_lio_pt_ptr_->points[N_idx[min_idx]].y - pd2 * pabcd(1);
+            N_j_proj.z =
+                fast_lio_pt_ptr_->points[N_idx[min_idx]].z - pd2 * pabcd(2);
+            normvec = point_world.getVector3fMap() - N_j_proj.getVector3fMap();
+            pabcd(0) = normvec(0) / normvec.norm();
+            pabcd(1) = normvec(1) / normvec.norm();
+            pabcd(2) = normvec(2) / normvec.norm();
+            pd2 = normvec.norm();
+          }
+        }
         point_selected_surf[i] = true;
         normvec->points[i].x = pabcd(0);
         normvec->points[i].y = pabcd(1);
         normvec->points[i].z = pabcd(2);
         normvec->points[i].intensity = pd2;
         res_last[i] = abs(pd2);
-
-        colorvec->points[i].has_color = 0;
-        // if (esti_color_grad(col_grad, pabcd, points_near, point_world)) {
-        //   float c = 1 - 0.9 * fabs(col_grad(3)) / sqrt(p_body.norm());
-        //   color_feat_num++;
-        //   if (c > 0.9) {
-        //     colorvec->points[i].has_color = 1;
-        //     colorvec->points[i].x = col_grad(0);
-        //     colorvec->points[i].y = col_grad(1);
-        //     colorvec->points[i].z = col_grad(2);
-        //     colorvec->points[i].intensity = col_grad(3);
-        //     res_last[i] = abs(col_grad(3));
-        //   }
-        // }
       }
     }
   }
-
-  // std::cerr << "Color points: " << color_feat_num << std::endl;
 
   effct_feat_num = 0;
 
@@ -615,7 +659,6 @@ void LaserMappingNode::h_share_model(
     if (point_selected_surf[i]) {
       laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
       corr_normvect->points[effct_feat_num] = normvec->points[i];
-      corr_colorvect->points[effct_feat_num] = colorvec->points[i];
       total_residual += res_last[i];
       effct_feat_num++;
     }
@@ -657,21 +700,6 @@ void LaserMappingNode::h_share_model(
 
     double res = norm_p.intensity;
 
-    if (corr_colorvect->points[i].has_color) {
-      const FastLioPoint &color_p = corr_colorvect->points[i];
-      V3D color_vec(color_p.x, color_p.y, color_p.z);
-
-      // std::cerr << "Norm vec: " << norm_vec << std::endl;
-      // std::cerr << "Color vec: " << color_vec << std::endl;
-      // std::cerr << "Norm int: " << norm_p.intensity << std::endl;
-      // std::cerr << "Color int: " << color_p.intensity << std::endl;
-
-      norm_vec = color_vec;
-      C = s.rot.conjugate() * color_vec;
-      A = point_crossmat * C;
-      res = color_p.intensity;
-    }
-
     if (extrinsic_est_en) {
       V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() *
             C);  // s.rot.conjugate()*norm_vec);
@@ -693,13 +721,12 @@ LaserMappingNode::LaserMappingNode(
     : Node("laser_mapping", options),
       featsFromMap(new FastLioPointCloud()),
       feats_undistort(new FastLioPointCloud()),
+      feats_undistort_world(new FastLioPointCloud()),
       feats_down_body(new FastLioPointCloud()),
       feats_down_world(new FastLioPointCloud()),
       normvec(new FastLioPointCloud(100000, 1)),
-      colorvec(new FastLioPointCloud(100000, 1)),
       laserCloudOri(new FastLioPointCloud(100000, 1)),
       corr_normvect(new FastLioPointCloud(100000, 1)),
-      corr_colorvect(new FastLioPointCloud(100000, 1)),
       pcl_wait_pub(new FastLioPointCloud()),
       pcl_wait_save(new FastLioPointCloud()),
       extrinT(3, 0.0),
@@ -710,7 +737,9 @@ LaserMappingNode::LaserMappingNode(
       Lidar_T_wrt_IMU(Zero3d),
       Lidar_R_wrt_IMU(Eye3d),
       p_pre(new Preprocess()),
-      p_imu(new ImuProcess()) {
+      p_imu(new ImuProcess()),
+      fast_lio_pt_ptr_(new FastLioPointCloud),
+      fast_lio_oct_ptr_(new FastLioPointOctree(1.0)) {
   this->declare_parameter<int>("publish.pub_map_n_secs", 1);
   this->declare_parameter<bool>("publish.path_en", true);
   this->declare_parameter<bool>("publish.effect_map_en", false);
@@ -815,6 +844,9 @@ LaserMappingNode::LaserMappingNode(
   this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
                                          vector<double>());
 
+  fast_lio_oct_ptr_->setInputCloud(fast_lio_pt_ptr_);
+  fast_lio_oct_ptr_->setResolution(2.0 * filter_size_corner_min);
+
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 
   RCLCPP_INFO(this->get_logger(), "p_pre->lidar_type %d", p_pre->lidar_type);
@@ -830,8 +862,8 @@ LaserMappingNode::LaserMappingNode(
   //                                filter_size_surf_min);
   // downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min,
   //                               filter_size_map_min);
-  downSizeFilterSurf.setSample(3000);
-  downSizeFilterMap.setSample(3000);
+  downSizeFilterSurf.setRadiusSearch(filter_size_surf_min);
+  downSizeFilterMap.setRadiusSearch(filter_size_map_min);
 
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
@@ -1064,6 +1096,7 @@ void LaserMappingNode::timer_callback() {
                            &(feats_down_world->points[i]));
         }
         ikdtree.Build(feats_down_world->points);
+        update_octree();
       }
       return;
     }
@@ -1077,7 +1110,6 @@ void LaserMappingNode::timer_callback() {
     }
 
     normvec->resize(feats_down_size);
-    colorvec->resize(feats_down_size);
     feats_down_world->resize(feats_down_size);
 
     V3D ext_euler = SO3ToEuler(state_point.offset_R_L_I);
@@ -1126,6 +1158,7 @@ void LaserMappingNode::timer_callback() {
     /*** add the feature points to map kdtree ***/
     t3 = omp_get_wtime();
     map_incremental();
+    update_octree();
     t5 = omp_get_wtime();
 
     /*** Debug variables ***/
