@@ -52,7 +52,8 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         arguments=['-d', rviz_cfg],
-        condition=IfCondition(rviz_use)
+        condition=IfCondition(rviz_use),
+        output='log'
     )
     odom_tf_node = Node(
         package = "tf2_ros", 

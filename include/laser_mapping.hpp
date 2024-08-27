@@ -144,6 +144,9 @@ class LaserMappingNode : public rclcpp::Node {
       aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0,
       max_time_consu = 0, max_time_icp = 0, max_time_match = 0,
       max_time_incre = 0, max_time_solve = 0, max_time_const_H_time = 0;
+  double max_imu_time = 0, max_downsample_time = 0, max_init_kdtree_time = 0,
+         max_state_update_time = 0, max_kdtree_update_time = 0,
+         max_octree_update_time = 0, max_total_time = 0;
   bool flg_EKF_converged, EKF_stop_flg = 0;
   double epsi[23] = {0.001};
 
@@ -157,6 +160,9 @@ class LaserMappingNode : public rclcpp::Node {
       s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN],
       s_plot10[MAXN], s_plot11[MAXN];
   double match_time = 0, solve_time = 0, solve_const_H_time = 0;
+  double imu_time = 0, downsample_time = 0, init_kdtree_time = 0,
+         state_update_time = 0, kdtree_update_time = 0, octree_update_time = 0,
+         total_time = 0;
   int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0,
       kdtree_delete_counter = 0, pub_map_n_secs = 0;
   bool runtime_pos_log = false, pcd_save_en = false, time_sync_en = false,
