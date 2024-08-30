@@ -601,51 +601,51 @@ void LaserMappingNode::h_share_model(
       float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
       if (s > 0.9) {
-        if (point_world.has_color) {
-          int min_idx = -1;
-          float color_diff, dist_diff, min_val = 1e6;
-          Eigen::Vector3f normvec;
-          std::vector<int> N_idx;
-          std::vector<float> N_dst;
-          FastLioPoint point_world_proj, N_j_proj;
-          point_world_proj.x = point_world.x - pd2 * pabcd(0);
-          point_world_proj.y = point_world.y - pd2 * pabcd(1);
-          point_world_proj.z = point_world.z - pd2 * pabcd(2);
+        // if (point_world.has_color) {
+        //   int min_idx = -1;
+        //   float color_diff, dist_diff, min_val = 1e6;
+        //   Eigen::Vector3f normvec;
+        //   std::vector<int> N_idx;
+        //   std::vector<float> N_dst;
+        //   FastLioPoint point_world_proj, N_j_proj;
+        //   point_world_proj.x = point_world.x - pd2 * pabcd(0);
+        //   point_world_proj.y = point_world.y - pd2 * pabcd(1);
+        //   point_world_proj.z = point_world.z - pd2 * pabcd(2);
 
-          fast_lio_oct_ptr_->radiusSearch(
-              point_world_proj, 8.0 * filter_size_corner_min, N_idx, N_dst);
+        //   fast_lio_oct_ptr_->radiusSearch(
+        //       point_world_proj, 8.0 * filter_size_corner_min, N_idx, N_dst);
 
-          for (int j = 0; j < N_idx.size(); j++) {
-            N_j_proj.x = fast_lio_pt_ptr_->points[N_idx[j]].x - pd2 * pabcd(0);
-            N_j_proj.y = fast_lio_pt_ptr_->points[N_idx[j]].y - pd2 * pabcd(1);
-            N_j_proj.z = fast_lio_pt_ptr_->points[N_idx[j]].z - pd2 * pabcd(2);
-            float color_diff =
-                (point_world.getRGBVector3i() -
-                 fast_lio_pt_ptr_->points[N_idx[j]].getRGBVector3i())
-                    .norm() /
-                255.0;
-            float dist_diff =
-                (point_world_proj.getVector3fMap() - N_j_proj.getVector3fMap())
-                    .norm();
-            if (color_diff * dist_diff < min_val) {
-              min_val = color_diff * dist_diff;
-              min_idx = j;
-            }
-          }
-          if (min_idx >= 0) {
-            N_j_proj.x =
-                fast_lio_pt_ptr_->points[N_idx[min_idx]].x - pd2 * pabcd(0);
-            N_j_proj.y =
-                fast_lio_pt_ptr_->points[N_idx[min_idx]].y - pd2 * pabcd(1);
-            N_j_proj.z =
-                fast_lio_pt_ptr_->points[N_idx[min_idx]].z - pd2 * pabcd(2);
-            normvec = point_world.getVector3fMap() - N_j_proj.getVector3fMap();
-            pabcd(0) = normvec(0) / normvec.norm();
-            pabcd(1) = normvec(1) / normvec.norm();
-            pabcd(2) = normvec(2) / normvec.norm();
-            pd2 = normvec.norm();
-          }
-        }
+        //   for (int j = 0; j < N_idx.size(); j++) {
+        //     N_j_proj.x = fast_lio_pt_ptr_->points[N_idx[j]].x - pd2 *
+        //     pabcd(0); N_j_proj.y = fast_lio_pt_ptr_->points[N_idx[j]].y - pd2
+        //     * pabcd(1); N_j_proj.z = fast_lio_pt_ptr_->points[N_idx[j]].z -
+        //     pd2 * pabcd(2); float color_diff =
+        //         (point_world.getRGBVector3i() -
+        //          fast_lio_pt_ptr_->points[N_idx[j]].getRGBVector3i())
+        //             .norm() /
+        //         255.0;
+        //     float dist_diff =
+        //         (point_world_proj.getVector3fMap() -
+        //         N_j_proj.getVector3fMap())
+        //             .norm();
+        //     if (color_diff * dist_diff < min_val) {
+        //       min_val = color_diff * dist_diff;
+        //       min_idx = j;
+        //     }
+        //   }
+        //   if (min_idx >= 0) {
+        //     N_j_proj.x =
+        //         fast_lio_pt_ptr_->points[N_idx[min_idx]].x - pd2 * pabcd(0);
+        //     N_j_proj.y =
+        //         fast_lio_pt_ptr_->points[N_idx[min_idx]].y - pd2 * pabcd(1);
+        //     N_j_proj.z =
+        //         fast_lio_pt_ptr_->points[N_idx[min_idx]].z - pd2 * pabcd(2);
+        //     normvec = point_world.getVector3fMap() -
+        //     N_j_proj.getVector3fMap(); pabcd(0) = normvec(0) /
+        //     normvec.norm(); pabcd(1) = normvec(1) / normvec.norm(); pabcd(2)
+        //     = normvec(2) / normvec.norm(); pd2 = normvec.norm();
+        //   }
+        // }
         point_selected_surf[i] = true;
         normvec->points[i].x = pabcd(0);
         normvec->points[i].y = pabcd(1);
