@@ -780,7 +780,7 @@ LaserMappingNode::LaserMappingNode(
   this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
                                          vector<double>());
 
-  ioctree.set_min_extent(0.5);
+  ioctree.set_min_extent(filter_size_map_min);
   ioctree.set_bucket_size(1);
 
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
