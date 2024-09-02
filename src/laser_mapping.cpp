@@ -395,8 +395,8 @@ void LaserMappingNode::map_incremental() {
   double st_time = omp_get_wtime();
   // add_point_size = ikdtree.Add_Points(PointToAdd, true);
   // ikdtree.Add_Points(PointNoNeedDownsample, false);
-  ioctree.update(PointToAdd);
-  ioctree.update(PointNoNeedDownsample);
+  ioctree.update(PointToAdd, true);
+  ioctree.update(PointNoNeedDownsample, false);
   add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
   kdtree_incremental_time = omp_get_wtime() - st_time;
 }
@@ -779,6 +779,9 @@ LaserMappingNode::LaserMappingNode(
                                          vector<double>());
   this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
                                          vector<double>());
+
+  ioctree.set_min_extent(0.5);
+  ioctree.set_bucket_size(1);
 
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 
