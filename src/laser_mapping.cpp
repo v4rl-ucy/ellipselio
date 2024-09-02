@@ -138,7 +138,7 @@ void LaserMappingNode::RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
 
 void LaserMappingNode::points_cache_collect() {
   PointVector points_history;
-  ikdtree.acquire_removed_points(points_history);
+  // ikdtree.acquire_removed_points(points_history);
 }
 
 void LaserMappingNode::lasermap_fov_segment() {
@@ -187,8 +187,9 @@ void LaserMappingNode::lasermap_fov_segment() {
 
   points_cache_collect();
   double delete_begin = omp_get_wtime();
-  if (cub_needrm.size() > 0)
-    kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
+  if (cub_needrm.size() > 0) {
+    // kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
+  }
   kdtree_delete_time = omp_get_wtime() - delete_begin;
 }
 
@@ -348,8 +349,8 @@ bool LaserMappingNode::sync_packages(MeasureGroup &meas,
 }
 
 void LaserMappingNode::map_incremental() {
-  PointVector PointToAdd;
-  PointVector PointNoNeedDownsample;
+  FastLioPointCloud PointToAdd;
+  FastLioPointCloud PointNoNeedDownsample;
   PointToAdd.reserve(feats_down_size);
   PointNoNeedDownsample.reserve(feats_down_size);
   for (int i = 0; i < feats_down_size; i++) {
@@ -392,35 +393,12 @@ void LaserMappingNode::map_incremental() {
   }
 
   double st_time = omp_get_wtime();
-  add_point_size = ikdtree.Add_Points(PointToAdd, true);
-  ikdtree.Add_Points(PointNoNeedDownsample, false);
+  // add_point_size = ikdtree.Add_Points(PointToAdd, true);
+  // ikdtree.Add_Points(PointNoNeedDownsample, false);
+  ioctree.update(PointToAdd);
+  ioctree.update(PointNoNeedDownsample);
   add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
   kdtree_incremental_time = omp_get_wtime() - st_time;
-}
-
-void LaserMappingNode::update_octree() {
-  std::vector<int> N_idx;
-  std::vector<float> N_dst;
-
-  feats_undistort_world->resize(feats_undistort->size());
-  if (flg_EKF_inited) {
-    for (int i = 0; i < feats_undistort->size(); i++) {
-      if (feats_undistort->points[i].has_color) {
-        /* transform to world frame */
-        pointBodyToWorld(&(feats_undistort->points[i]),
-                         &(feats_undistort_world->points[i]));
-
-        /* decide if need add to map */
-        fast_lio_oct_ptr_->radiusSearch(feats_undistort_world->points[i],
-                                        filter_size_corner_min, N_idx, N_dst,
-                                        1);
-        if (!N_idx.size()) {
-          fast_lio_oct_ptr_->addPointToCloud(feats_undistort_world->points[i],
-                                             fast_lio_pt_ptr_);
-        }
-      }
-    }
-  }
 }
 
 void LaserMappingNode::publish_frame_world() {
@@ -583,8 +561,10 @@ void LaserMappingNode::h_share_model(
 
     if (ekfom_data.converge) {
       /** Find the closest surfaces in the map **/
-      ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near,
-                             pointSearchSqDis);
+      // ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near,
+      // pointSearchSqDis);
+      ioctree.knnNeighbors(point_world, NUM_MATCH_POINTS, points_near,
+                           pointSearchSqDis);
       point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false
                                : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5
                                    ? false
@@ -601,51 +581,6 @@ void LaserMappingNode::h_share_model(
       float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
       if (s > 0.9) {
-        // if (point_world.has_color) {
-        //   int min_idx = -1;
-        //   float color_diff, dist_diff, min_val = 1e6;
-        //   Eigen::Vector3f normvec;
-        //   std::vector<int> N_idx;
-        //   std::vector<float> N_dst;
-        //   FastLioPoint point_world_proj, N_j_proj;
-        //   point_world_proj.x = point_world.x - pd2 * pabcd(0);
-        //   point_world_proj.y = point_world.y - pd2 * pabcd(1);
-        //   point_world_proj.z = point_world.z - pd2 * pabcd(2);
-
-        //   fast_lio_oct_ptr_->radiusSearch(
-        //       point_world_proj, 8.0 * filter_size_corner_min, N_idx, N_dst);
-
-        //   for (int j = 0; j < N_idx.size(); j++) {
-        //     N_j_proj.x = fast_lio_pt_ptr_->points[N_idx[j]].x - pd2 *
-        //     pabcd(0); N_j_proj.y = fast_lio_pt_ptr_->points[N_idx[j]].y - pd2
-        //     * pabcd(1); N_j_proj.z = fast_lio_pt_ptr_->points[N_idx[j]].z -
-        //     pd2 * pabcd(2); float color_diff =
-        //         (point_world.getRGBVector3i() -
-        //          fast_lio_pt_ptr_->points[N_idx[j]].getRGBVector3i())
-        //             .norm() /
-        //         255.0;
-        //     float dist_diff =
-        //         (point_world_proj.getVector3fMap() -
-        //         N_j_proj.getVector3fMap())
-        //             .norm();
-        //     if (color_diff * dist_diff < min_val) {
-        //       min_val = color_diff * dist_diff;
-        //       min_idx = j;
-        //     }
-        //   }
-        //   if (min_idx >= 0) {
-        //     N_j_proj.x =
-        //         fast_lio_pt_ptr_->points[N_idx[min_idx]].x - pd2 * pabcd(0);
-        //     N_j_proj.y =
-        //         fast_lio_pt_ptr_->points[N_idx[min_idx]].y - pd2 * pabcd(1);
-        //     N_j_proj.z =
-        //         fast_lio_pt_ptr_->points[N_idx[min_idx]].z - pd2 * pabcd(2);
-        //     normvec = point_world.getVector3fMap() -
-        //     N_j_proj.getVector3fMap(); pabcd(0) = normvec(0) /
-        //     normvec.norm(); pabcd(1) = normvec(1) / normvec.norm(); pabcd(2)
-        //     = normvec(2) / normvec.norm(); pd2 = normvec.norm();
-        //   }
-        // }
         point_selected_surf[i] = true;
         normvec->points[i].x = pabcd(0);
         normvec->points[i].y = pabcd(1);
@@ -740,9 +675,7 @@ LaserMappingNode::LaserMappingNode(
       Lidar_T_wrt_IMU(Zero3d),
       Lidar_R_wrt_IMU(Eye3d),
       p_pre(new Preprocess()),
-      p_imu(new ImuProcess()),
-      fast_lio_pt_ptr_(new FastLioPointCloud),
-      fast_lio_oct_ptr_(new FastLioPointOctree(1.0)) {
+      p_imu(new ImuProcess()) {
   this->declare_parameter<int>("publish.pub_map_n_secs", 1);
   this->declare_parameter<bool>("publish.path_en", true);
   this->declare_parameter<bool>("publish.effect_map_en", false);
@@ -846,9 +779,6 @@ LaserMappingNode::LaserMappingNode(
                                          vector<double>());
   this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
                                          vector<double>());
-
-  fast_lio_oct_ptr_->setInputCloud(fast_lio_pt_ptr_);
-  fast_lio_oct_ptr_->setResolution(8.0 * filter_size_corner_min);
 
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 
@@ -1096,22 +1026,23 @@ void LaserMappingNode::timer_callback() {
 
     feats_down_size = feats_down_body->points.size();
     /*** initialize the map kdtree ***/
-    if (ikdtree.Root_Node == nullptr) {
+    // if (ikdtree.Root_Node == nullptr) {
+    if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
       if (feats_down_size > 5) {
-        ikdtree.set_downsample_param(filter_size_map_min);
+        // ikdtree.set_downsample_param(filter_size_map_min);
         feats_down_world->resize(feats_down_size);
         for (int i = 0; i < feats_down_size; i++) {
           pointBodyToWorld(&(feats_down_body->points[i]),
                            &(feats_down_world->points[i]));
         }
-        ikdtree.Build(feats_down_world->points);
-        update_octree();
+        // ikdtree.Build(feats_down_world->points);
+        ioctree.initialize(*feats_down_world);
       }
       return;
     }
-    int featsFromMapNum = ikdtree.validnum();
-    kdtree_size_st = ikdtree.size();
+    int featsFromMapNum = ioctree.size();  // ikdtree.validnum();
+    kdtree_size_st = ioctree.size();       // ikdtree.size();
 
     t3 = omp_get_wtime();
     init_kdtree_time = t3 - t2;
@@ -1136,10 +1067,10 @@ void LaserMappingNode::timer_callback() {
 
     if (0)  // If you need to see map point, change to "if(1)"
     {
-      PointVector().swap(ikdtree.PCL_Storage);
-      ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
-      featsFromMap->clear();
-      featsFromMap->points = ikdtree.PCL_Storage;
+      // PointVector().swap(ikdtree.PCL_Storage);
+      // ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
+      // featsFromMap->clear();
+      // featsFromMap->points = ikdtree.PCL_Storage;
     }
 
     pointSearchInd_surf.resize(feats_down_size);
@@ -1168,15 +1099,13 @@ void LaserMappingNode::timer_callback() {
     map_incremental();
     t6 = omp_get_wtime();
     kdtree_update_time = t6 - t5;
-    update_octree();
     t7 = omp_get_wtime();
-    octree_update_time = t7 - t6;
     total_time = t7 - t0;
 
     /*** Debug variables ***/
     if (runtime_pos_log) {
       frame_num++;
-      kdtree_size_end = ikdtree.size();
+      kdtree_size_end = ioctree.size();  // ikdtree.size();
       aver_time_consu =
           aver_time_consu * (frame_num - 1) / frame_num + (t5 - t0) / frame_num;
       aver_time_icp = aver_time_icp * (frame_num - 1) / frame_num +
@@ -1200,7 +1129,6 @@ void LaserMappingNode::timer_callback() {
       max_init_kdtree_time = fmax(max_init_kdtree_time, init_kdtree_time);
       max_state_update_time = fmax(max_state_update_time, state_update_time);
       max_kdtree_update_time = fmax(max_kdtree_update_time, kdtree_update_time);
-      max_octree_update_time = fmax(max_octree_update_time, octree_update_time);
       max_downsample_time = fmax(max_downsample_time, downsample_time);
       max_total_time = fmax(max_total_time, total_time);
       T1[time_log_counter] = Measures.lidar_beg_time;
@@ -1218,17 +1146,16 @@ void LaserMappingNode::timer_callback() {
 
       printf(
           "IMU: %0.6f Downsample: %0.6f Init kdtree: %0.6f "
-          "State update: %0.6f Kdtree update: %0.6f Octree update: %0.6f, "
+          "State update: %0.6f Kdtree update: %0.6f "
           "Total: %0.6f\n",
           imu_time, downsample_time, init_kdtree_time, state_update_time,
-          kdtree_update_time, octree_update_time, total_time);
+          kdtree_update_time, total_time);
       printf(
           "Max IMU: %0.6f Max downsample: %0.6f Max init kdtree: %0.6f "
-          "Max state update: %0.6f Max kdtree update: %0.6f Max octree update: "
+          "Max state update: %0.6f Max kdtree update: "
           "%0.6f Max total time: %0.6f\n",
           max_imu_time, max_downsample_time, max_init_kdtree_time,
-          max_state_update_time, max_kdtree_update_time, max_octree_update_time,
-          max_total_time);
+          max_state_update_time, max_kdtree_update_time, max_total_time);
 
       ext_euler = SO3ToEuler(state_point.offset_R_L_I);
       fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " "

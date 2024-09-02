@@ -37,6 +37,7 @@
 #include <common_pcl.h>
 #include <ikd_tree.h>
 #include <imu_processing.h>
+#include <ioctree/ioctree.h>
 #include <math.h>
 #include <omp.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -94,7 +95,6 @@ class LaserMappingNode : public rclcpp::Node {
   void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams);
   void map_incremental();
-  void update_octree();
   void publish_frame_world();
   void publish_frame_body();
   void publish_effect_world();
@@ -146,7 +146,7 @@ class LaserMappingNode : public rclcpp::Node {
       max_time_incre = 0, max_time_solve = 0, max_time_const_H_time = 0;
   double max_imu_time = 0, max_downsample_time = 0, max_init_kdtree_time = 0,
          max_state_update_time = 0, max_kdtree_update_time = 0,
-         max_octree_update_time = 0, max_total_time = 0;
+         max_total_time = 0;
   bool flg_EKF_converged, EKF_stop_flg = 0;
   double epsi[23] = {0.001};
 
@@ -161,8 +161,7 @@ class LaserMappingNode : public rclcpp::Node {
       s_plot10[MAXN], s_plot11[MAXN];
   double match_time = 0, solve_time = 0, solve_const_H_time = 0;
   double imu_time = 0, downsample_time = 0, init_kdtree_time = 0,
-         state_update_time = 0, kdtree_update_time = 0, octree_update_time = 0,
-         total_time = 0;
+         state_update_time = 0, kdtree_update_time = 0, total_time = 0;
   int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0,
       kdtree_delete_counter = 0, pub_map_n_secs = 0;
   bool runtime_pos_log = false, pcd_save_en = false, time_sync_en = false,
@@ -224,13 +223,11 @@ class LaserMappingNode : public rclcpp::Node {
   FastLioPointCloud::Ptr corr_colorvect;
   FastLioPointCloud::Ptr _featsArray;
 
-  FastLioPointCloudPtr fast_lio_pt_ptr_;
-  FastLioPointOctreePtr fast_lio_oct_ptr_;
-
   pcl::UniformSampling<FastLioPoint> downSizeFilterSurf;
   pcl::UniformSampling<FastLioPoint> downSizeFilterMap;
 
   KD_TREE<FastLioPoint> ikdtree;
+  iOctree::Octree ioctree;
 
   V3F XAxisPoint_body;
   V3F XAxisPoint_world;
