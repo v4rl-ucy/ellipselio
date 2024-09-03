@@ -634,9 +634,10 @@ class Octree {
   }
 
   template <typename PointT>
-  void radiusNeighbors(const PointT &query, float radius,
-                       std::vector<PointT> &resultIndices,
-                       std::vector<float> &distances) {
+  void radiusNeighbors(
+      const PointT &query, float radius,
+      std::vector<PointT, Eigen::aligned_allocator<PointT>> &resultIndices,
+      std::vector<float> &distances) {
     resultIndices.clear();
     distances.clear();
     if (m_root_ == 0) return;
