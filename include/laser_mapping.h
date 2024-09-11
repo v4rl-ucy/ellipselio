@@ -42,6 +42,7 @@
 #include <omp.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <preprocess.h>
+#include <project_ellipse/project_ellipse.h>
 #include <so3_math.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <unistd.h>
@@ -106,6 +107,8 @@ class LaserMappingNode : public rclcpp::Node {
   void publish_path();
   void h_share_model(state_ikfom &s,
                      esekfom::dyn_share_datastruct<double> &ekfom_data);
+  void compute_eigendecomposition(
+      state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
 
   void init_cam_process();
   void timer_callback();

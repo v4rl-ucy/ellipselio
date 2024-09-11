@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 
+#include <Eigen/Core>
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -654,6 +655,27 @@ class Octree {
       pt.y = points_ptr[i][1];
       pt.z = points_ptr[i][2];
       resultIndices[i] = pt;
+    }
+  }
+
+  template <typename PointT>
+  void radiusNeighbors(const PointT &query, float radius,
+                       Eigen::MatrixXf &resultIndices,
+                       std::vector<float> &distances) {
+    // resultIndices.clear();
+    distances.clear();
+    if (m_root_ == 0) return;
+    float sqrRadius = radius * radius;  // "squared" radius
+    float query_[3] = {query.x, query.y, query.z};
+    std::vector<float *> points_ptr;
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances);
+    // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
+    resultIndices.resize(points_ptr.size(), 3);
+
+    for (size_t i = 0; i < resultIndices.rows(); i++) {
+      resultIndices(i, 0) = points_ptr[i][0];
+      resultIndices(i, 1) = points_ptr[i][1];
+      resultIndices(i, 2) = points_ptr[i][2];
     }
   }
 

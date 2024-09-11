@@ -32,7 +32,7 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-#include <laser_mapping.hpp>
+#include <laser_mapping.h>
 
 namespace fastlio {
 
@@ -535,10 +535,10 @@ void LaserMappingNode::h_share_model(
   total_residual = 0.0;
 
   /** closest surface search and residual computation **/
-#ifdef MP_EN
-  omp_set_num_threads(MP_PROC_NUM);
+// #ifdef MP_EN
+//   omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
-#endif
+  // #endif
   for (int i = 0; i < feats_down_size; i++) {
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
@@ -611,6 +611,8 @@ void LaserMappingNode::h_share_model(
     return;
   }
 
+  std::cerr << "Mean Residual: " << total_residual / effct_feat_num
+            << std::endl;
   res_mean_last = total_residual / effct_feat_num;
   match_time += omp_get_wtime() - match_start;
   double solve_start_ = omp_get_wtime();
@@ -651,6 +653,101 @@ void LaserMappingNode::h_share_model(
     /*** Measuremnt: distance to the closest surface/corner ***/
     ekfom_data.h(i) = -res;
   }
+  solve_time += omp_get_wtime() - solve_start_;
+}
+
+void LaserMappingNode::compute_eigendecomposition(
+    state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
+  int avg_num_neighbours = 0, feat_count = 0;
+  Eigen::MatrixXd h(feats_down_size, 1);
+  Eigen::MatrixXd h_x(feats_down_size, 12);
+
+  total_residual = 0.0;
+
+  double match_start = omp_get_wtime();
+  double solve_start_ = omp_get_wtime();
+
+#pragma omp parallel for
+  for (int i = 0; i < feats_down_size; i++) {
+    float res;
+    Eigen::Matrix3f Cov, Phi;
+    Eigen::MatrixXf N, N_bar;
+    Eigen::Vector3f N_mean, Lambda, p, p_dash, q, q_dash, norm_vec;
+    std::vector<float> pointSearchSqDis;
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
+
+    /* transform to world frame */
+    pointBodyToWorld(&(feats_down_body->points[i]),
+                     &(feats_down_world->points[i]));
+
+    ioctree.radiusNeighbors(feats_down_world->points[i], 0.5, N,
+                            pointSearchSqDis);
+
+    if (N.rows() < 3) {
+      // std::cerr << "Not enough neighbours!" << std::endl;
+      continue;
+    }
+
+    N_mean = N.colwise().mean();
+    N_bar = N.rowwise() - N_mean.transpose();
+    Cov = (N_bar.adjoint() * N_bar) / float(N_bar.rows() - 1);
+    eig.computeDirect(Cov);
+    avg_num_neighbours += N.rows();
+
+    Phi = eig.eigenvectors();
+    Lambda = eig.eigenvalues().cwiseAbs().cwiseSqrt();
+
+    if (Lambda(0) < 1e-3 || Lambda(1) < 1e-3 || Lambda(2) < 1e-3) {
+      // std::cerr << "Eigenvalues too small!" << std::endl;
+      continue;
+    }
+
+    p = feats_down_world->points[i].getVector3fMap();
+    p_dash = Phi.transpose() * (p - N_mean);
+
+    if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
+      continue;
+    }
+
+    q = Phi * q_dash + N_mean;
+
+    norm_vec = p - q;
+    res = norm_vec.norm();
+    norm_vec.normalize();
+
+    const FastLioPoint &laser_p = feats_down_body->points[i];
+    V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
+    M3D point_be_crossmat;
+    point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
+    V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
+    M3D point_crossmat;
+    point_crossmat << SKEW_SYM_MATRX(point_this);
+
+    V3D C(s.rot.conjugate() * norm_vec.cast<double>());
+    V3D A(point_crossmat * C);
+
+    h_x.row(feat_count) << norm_vec(0), norm_vec(1), norm_vec(2),
+        VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    h(feat_count) = -res;
+
+    total_residual += res;
+    feat_count++;
+  }
+
+  h.conservativeResize(feat_count, 1);
+  h_x.conservativeResize(feat_count, 12);
+  ekfom_data.h = h;
+  ekfom_data.h_x = h_x;
+
+  res_mean_last = total_residual / feat_count;
+  avg_num_neighbours /= feats_down_size;
+
+  std::cerr << "Res mean: " << res_mean_last << std::endl;
+  std::cerr << "Num points: " << feats_down_size << std::endl;
+  std::cerr << "Average number of neighbours: " << avg_num_neighbours
+            << std::endl;
+
+  match_time += omp_get_wtime() - match_start;
   solve_time += omp_get_wtime() - solve_start_;
 }
 
@@ -811,10 +908,11 @@ LaserMappingNode::LaserMappingNode(
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
   fill(epsi, epsi + 23, 0.001);
-  kf.init_dyn_share(get_f, df_dx, df_dw,
-                    std::bind(&LaserMappingNode::h_share_model, this,
-                              std::placeholders::_1, std::placeholders::_2),
-                    NUM_MAX_ITERATIONS, epsi);
+  kf.init_dyn_share(
+      get_f, df_dx, df_dw,
+      std::bind(&LaserMappingNode::compute_eigendecomposition, this,
+                std::placeholders::_1, std::placeholders::_2),
+      NUM_MAX_ITERATIONS, epsi);
 
   /*** debug record ***/
   // FILE *fp;
@@ -1102,8 +1200,12 @@ void LaserMappingNode::timer_callback() {
     map_incremental();
     t6 = omp_get_wtime();
     kdtree_update_time = t6 - t5;
+    // compute_eigendecomposition();
     t7 = omp_get_wtime();
     total_time = t7 - t0;
+
+    double eigen_time = t7 - t6;
+    // std::cerr << "Eigen decomposition time: " << eigen_time << std::endl;
 
     /*** Debug variables ***/
     if (runtime_pos_log) {
