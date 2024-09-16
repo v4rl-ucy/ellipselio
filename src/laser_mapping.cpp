@@ -358,38 +358,41 @@ void LaserMappingNode::map_incremental() {
     pointBodyToWorld(&(feats_down_body->points[i]),
                      &(feats_down_world->points[i]));
     /* decide if need add to map */
-    if (!Nearest_Points[i].empty() && flg_EKF_inited) {
-      const PointVector &points_near = Nearest_Points[i];
-      bool need_add = true;
-      BoxPointType Box_of_Point;
-      FastLioPoint downsample_result, mid_point;
-      mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) *
-                        filter_size_map_min +
-                    0.5 * filter_size_map_min;
-      mid_point.y = floor(feats_down_world->points[i].y / filter_size_map_min) *
-                        filter_size_map_min +
-                    0.5 * filter_size_map_min;
-      mid_point.z = floor(feats_down_world->points[i].z / filter_size_map_min) *
-                        filter_size_map_min +
-                    0.5 * filter_size_map_min;
-      float dist = calc_dist(feats_down_world->points[i], mid_point);
-      if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min &&
-          fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min &&
-          fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min) {
-        PointNoNeedDownsample.push_back(feats_down_world->points[i]);
-        continue;
-      }
-      for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++) {
-        if (points_near.size() < NUM_MATCH_POINTS) break;
-        if (calc_dist(points_near[readd_i], mid_point) < dist) {
-          need_add = false;
-          break;
-        }
-      }
-      if (need_add) PointToAdd.push_back(feats_down_world->points[i]);
-    } else {
-      PointToAdd.push_back(feats_down_world->points[i]);
-    }
+    // if (!Nearest_Points[i].empty() && flg_EKF_inited) {
+    //   const PointVector &points_near = Nearest_Points[i];
+    //   bool need_add = true;
+    //   BoxPointType Box_of_Point;
+    //   FastLioPoint downsample_result, mid_point;
+    //   mid_point.x = floor(feats_down_world->points[i].x /
+    //   filter_size_map_min) *
+    //                     filter_size_map_min +
+    //                 0.5 * filter_size_map_min;
+    //   mid_point.y = floor(feats_down_world->points[i].y /
+    //   filter_size_map_min) *
+    //                     filter_size_map_min +
+    //                 0.5 * filter_size_map_min;
+    //   mid_point.z = floor(feats_down_world->points[i].z /
+    //   filter_size_map_min) *
+    //                     filter_size_map_min +
+    //                 0.5 * filter_size_map_min;
+    //   float dist = calc_dist(feats_down_world->points[i], mid_point);
+    //   if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min &&
+    //       fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min &&
+    //       fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min) {
+    //     PointNoNeedDownsample.push_back(feats_down_world->points[i]);
+    //     continue;
+    //   }
+    //   for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++) {
+    //     if (points_near.size() < NUM_MATCH_POINTS) break;
+    //     if (calc_dist(points_near[readd_i], mid_point) < dist) {
+    //       need_add = false;
+    //       break;
+    //     }
+    //   }
+    //   if (need_add) PointToAdd.push_back(feats_down_world->points[i]);
+    // } else {
+    PointToAdd.push_back(feats_down_world->points[i]);
+    //}
   }
 
   double st_time = omp_get_wtime();
@@ -658,7 +661,9 @@ void LaserMappingNode::h_share_model(
 
 void LaserMappingNode::compute_eigendecomposition(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  int avg_num_neighbours = 0, feat_count = 0;
+  int avg_num_neighbours = 0;
+  std::atomic_int feat_cnt = 0, point_cnt = 0, line_cnt = 0, plane_cnt = 0,
+                  ellipse_cnt = 0;
   Eigen::MatrixXd h(feats_down_size, 1);
   Eigen::MatrixXd h_x(feats_down_size, 12);
 
@@ -670,20 +675,30 @@ void LaserMappingNode::compute_eigendecomposition(
 #pragma omp parallel for
   for (int i = 0; i < feats_down_size; i++) {
     float res;
-    Eigen::Matrix3f Cov, Phi;
-    Eigen::MatrixXf N, N_bar;
-    Eigen::Vector3f N_mean, Lambda, p, p_dash, q, q_dash, norm_vec;
+    Eigen::Matrix3d Cov, Phi;
+    Eigen::MatrixXd N, N_bar;
+    Eigen::Vector3d N_mean, Lambda, p, p_dash, q, q_dash, norm_vec;
     std::vector<float> pointSearchSqDis;
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eig;
+
+    FastLioPoint &point_body = feats_down_body->points[i];
+    FastLioPoint &point_world = feats_down_world->points[i];
 
     /* transform to world frame */
-    pointBodyToWorld(&(feats_down_body->points[i]),
-                     &(feats_down_world->points[i]));
+    V3D p_body(point_body.x, point_body.y, point_body.z);
+    V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
+    point_world.x = p_global(0);
+    point_world.y = p_global(1);
+    point_world.z = p_global(2);
+    point_world.intensity = point_body.intensity;
+    point_world.r = point_body.r;
+    point_world.g = point_body.g;
+    point_world.b = point_body.b;
+    point_world.has_color = point_body.has_color;
 
-    ioctree.radiusNeighbors(feats_down_world->points[i], 0.5, N,
-                            pointSearchSqDis);
+    ioctree.radiusNeighbors(point_world, 0.5, N, pointSearchSqDis);
 
-    if (N.rows() < 3) {
+    if (N.rows() < 4) {
       // std::cerr << "Not enough neighbours!" << std::endl;
       continue;
     }
@@ -697,23 +712,45 @@ void LaserMappingNode::compute_eigendecomposition(
     Phi = eig.eigenvectors();
     Lambda = eig.eigenvalues().cwiseAbs().cwiseSqrt();
 
-    if (Lambda(0) < 1e-3 || Lambda(1) < 1e-3 || Lambda(2) < 1e-3) {
-      // std::cerr << "Eigenvalues too small!" << std::endl;
+    // if (Lambda(2) < 1e-1) {
+    //   // Point to point
+    //   norm_vec = p - N_mean;
+    //   ++point_cnt;
+    // } else if (Lambda(1) < 1e-1) {
+    //   // Point to line
+    //   q = p - N_mean;
+    //   q_dash = q.dot(Phi.col(2)) * Phi.col(2);
+    //   p_dash = N_mean + q_dash;
+    //   norm_vec = p - p_dash;
+    //   ++line_cnt;
+    if (Lambda(0) < 1e-1) {
+      // Point to plane
+      q = p_global - N_mean;
+      q_dash = q.dot(Phi.col(0)) * Phi.col(0);
+      p_dash = p_global - q_dash;
+      norm_vec = p_global - p_dash;
+      ++plane_cnt;
+    } else {
       continue;
-    }
+    }  // else {
+    //   // Point to ellipsoid
+    //   p_dash = Phi.transpose() * (p - N_mean);
+    //   if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
+    //     continue;
+    //   }
+    //   q = Phi * q_dash + N_mean;
+    //   norm_vec = p - q;
+    //   ++ellipse_cnt;
+    // }
 
-    p = feats_down_world->points[i].getVector3fMap();
-    p_dash = Phi.transpose() * (p - N_mean);
-
-    if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
-      continue;
-    }
-
-    q = Phi * q_dash + N_mean;
-
-    norm_vec = p - q;
     res = norm_vec.norm();
     norm_vec.normalize();
+
+    float s1 = 1 - 0.9 * fabs(res) / sqrt(p_body.norm());
+
+    if (s1 <= 0.9) {
+      continue;
+    }
 
     const FastLioPoint &laser_p = feats_down_body->points[i];
     V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
@@ -723,27 +760,32 @@ void LaserMappingNode::compute_eigendecomposition(
     M3D point_crossmat;
     point_crossmat << SKEW_SYM_MATRX(point_this);
 
-    V3D C(s.rot.conjugate() * norm_vec.cast<double>());
+    V3D C(s.rot.conjugate() * norm_vec);
     V3D A(point_crossmat * C);
 
-    h_x.row(feat_count) << norm_vec(0), norm_vec(1), norm_vec(2),
+    int feat_num = ++feat_cnt;
+    // std::cerr << "Feat num: " << feat_num << std::endl;
+    h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
         VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    h(feat_count) = -res;
+    h(feat_num - 1) = -res;
 
     total_residual += res;
-    feat_count++;
   }
 
-  h.conservativeResize(feat_count, 1);
-  h_x.conservativeResize(feat_count, 12);
+  h.conservativeResize(feat_cnt, 1);
+  h_x.conservativeResize(feat_cnt, 12);
   ekfom_data.h = h;
   ekfom_data.h_x = h_x;
 
-  res_mean_last = total_residual / feat_count;
+  res_mean_last = total_residual / feat_cnt;
   avg_num_neighbours /= feats_down_size;
 
   std::cerr << "Res mean: " << res_mean_last << std::endl;
-  std::cerr << "Num points: " << feats_down_size << std::endl;
+  std::cerr << "Num feats: " << feat_cnt << std::endl;
+  std::cerr << "Num points: " << point_cnt << std::endl;
+  std::cerr << "Num lines: " << line_cnt << std::endl;
+  std::cerr << "Num planes: " << plane_cnt << std::endl;
+  std::cerr << "Num ellipses: " << ellipse_cnt << std::endl;
   std::cerr << "Average number of neighbours: " << avg_num_neighbours
             << std::endl;
 
@@ -891,7 +933,8 @@ LaserMappingNode::LaserMappingNode(
 
   memset(point_selected_surf, true, sizeof(point_selected_surf));
   memset(res_last, -1000.0f, sizeof(res_last));
-  // downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min,
+  // downSizeFilterSurf.setLeafSize(filter_size_surf_min,
+  // filter_size_surf_min,
   //                                filter_size_surf_min);
   // downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min,
   //                               filter_size_map_min);

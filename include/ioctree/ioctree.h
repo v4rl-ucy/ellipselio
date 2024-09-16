@@ -660,7 +660,7 @@ class Octree {
 
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
-                       Eigen::MatrixXf &resultIndices,
+                       Eigen::MatrixXd &resultIndices,
                        std::vector<float> &distances) {
     // resultIndices.clear();
     distances.clear();
