@@ -674,31 +674,29 @@ void LaserMappingNode::compute_eigendecomposition(
 
 #pragma omp parallel for
   for (int i = 0; i < feats_down_size; i++) {
+    int prim;
     float res;
-    Eigen::Matrix3d Cov, Phi;
-    Eigen::MatrixXd N, N_bar;
-    Eigen::Vector3d N_mean, Lambda, p, p_dash, q, q_dash, norm_vec;
-    std::vector<float> pointSearchSqDis;
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eig;
+    Eigen::Matrix3f Cov, Phi, p_lidar_skew;
+    Eigen::MatrixXf N, N_bar;
+    std::vector<float> N_dist;
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
+    Eigen::Vector3f N_mean, Lambda, saliency, p_body, p_lidar, p_world, p_dash,
+        q, q_dash, norm_vec, C, A;
 
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
 
-    /* transform to world frame */
-    V3D p_body(point_body.x, point_body.y, point_body.z);
-    V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
-    point_world.x = p_global(0);
-    point_world.y = p_global(1);
-    point_world.z = p_global(2);
-    point_world.intensity = point_body.intensity;
-    point_world.r = point_body.r;
-    point_world.g = point_body.g;
-    point_world.b = point_body.b;
-    point_world.has_color = point_body.has_color;
+    p_body = point_body.getVector3fMap();
+    p_lidar =
+        s.offset_R_L_I.cast<float>() * p_body + s.offset_T_L_I.cast<float>();
+    p_world = s.rot.cast<float>() * p_lidar + s.pos.cast<float>();
 
-    ioctree.radiusNeighbors(point_world, 0.5, N, pointSearchSqDis);
+    point_world = point_body;
+    point_world.getVector3fMap() = p_world;
 
-    if (N.rows() < 4) {
+    ioctree.radiusNeighbors(point_world, 2.5, N, N_dist);
+
+    if (N.rows() < 5) {
       // std::cerr << "Not enough neighbours!" << std::endl;
       continue;
     }
@@ -710,58 +708,55 @@ void LaserMappingNode::compute_eigendecomposition(
     avg_num_neighbours += N.rows();
 
     Phi = eig.eigenvectors();
-    Lambda = eig.eigenvalues().cwiseAbs().cwiseSqrt();
+    Lambda = eig.eigenvalues().cwiseAbs();
+    saliency << Lambda(2) - Lambda(1), Lambda(1) - Lambda(0), Lambda(0);
+    saliency.maxCoeff(&prim);
+    Lambda = Lambda.cwiseSqrt();
 
-    // if (Lambda(2) < 1e-1) {
+    // if (prim == 2 && Lambda(2) < 1e-2) {
     //   // Point to point
-    //   norm_vec = p - N_mean;
+    //   norm_vec = p_world - N_mean;
     //   ++point_cnt;
-    // } else if (Lambda(1) < 1e-1) {
-    //   // Point to line
-    //   q = p - N_mean;
-    //   q_dash = q.dot(Phi.col(2)) * Phi.col(2);
-    //   p_dash = N_mean + q_dash;
-    //   norm_vec = p - p_dash;
-    //   ++line_cnt;
-    if (Lambda(0) < 1e-1) {
+    // } else
+    if (prim == 0) {
+      // Point to line
+      q = p_world - N_mean;
+      q_dash = q.dot(Phi.col(2)) * Phi.col(2);
+      p_dash = N_mean + q_dash;
+      norm_vec = p_world - p_dash;
+      ++line_cnt;
+    } else if (prim == 1) {
       // Point to plane
-      q = p_global - N_mean;
+      q = p_world - N_mean;
       q_dash = q.dot(Phi.col(0)) * Phi.col(0);
-      p_dash = p_global - q_dash;
-      norm_vec = p_global - p_dash;
+      p_dash = p_world - q_dash;
+      norm_vec = p_world - p_dash;
       ++plane_cnt;
-    } else {
-      continue;
-    }  // else {
-    //   // Point to ellipsoid
-    //   p_dash = Phi.transpose() * (p - N_mean);
-    //   if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
-    //     continue;
-    //   }
-    //   q = Phi * q_dash + N_mean;
-    //   norm_vec = p - q;
-    //   ++ellipse_cnt;
-    // }
+    } else if (prim == 2) {
+      //  continue;
+      // Point to ellipsoid
+      p_dash = Phi.transpose() * (p_world - N_mean);
+      if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
+        continue;
+      }
+      q = Phi * q_dash + N_mean;
+      norm_vec = p_world - q;
+      ++ellipse_cnt;
+    }
 
     res = norm_vec.norm();
     norm_vec.normalize();
 
-    float s1 = 1 - 0.9 * fabs(res) / sqrt(p_body.norm());
+    // float s1 = 1 - 0.9 * fabs(res) / sqrt(p_body.norm());
 
-    if (s1 <= 0.9) {
-      continue;
-    }
+    // if (s1 <= 0.9) {
+    //   continue;
+    // }
 
-    const FastLioPoint &laser_p = feats_down_body->points[i];
-    V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
-    M3D point_be_crossmat;
-    point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
-    V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
-    M3D point_crossmat;
-    point_crossmat << SKEW_SYM_MATRX(point_this);
+    p_lidar_skew << SKEW_SYM_MATRX(p_lidar);
 
-    V3D C(s.rot.conjugate() * norm_vec);
-    V3D A(point_crossmat * C);
+    C = s.rot.conjugate().cast<float>() * norm_vec;
+    A = p_lidar_skew * C;
 
     int feat_num = ++feat_cnt;
     // std::cerr << "Feat num: " << feat_num << std::endl;
@@ -951,11 +946,10 @@ LaserMappingNode::LaserMappingNode(
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
   fill(epsi, epsi + 23, 0.001);
-  kf.init_dyn_share(
-      get_f, df_dx, df_dw,
-      std::bind(&LaserMappingNode::compute_eigendecomposition, this,
-                std::placeholders::_1, std::placeholders::_2),
-      NUM_MAX_ITERATIONS, epsi);
+  kf.init_dyn_share(get_f, df_dx, df_dw,
+                    std::bind(&LaserMappingNode::h_share_model, this,
+                              std::placeholders::_1, std::placeholders::_2),
+                    NUM_MAX_ITERATIONS, epsi);
 
   /*** debug record ***/
   // FILE *fp;
