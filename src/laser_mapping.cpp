@@ -662,8 +662,7 @@ void LaserMappingNode::h_share_model(
 void LaserMappingNode::compute_eigendecomposition(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   int avg_num_neighbours = 0;
-  std::atomic_int feat_cnt = 0, point_cnt = 0, line_cnt = 0, plane_cnt = 0,
-                  ellipse_cnt = 0;
+  std::atomic_int feat_cnt = 0, line_cnt = 0, plane_cnt = 0, ellipse_cnt = 0;
   Eigen::MatrixXd h(feats_down_size, 1);
   Eigen::MatrixXd h_x(feats_down_size, 12);
 
@@ -694,9 +693,9 @@ void LaserMappingNode::compute_eigendecomposition(
     point_world = point_body;
     point_world.getVector3fMap() = p_world;
 
-    ioctree.radiusNeighbors(point_world, 2.5, N, N_dist);
+    ioctree.radiusNeighbors(point_world, filter_size_corner_min, N, N_dist);
 
-    if (N.rows() < 5) {
+    if (N.rows() < NUM_MATCH_POINTS) {
       // std::cerr << "Not enough neighbours!" << std::endl;
       continue;
     }
@@ -713,11 +712,6 @@ void LaserMappingNode::compute_eigendecomposition(
     saliency.maxCoeff(&prim);
     Lambda = Lambda.cwiseSqrt();
 
-    // if (prim == 2 && Lambda(2) < 1e-2) {
-    //   // Point to point
-    //   norm_vec = p_world - N_mean;
-    //   ++point_cnt;
-    // } else
     if (prim == 0) {
       // Point to line
       q = p_world - N_mean;
@@ -733,7 +727,6 @@ void LaserMappingNode::compute_eigendecomposition(
       norm_vec = p_world - p_dash;
       ++plane_cnt;
     } else if (prim == 2) {
-      //  continue;
       // Point to ellipsoid
       p_dash = Phi.transpose() * (p_world - N_mean);
       if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
@@ -746,12 +739,6 @@ void LaserMappingNode::compute_eigendecomposition(
 
     res = norm_vec.norm();
     norm_vec.normalize();
-
-    // float s1 = 1 - 0.9 * fabs(res) / sqrt(p_body.norm());
-
-    // if (s1 <= 0.9) {
-    //   continue;
-    // }
 
     p_lidar_skew << SKEW_SYM_MATRX(p_lidar);
 
@@ -777,7 +764,6 @@ void LaserMappingNode::compute_eigendecomposition(
 
   std::cerr << "Res mean: " << res_mean_last << std::endl;
   std::cerr << "Num feats: " << feat_cnt << std::endl;
-  std::cerr << "Num points: " << point_cnt << std::endl;
   std::cerr << "Num lines: " << line_cnt << std::endl;
   std::cerr << "Num planes: " << plane_cnt << std::endl;
   std::cerr << "Num ellipses: " << ellipse_cnt << std::endl;
