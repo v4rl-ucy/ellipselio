@@ -671,14 +671,17 @@ void LaserMappingNode::compute_eigendecomposition(
   double match_start = omp_get_wtime();
   double solve_start_ = omp_get_wtime();
 
-#pragma omp parallel for
+  // #pragma omp parallel for
   for (int i = 0; i < feats_down_size; i++) {
     int prim;
     float res;
-    Eigen::Matrix3f Cov, Phi, p_lidar_skew;
+    Eigen::VectorXf N_norm;
     Eigen::MatrixXf N, N_bar;
     std::vector<float> N_dist;
+    PointVector near_pt;
+    Eigen::Matrix3f Phi, P_skew;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
+    Eigen::Matrix3f Cov2, Cov = Eigen::Matrix3f::Zero();
     Eigen::Vector3f N_mean, Lambda, saliency, p_body, p_lidar, p_world, p_dash,
         q, q_dash, norm_vec, C, A;
 
@@ -693,39 +696,114 @@ void LaserMappingNode::compute_eigendecomposition(
     point_world = point_body;
     point_world.getVector3fMap() = p_world;
 
-    ioctree.radiusNeighbors(point_world, filter_size_corner_min, N, N_dist);
+    // ioctree.knnNeighbors(point_world, 1, near_pt, N_dist);
+    // if (N_dist[0] > filter_size_corner_min) {
+    //   // std::cerr << "Not enough neighbours!" << std::endl;
+    //   continue;
+    // }
+    // ioctree.radiusNeighbors(near_pt[0], filter_size_corner_min, N, N_dist);
 
-    if (N.rows() < NUM_MATCH_POINTS) {
-      // std::cerr << "Not enough neighbours!" << std::endl;
+    // std::cerr << "world_pt: " << point_world.getVector3fMap() << std::endl;
+    // std::cerr << "near_pt: " << near_pt[0].getVector3fMap() << std::endl;
+
+    // if (N.rows() < NUM_MATCH_POINTS) {
+    //  std::cerr << "Not enough neighbours!" << std::endl;
+    // continue;
+    //}
+    // std::cerr << "Neighbours: " << N.rows() << std::endl;
+
+    N = Eigen::MatrixXf::Zero(1000, 3);
+    N.col(0) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
+    N.col(1) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
+    N.col(2) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
+
+    N_mean = Eigen::Vector3f(0, 0, 0);
+    N_bar = (N.rowwise() - N_mean.transpose());
+    N_norm = N_bar.rowwise().norm();
+    N_bar.rowwise().normalize();
+
+    // #pragma omp parallel for
+    for (int j = 0; j < N.rows(); j++) {
+      if (N_norm(j) == 0) {
+        continue;
+      }
+      Eigen::Matrix3f N_j = N_bar.row(j).transpose() * N_bar.row(j);
+      Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * N_j;
+      Eigen::Matrix3f Rt_ij = (Eigen::Matrix3f::Identity() - 0.5 * N_j) * R_ij;
+      float c_ij = std::exp(-std::pow(N_norm(j), 2) / filter_size_corner_min);
+      Cov += c_ij * R_ij * Eigen::Matrix3f::Identity() * Rt_ij;
+    }
+
+    eig.compute(Cov);
+    Phi = eig.eigenvectors();
+    Lambda = eig.eigenvalues().cwiseAbs();
+    std::cerr << "Eigenvalues TV: " << Lambda.transpose() << std::endl;
+
+    Cov2 = ((Lambda(2) - Lambda(1)) / N.rows()) * Phi.col(2) *
+               Phi.col(2).transpose() +
+           ((Lambda(1) - Lambda(0)) / N.rows()) *
+               (Phi.col(2) * Phi.col(2).transpose() +
+                Phi.col(1) * Phi.col(1).transpose());
+
+    Cov = Eigen::Matrix3f::Zero();
+    for (int j = 0; j < N.rows(); j++) {
+      if (N_norm(j) == 0) {
+        continue;
+      }
+      Eigen::Matrix3f N_j = N_bar.row(j).transpose() * N_bar.row(j);
+      Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * N_j;
+      Eigen::Matrix3f Rt_ij = (Eigen::Matrix3f::Identity() - 0.5 * N_j) * R_ij;
+      float c_ij = std::exp(-std::pow(N_norm(j), 2) / filter_size_corner_min);
+      Cov += c_ij * R_ij * Cov2 * Rt_ij;
+    }
+
+    eig.compute(Cov);
+    Phi = eig.eigenvectors();
+    Lambda = eig.eigenvalues().cwiseAbs();
+    std::cerr << "Eigenvalues TV2: " << Lambda.transpose() << std::endl;
+
+    // N_mean = N.colwise().mean();
+    // N_bar = (N.rowwise() - N_mean.transpose());
+    // Cov = (N_bar.adjoint() * N_bar) / float(N_bar.rows() - 1);
+    // eig.compute(Cov);
+    // Phi = eig.eigenvectors();
+    // Lambda = eig.eigenvalues().cwiseAbs();
+    // std::cerr << "Eigenvalues PCA: " << Lambda.transpose() << std::endl;
+
+    if (eig.info() != Eigen::Success) {
+      std::cerr << "Eigendecomposition failed!" << std::endl;
       continue;
     }
 
-    N_mean = N.colwise().mean();
-    N_bar = N.rowwise() - N_mean.transpose();
-    Cov = (N_bar.adjoint() * N_bar) / float(N_bar.rows() - 1);
-    eig.computeDirect(Cov);
+    if (eig.eigenvalues().minCoeff() < 0.0) {
+      std::cerr << "Negative eigenvalue!" << std::endl;
+      continue;
+    }
+
     avg_num_neighbours += N.rows();
 
-    Phi = eig.eigenvectors();
-    Lambda = eig.eigenvalues().cwiseAbs();
+    std::cerr << "N: " << N.rows() << std::endl;
+
     saliency << Lambda(2) - Lambda(1), Lambda(1) - Lambda(0), Lambda(0);
     saliency.maxCoeff(&prim);
     Lambda = Lambda.cwiseSqrt();
 
     if (prim == 0) {
-      // Point to line
+      // Point to plane
       q = p_world - N_mean;
       q_dash = q.dot(Phi.col(2)) * Phi.col(2);
-      p_dash = N_mean + q_dash;
+      p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       ++line_cnt;
+      std::cerr << Phi.col(2) << std::endl;
     } else if (prim == 1) {
-      // Point to plane
+      // Point to curve
       q = p_world - N_mean;
       q_dash = q.dot(Phi.col(0)) * Phi.col(0);
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       ++plane_cnt;
+      std::cerr << Phi.col(0) << std::endl;
     } else if (prim == 2) {
       // Point to ellipsoid
       p_dash = Phi.transpose() * (p_world - N_mean);
@@ -735,15 +813,16 @@ void LaserMappingNode::compute_eigendecomposition(
       q = Phi * q_dash + N_mean;
       norm_vec = p_world - q;
       ++ellipse_cnt;
+      std::cerr << Phi.col(1) << std::endl;
     }
 
     res = norm_vec.norm();
     norm_vec.normalize();
 
-    p_lidar_skew << SKEW_SYM_MATRX(p_lidar);
+    P_skew << SKEW_SYM_MATRX(p_lidar);
 
     C = s.rot.conjugate().cast<float>() * norm_vec;
-    A = p_lidar_skew * C;
+    A = P_skew * C;
 
     int feat_num = ++feat_cnt;
     // std::cerr << "Feat num: " << feat_num << std::endl;
@@ -764,9 +843,9 @@ void LaserMappingNode::compute_eigendecomposition(
 
   std::cerr << "Res mean: " << res_mean_last << std::endl;
   std::cerr << "Num feats: " << feat_cnt << std::endl;
-  std::cerr << "Num lines: " << line_cnt << std::endl;
-  std::cerr << "Num planes: " << plane_cnt << std::endl;
-  std::cerr << "Num ellipses: " << ellipse_cnt << std::endl;
+  std::cerr << "Num planes: " << line_cnt << std::endl;
+  std::cerr << "Num curves: " << plane_cnt << std::endl;
+  std::cerr << "Num junctions: " << ellipse_cnt << std::endl;
   std::cerr << "Average number of neighbours: " << avg_num_neighbours
             << std::endl;
 
@@ -932,10 +1011,11 @@ LaserMappingNode::LaserMappingNode(
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
   fill(epsi, epsi + 23, 0.001);
-  kf.init_dyn_share(get_f, df_dx, df_dw,
-                    std::bind(&LaserMappingNode::h_share_model, this,
-                              std::placeholders::_1, std::placeholders::_2),
-                    NUM_MAX_ITERATIONS, epsi);
+  kf.init_dyn_share(
+      get_f, df_dx, df_dw,
+      std::bind(&LaserMappingNode::compute_eigendecomposition, this,
+                std::placeholders::_1, std::placeholders::_2),
+      NUM_MAX_ITERATIONS, epsi);
 
   /*** debug record ***/
   // FILE *fp;
