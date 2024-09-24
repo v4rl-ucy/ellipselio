@@ -214,6 +214,7 @@ class LaserMappingNode : public rclcpp::Node {
   deque<FastLioPointCloud::Ptr> lidar_buffer;
   deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer;
 
+  FastLioPointCloud::Ptr map_cloud;
   FastLioPointCloud::Ptr featsFromMap;
   FastLioPointCloud::Ptr feats_undistort;
   FastLioPointCloud::Ptr feats_undistort_world;
@@ -226,11 +227,9 @@ class LaserMappingNode : public rclcpp::Node {
   FastLioPointCloud::Ptr corr_colorvect;
   FastLioPointCloud::Ptr _featsArray;
 
-  pcl::UniformSampling<FastLioPoint> downSizeFilterSurf;
-  pcl::UniformSampling<FastLioPoint> downSizeFilterMap;
-
   KD_TREE<FastLioPoint> ikdtree;
   iOctree::Octree ioctree;
+  iOctree::Octree ioctree_scan;
 
   V3F XAxisPoint_body;
   V3F XAxisPoint_world;

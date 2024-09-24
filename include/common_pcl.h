@@ -6,9 +6,6 @@
 #define PCL_NO_PRECOMPILE
 
 #include <pcl/common/io.h>
-#include <pcl/filters/random_sample.h>
-#include <pcl/filters/uniform_sampling.h>
-#include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
@@ -18,9 +15,6 @@
 
 #include <Eigen/Core>
 #include <pcl/common/impl/io.hpp>
-#include <pcl/filters/impl/random_sample.hpp>
-#include <pcl/filters/impl/uniform_sampling.hpp>
-#include <pcl/filters/impl/voxel_grid.hpp>
 #include <pcl/impl/point_types.hpp>
 #include <pcl/io/impl/pcd_io.hpp>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>

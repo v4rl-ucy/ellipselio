@@ -349,58 +349,17 @@ bool LaserMappingNode::sync_packages(MeasureGroup &meas,
 }
 
 void LaserMappingNode::map_incremental() {
-  FastLioPointCloud PointToAdd;
-  FastLioPointCloud PointNoNeedDownsample;
-  PointToAdd.reserve(feats_down_size);
-  PointNoNeedDownsample.reserve(feats_down_size);
+  std::vector<int> idxs;
   for (int i = 0; i < feats_down_size; i++) {
     /* transform to world frame */
     pointBodyToWorld(&(feats_down_body->points[i]),
                      &(feats_down_world->points[i]));
-    /* decide if need add to map */
-    // if (!Nearest_Points[i].empty() && flg_EKF_inited) {
-    //   const PointVector &points_near = Nearest_Points[i];
-    //   bool need_add = true;
-    //   BoxPointType Box_of_Point;
-    //   FastLioPoint downsample_result, mid_point;
-    //   mid_point.x = floor(feats_down_world->points[i].x /
-    //   filter_size_map_min) *
-    //                     filter_size_map_min +
-    //                 0.5 * filter_size_map_min;
-    //   mid_point.y = floor(feats_down_world->points[i].y /
-    //   filter_size_map_min) *
-    //                     filter_size_map_min +
-    //                 0.5 * filter_size_map_min;
-    //   mid_point.z = floor(feats_down_world->points[i].z /
-    //   filter_size_map_min) *
-    //                     filter_size_map_min +
-    //                 0.5 * filter_size_map_min;
-    //   float dist = calc_dist(feats_down_world->points[i], mid_point);
-    //   if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min &&
-    //       fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min &&
-    //       fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min) {
-    //     PointNoNeedDownsample.push_back(feats_down_world->points[i]);
-    //     continue;
-    //   }
-    //   for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++) {
-    //     if (points_near.size() < NUM_MATCH_POINTS) break;
-    //     if (calc_dist(points_near[readd_i], mid_point) < dist) {
-    //       need_add = false;
-    //       break;
-    //     }
-    //   }
-    //   if (need_add) PointToAdd.push_back(feats_down_world->points[i]);
-    // } else {
-    PointToAdd.push_back(feats_down_world->points[i]);
-    //}
   }
 
   double st_time = omp_get_wtime();
-  // add_point_size = ikdtree.Add_Points(PointToAdd, true);
-  // ikdtree.Add_Points(PointNoNeedDownsample, false);
-  ioctree.update(PointToAdd, true);
-  ioctree.update(PointNoNeedDownsample, false);
-  add_point_size = PointToAdd.size() + PointNoNeedDownsample.size();
+  ioctree.update(*feats_down_world, idxs);
+  std::cerr << "Map idxs size: " << idxs.size() << std::endl;
+  *map_cloud += FastLioPointCloud(*feats_down_world, idxs);
   kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
@@ -715,9 +674,9 @@ void LaserMappingNode::compute_eigendecomposition(
     N = Eigen::MatrixXf::Zero(1000, 3);
     N.col(0) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
     N.col(1) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
-    N.col(2) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
+    // N.col(2) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
 
-    N_mean = Eigen::Vector3f(0, 0, 0);
+    N_mean = Eigen::Vector3f(0, 0, 0.1);
     N_bar = (N.rowwise() - N_mean.transpose());
     N_norm = N_bar.rowwise().norm();
     N_bar.rowwise().normalize();
@@ -856,6 +815,7 @@ void LaserMappingNode::compute_eigendecomposition(
 LaserMappingNode::LaserMappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
     : Node("laser_mapping", options),
+      map_cloud(new FastLioPointCloud()),
       featsFromMap(new FastLioPointCloud()),
       feats_undistort(new FastLioPointCloud()),
       feats_undistort_world(new FastLioPointCloud()),
@@ -981,6 +941,8 @@ LaserMappingNode::LaserMappingNode(
 
   ioctree.set_min_extent(filter_size_map_min);
   ioctree.set_bucket_size(1);
+  ioctree_scan.set_min_extent(filter_size_surf_min);
+  ioctree_scan.set_bucket_size(1);
 
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 
@@ -998,8 +960,8 @@ LaserMappingNode::LaserMappingNode(
   //                                filter_size_surf_min);
   // downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min,
   //                               filter_size_map_min);
-  downSizeFilterSurf.setRadiusSearch(filter_size_surf_min);
-  downSizeFilterMap.setRadiusSearch(filter_size_map_min);
+  // downSizeFilterSurf.setRadiusSearch(filter_size_surf_min);
+  // downSizeFilterMap.setRadiusSearch(filter_size_map_min);
 
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
@@ -1011,11 +973,10 @@ LaserMappingNode::LaserMappingNode(
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
   fill(epsi, epsi + 23, 0.001);
-  kf.init_dyn_share(
-      get_f, df_dx, df_dw,
-      std::bind(&LaserMappingNode::compute_eigendecomposition, this,
-                std::placeholders::_1, std::placeholders::_2),
-      NUM_MAX_ITERATIONS, epsi);
+  kf.init_dyn_share(get_f, df_dx, df_dw,
+                    std::bind(&LaserMappingNode::h_share_model, this,
+                              std::placeholders::_1, std::placeholders::_2),
+                    NUM_MAX_ITERATIONS, epsi);
 
   /*** debug record ***/
   // FILE *fp;
@@ -1221,30 +1182,38 @@ void LaserMappingNode::timer_callback() {
     /*** Segment the map in lidar FOV ***/
     // lasermap_fov_segment();
 
-    /*** downsample the feature points in a scan ***/
-    downSizeFilterSurf.setInputCloud(feats_undistort);
-    downSizeFilterSurf.filter(*feats_down_body);
+    std::vector<int> idxs;
 
-    t2 = omp_get_wtime();
-    downsample_time = t2 - t1;
-
-    feats_down_size = feats_down_body->points.size();
     /*** initialize the map kdtree ***/
     // if (ikdtree.Root_Node == nullptr) {
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
-      if (feats_down_size > 5) {
-        // ikdtree.set_downsample_param(filter_size_map_min);
-        feats_down_world->resize(feats_down_size);
-        for (int i = 0; i < feats_down_size; i++) {
-          pointBodyToWorld(&(feats_down_body->points[i]),
+      size_t feats_undistort_size = feats_undistort->points.size();
+      if (feats_undistort_size > 5) {
+        feats_down_world->resize(feats_undistort_size);
+        for (int i = 0; i < feats_undistort_size; i++) {
+          pointBodyToWorld(&(feats_undistort->points[i]),
                            &(feats_down_world->points[i]));
         }
         // ikdtree.Build(feats_down_world->points);
-        ioctree.initialize(*feats_down_world);
+        ioctree.initialize(*feats_down_world, idxs);
+        *map_cloud += FastLioPointCloud(*feats_down_world, idxs);
+        std::cerr << "Map idxs size: " << idxs.size() << std::endl;
       }
       return;
     }
+
+    /*** downsample the feature points in a scan ***/
+    ioctree_scan.initialize(*feats_undistort, idxs);
+    std::cerr << "Scan size: " << feats_undistort->size() << std::endl;
+    std::cerr << "Scan idxs size: " << idxs.size() << std::endl;
+    *feats_down_body = FastLioPointCloud(*feats_undistort, idxs);
+
+    feats_down_size = feats_down_body->points.size();
+
+    t2 = omp_get_wtime();
+    downsample_time = t2 - t1;
+
     int featsFromMapNum = ioctree.size();  // ikdtree.validnum();
     kdtree_size_st = ioctree.size();       // ikdtree.size();
 
@@ -1268,14 +1237,6 @@ void LaserMappingNode::timer_callback() {
              << state_point.vel.transpose() << " " << state_point.bg.transpose()
              << " " << state_point.ba.transpose() << " " << state_point.grav
              << endl;
-
-    if (0)  // If you need to see map point, change to "if(1)"
-    {
-      // PointVector().swap(ikdtree.PCL_Storage);
-      // ikdtree.flatten(ikdtree.Root_Node, ikdtree.PCL_Storage, NOT_RECORD);
-      // featsFromMap->clear();
-      // featsFromMap->points = ikdtree.PCL_Storage;
-    }
 
     pointSearchInd_surf.resize(feats_down_size);
     Nearest_Points.resize(feats_down_size);
