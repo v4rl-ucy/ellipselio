@@ -56,11 +56,11 @@ void LaserMappingNode::dump_lio_state_to_log(FILE *fp) {
   fflush(fp);
 }
 
-void LaserMappingNode::pointBodyToWorld_ikfom(FastLioPoint const *const pi,
-                                              FastLioPoint *const po,
-                                              state_ikfom &s) {
-  V3D p_body(pi->x, pi->y, pi->z);
-  V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
+void LaserMappingNode::pointLidarToWorld_ikfom(FastLioPoint const *const pi,
+                                               FastLioPoint *const po,
+                                               state_ikfom &s) {
+  V3D p_lidar(pi->x, pi->y, pi->z);
+  V3D p_global(s.rot * (s.offset_R_L_I * p_lidar + s.offset_T_L_I) + s.pos);
 
   po->x = p_global(0);
   po->y = p_global(1);
@@ -73,10 +73,27 @@ void LaserMappingNode::pointBodyToWorld_ikfom(FastLioPoint const *const pi,
   po->has_color = pi->has_color;
 }
 
-void LaserMappingNode::pointBodyToWorld(FastLioPoint const *const pi,
-                                        FastLioPoint *const po) {
-  V3D p_body(pi->x, pi->y, pi->z);
-  V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
+void LaserMappingNode::pointLidarToIMU_ikfom(FastLioPoint const *const pi,
+                                             FastLioPoint *const po,
+                                             state_ikfom &s) {
+  V3D p_lidar(pi->x, pi->y, pi->z);
+  V3D p_imu(s.offset_R_L_I * p_lidar + s.offset_T_L_I);
+
+  po->x = p_imu(0);
+  po->y = p_imu(1);
+  po->z = p_imu(2);
+  po->r = pi->r;
+  po->g = pi->g;
+  po->b = pi->b;
+  po->intensity = pi->intensity;
+  po->offset_time = pi->offset_time;
+  po->has_color = pi->has_color;
+}
+
+void LaserMappingNode::pointLidarToWorld(FastLioPoint const *const pi,
+                                         FastLioPoint *const po) {
+  V3D p_lidar(pi->x, pi->y, pi->z);
+  V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_lidar +
                                   state_point.offset_T_L_I) +
                state_point.pos);
   po->x = p_global(0);
@@ -91,10 +108,10 @@ void LaserMappingNode::pointBodyToWorld(FastLioPoint const *const pi,
 }
 
 template <typename T>
-void LaserMappingNode::pointBodyToWorld(const Matrix<T, 3, 1> &pi,
-                                        Matrix<T, 3, 1> &po) {
-  V3D p_body(pi[0], pi[1], pi[2]);
-  V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
+void LaserMappingNode::pointLidarToWorld(const Matrix<T, 3, 1> &pi,
+                                         Matrix<T, 3, 1> &po) {
+  V3D p_lidar(pi[0], pi[1], pi[2]);
+  V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_lidar +
                                   state_point.offset_T_L_I) +
                state_point.pos);
 
@@ -103,10 +120,10 @@ void LaserMappingNode::pointBodyToWorld(const Matrix<T, 3, 1> &pi,
   po[2] = p_global(2);
 }
 
-void LaserMappingNode::RGBpointBodyToWorld(FastLioPoint const *const pi,
-                                           FastLioPoint *const po) {
-  V3D p_body(pi->x, pi->y, pi->z);
-  V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body +
+void LaserMappingNode::RGBpointLidarToWorld(FastLioPoint const *const pi,
+                                            FastLioPoint *const po) {
+  V3D p_lidar(pi->x, pi->y, pi->z);
+  V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_lidar +
                                   state_point.offset_T_L_I) +
                state_point.pos);
   po->x = p_global(0);
@@ -120,8 +137,8 @@ void LaserMappingNode::RGBpointBodyToWorld(FastLioPoint const *const pi,
   po->has_color = pi->has_color;
 }
 
-void LaserMappingNode::RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
-                                              FastLioPoint *const po) {
+void LaserMappingNode::RGBpointLidarLidarToIMU(FastLioPoint const *const pi,
+                                               FastLioPoint *const po) {
   V3D p_body_lidar(pi->x, pi->y, pi->z);
   V3D p_body_imu(state_point.offset_R_L_I * p_body_lidar +
                  state_point.offset_T_L_I);
@@ -145,7 +162,7 @@ void LaserMappingNode::lasermap_fov_segment() {
   cub_needrm.clear();
   kdtree_delete_counter = 0;
   kdtree_delete_time = 0.0;
-  pointBodyToWorld(XAxisPoint_body, XAxisPoint_world);
+  pointLidarToWorld(XAxisPoint_body, XAxisPoint_world);
   V3D pos_LiD = pos_lid;
   if (!Localmap_Initialized) {
     for (int i = 0; i < 3; i++) {
@@ -348,18 +365,112 @@ bool LaserMappingNode::sync_packages(MeasureGroup &meas,
   return true;
 }
 
-void LaserMappingNode::map_incremental() {
+int LaserMappingNode::tensor_density_expection(Eigen::Vector3f &lambda, int num,
+                                               float radius, float sigma) {
+  float d1, d2, d3, nl1, nl2, nl3;
+  bool k1, k2, k3;
+
+  d1 = (std::sqrt(M_PI * sigma) * std::erf(radius / std::sqrt(sigma))) /
+       (2. * radius);
+  d2 = (sigma - sigma * std::exp(-radius * radius / sigma)) / (radius * radius);
+  d3 = 3. * sigma *
+       (std::sqrt(M_PI * sigma) * std::erf(radius / std::sqrt(sigma)) -
+        2. * radius * std::exp(-radius * radius / sigma)) /
+       (4. * radius * radius * radius);
+
+  nl1 = lambda(2) / float(num);
+  nl2 = lambda(1) / float(num);
+  nl3 = lambda(0) / float(num);
+
+  k1 = nl1 < d1 || nl2 < d1 || nl3 < 0.5 * d1;
+  k2 = nl1 < d2 || nl2 < 0.75 * d2 || nl3 < 0.75 * d2;
+  k3 = nl1 < (5. / 6.) * d3 || nl2 < (5. / 6.) * d3 || nl3 < (5. / 6.) * d3;
+
+  return int(k1 && k2 && k3);
+}
+
+void LaserMappingNode::map_incremental(bool init_map) {
   std::vector<int> idxs;
-  for (int i = 0; i < feats_down_size; i++) {
-    /* transform to world frame */
-    pointBodyToWorld(&(feats_down_body->points[i]),
-                     &(feats_down_world->points[i]));
+  std::atomic<int> filter_cnt = 0;
+
+  if (init_map) {
+    feats_down_world->resize(feats_undistort->size());
+#pragma omp parallel for
+    for (int i = 0; i < feats_undistort->size(); i++) {
+      pointLidarToWorld(&(feats_undistort->points[i]),
+                        &(feats_down_world->points[i]));
+    }
+  } else {
+    feats_down_world->resize(feats_down_body->size());
+#pragma omp parallel for
+    for (int i = 0; i < feats_down_body->size(); i++) {
+      pointLidarToWorld(&(feats_down_body->points[i]),
+                        &(feats_down_world->points[i]));
+    }
   }
 
   double st_time = omp_get_wtime();
+  int old_map_size = map_cloud->size();
   ioctree.update(*feats_down_world, idxs);
-  std::cerr << "Map idxs size: " << idxs.size() << std::endl;
   *map_cloud += FastLioPointCloud(*feats_down_world, idxs);
+  tensors.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
+  filters.resize(map_cloud->size(), std::vector<int>(2, 0));
+
+  std::cerr << "Map size: " << map_cloud->size() << std::endl;
+  std::cerr << "ioctree size: " << ioctree.size() << std::endl;
+
+#pragma omp parallel for
+  for (int i = 0; i < idxs.size(); i++) {
+    std::atomic<int> cnt = 0;
+    std::vector<int> N_idxs;
+    Eigen::Vector3f lambda, p_i;
+    Eigen::Matrix3f Phi, Tensor, Cov = Eigen::Matrix3f::Zero();
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
+
+    p_i = feats_down_world->points[idxs[i]].getVector3fMap();
+    ioctree.radiusNeighbors(feats_down_world->points[idxs[i]],
+                            filter_size_corner_min, N_idxs);
+
+    if (N_idxs.size() < NUM_MATCH_POINTS) continue;
+
+#pragma omp parallel for
+    for (int j = 0; j < N_idxs.size(); j++) {
+      if (idxs[i] == N_idxs[j]) continue;
+      if (filters[N_idxs[j]][0] == 1 && filters[N_idxs[j]][1] == 0) continue;
+      Eigen::Vector3f p_j = map_cloud->points[N_idxs[j]].getVector3fMap();
+      Eigen::Vector3f r_ij = (p_i - p_j).normalized();
+      Eigen::Matrix3f rrt = r_ij * r_ij.transpose();
+      Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * rrt;
+      Eigen::Matrix3f Rp_ij = (Eigen::Matrix3f::Identity() - 0.5 * rrt) * R_ij;
+      float d_ij = (p_i - p_j).norm();
+      float c_ij = std::exp(-std::pow(d_ij, 2) / filter_size_corner_min);
+      Eigen::Matrix3f A = c_ij * R_ij * Eigen::Matrix3f::Identity() * Rp_ij;
+      cnt++;
+#pragma omp critical
+      Cov += A;
+    }
+
+    if (cnt < NUM_MATCH_POINTS) continue;
+
+    eig.compute(Cov);
+    Phi = eig.eigenvectors();
+    lambda = eig.eigenvalues();
+
+    Tensor = ((lambda(2) - lambda(1)) / float(cnt)) * Phi.col(2) *
+             Phi.col(2).transpose();
+    Tensor += ((lambda(1) - lambda(0)) / float(cnt)) *
+              (Phi.col(2) * Phi.col(2).transpose() +
+               Phi.col(1) * Phi.col(1).transpose());
+    tensors[old_map_size + i] = Tensor;
+    filters[old_map_size + i][0] = 1;
+    filters[old_map_size + i][1] = tensor_density_expection(
+        lambda, cnt, filter_size_corner_min, filter_size_corner_min);
+    filter_cnt += filters[old_map_size + i][1];
+  }
+
+  std::cerr << "Added idxs size: " << idxs.size() << std::endl;
+  std::cerr << "Filter idxs size: " << filter_cnt << std::endl;
+
   kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
@@ -370,8 +481,8 @@ void LaserMappingNode::publish_frame_world() {
   FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
 
   for (int i = 0; i < size; i++) {
-    RGBpointBodyToWorld(&laserCloudFullRes->points[i],
-                        &laserCloudWorld->points[i]);
+    RGBpointLidarToWorld(&laserCloudFullRes->points[i],
+                         &laserCloudWorld->points[i]);
   }
 
   sensor_msgs::msg::PointCloud2 laserCloudmsg;
@@ -386,8 +497,8 @@ void LaserMappingNode::publish_frame_body() {
   FastLioPointCloud::Ptr laserCloudIMUBody(new FastLioPointCloud(size, 1));
 
   for (int i = 0; i < size; i++) {
-    RGBpointBodyLidarToIMU(&feats_undistort->points[i],
-                           &laserCloudIMUBody->points[i]);
+    RGBpointLidarLidarToIMU(&feats_undistort->points[i],
+                            &laserCloudIMUBody->points[i]);
   }
 
   sensor_msgs::msg::PointCloud2 laserCloudmsg;
@@ -401,7 +512,8 @@ void LaserMappingNode::publish_effect_world() {
   FastLioPointCloud::Ptr laserCloudWorld(
       new FastLioPointCloud(effct_feat_num, 1));
   for (int i = 0; i < effct_feat_num; i++) {
-    RGBpointBodyToWorld(&laserCloudOri->points[i], &laserCloudWorld->points[i]);
+    RGBpointLidarToWorld(&laserCloudOri->points[i],
+                         &laserCloudWorld->points[i]);
   }
   sensor_msgs::msg::PointCloud2 laserCloudFullRes3;
   pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
@@ -417,8 +529,8 @@ void LaserMappingNode::publish_map() {
   FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
 
   for (int i = 0; i < size; i++) {
-    RGBpointBodyToWorld(&laserCloudFullRes->points[i],
-                        &laserCloudWorld->points[i]);
+    RGBpointLidarToWorld(&laserCloudFullRes->points[i],
+                         &laserCloudWorld->points[i]);
   }
   *pcl_wait_pub += *laserCloudWorld;
 
@@ -506,8 +618,8 @@ void LaserMappingNode::h_share_model(
     FastLioPoint &point_world = feats_down_world->points[i];
 
     /* transform to world frame */
-    V3D p_body(point_body.x, point_body.y, point_body.z);
-    V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
+    V3D p_lidar(point_body.x, point_body.y, point_body.z);
+    V3D p_global(s.rot * (s.offset_R_L_I * p_lidar + s.offset_T_L_I) + s.pos);
     point_world.x = p_global(0);
     point_world.y = p_global(1);
     point_world.z = p_global(2);
@@ -540,7 +652,7 @@ void LaserMappingNode::h_share_model(
     if (esti_plane(pabcd, points_near, 0.1f)) {
       float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
                   pabcd(2) * point_world.z + pabcd(3);
-      float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+      float s = 1 - 0.9 * fabs(pd2) / sqrt(p_lidar.norm());
 
       if (s > 0.9) {
         point_selected_surf[i] = true;
@@ -618,6 +730,131 @@ void LaserMappingNode::h_share_model(
   solve_time += omp_get_wtime() - solve_start_;
 }
 
+void LaserMappingNode::compute_tensor_vote(
+    state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
+  int avg_num_neighbours = 0;
+  std::atomic_int feat_cnt = 0, line_cnt = 0, plane_cnt = 0, ellipse_cnt = 0;
+  Eigen::MatrixXd h(feats_down_size, 1);
+  Eigen::MatrixXd h_x(feats_down_size, 12);
+
+  total_residual = 0.0;
+
+  double match_start = omp_get_wtime();
+  double solve_start_ = omp_get_wtime();
+
+#pragma omp parallel for
+  for (int i = 0; i < feats_down_size; i++) {
+    int prim;
+    float res;
+    Eigen::VectorXf N_norm;
+    Eigen::MatrixXf N, N_bar;
+    std::vector<float> N_dist;
+    PointVector near_pt;
+    Eigen::Matrix3f Phi, P_skew;
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
+    Eigen::Matrix3f Cov2, Cov = Eigen::Matrix3f::Zero();
+    Eigen::Vector3f N_mean, Lambda, saliency, p_lidar, p_imu, p_world, p_dash,
+        q, q_dash, norm_vec, C, A;
+
+    FastLioPoint point_imu;
+    FastLioPoint &point_body = feats_down_body->points[i];
+    FastLioPoint &point_world = feats_down_world->points[i];
+
+    pointLidarToWorld_ikfom(&point_body, &point_world, s);
+    pointLidarLidarToIMU_ikfom(&point_body, &point_imu, s);
+
+    p_i = point_world.getVector3fMap();
+    ioctree.radiusNeighbors(point_world, filter_size_corner_min, N_idxs);
+
+    if (N_idxs.size() < NUM_MATCH_POINTS) continue;
+
+#pragma omp parallel for
+    for (int j = 0; j < N_idxs.size(); j++) {
+      if (filters[N_idxs[j]][0] == 1 && filters[N_idxs[j]][1] == 0) continue;
+      Eigen::Vector3f p_j = map_cloud->points[N_idxs[j]].getVector3fMap();
+      Eigen::Vector3f r_ij = (p_i - p_j).normalized();
+      Eigen::Matrix3f rrt = r_ij * r_ij.transpose();
+      Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * rrt;
+      Eigen::Matrix3f Rp_ij = (Eigen::Matrix3f::Identity() - 0.5 * rrt) * R_ij;
+      float d_ij = (p_i - p_j).norm();
+      float c_ij = std::exp(-std::pow(d_ij, 2) / filter_size_corner_min);
+      Eigen::Matrix3f A = c_ij * R_ij * Eigen::Matrix3f::Identity() * Rp_ij;
+      cnt++;
+#pragma omp critical
+      Cov += A;
+    }
+
+    if (cnt < NUM_MATCH_POINTS) continue;
+
+    eig.compute(Cov);
+    Phi = eig.eigenvectors();
+    lambda = eig.eigenvalues();
+
+    if (prim == 0) {
+      // Point to plane
+      q = p_world - N_mean;
+      q_dash = q.dot(Phi.col(2)) * Phi.col(2);
+      p_dash = p_world - q_dash;
+      norm_vec = p_world - p_dash;
+      ++line_cnt;
+      std::cerr << Phi.col(2) << std::endl;
+    } else if (prim == 1) {
+      // Point to curve
+      q = p_world - N_mean;
+      q_dash = q.dot(Phi.col(0)) * Phi.col(0);
+      p_dash = p_world - q_dash;
+      norm_vec = p_world - p_dash;
+      ++plane_cnt;
+      std::cerr << Phi.col(0) << std::endl;
+    } else if (prim == 2) {
+      // Point to ellipsoid
+      p_dash = Phi.transpose() * (p_world - N_mean);
+      if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
+        continue;
+      }
+      q = Phi * q_dash + N_mean;
+      norm_vec = p_world - q;
+      ++ellipse_cnt;
+      std::cerr << Phi.col(1) << std::endl;
+    }
+
+    res = norm_vec.norm();
+    norm_vec.normalize();
+
+    P_skew << SKEW_SYM_MATRX(p_imu);
+
+    C = s.rot.conjugate().cast<float>() * norm_vec;
+    A = P_skew * C;
+
+    int feat_num = ++feat_cnt;
+    // std::cerr << "Feat num: " << feat_num << std::endl;
+    h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
+        VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    h(feat_num - 1) = -res;
+
+    total_residual += res;
+  }
+
+  h.conservativeResize(feat_cnt, 1);
+  h_x.conservativeResize(feat_cnt, 12);
+  ekfom_data.h = h;
+  ekfom_data.h_x = h_x;
+
+  res_mean_last = total_residual / feat_cnt;
+  avg_num_neighbours /= feats_down_size;
+
+  std::cerr << "Res mean: " << res_mean_last << std::endl;
+  std::cerr << "Num feats: " << feat_cnt << std::endl;
+  std::cerr << "Num planes: " << line_cnt << std::endl;
+  std::cerr << "Num curves: " << plane_cnt << std::endl;
+  std::cerr << "Num junctions: " << ellipse_cnt << std::endl;
+  std::cerr << "Average number of neighbours: " << avg_num_neighbours
+            << std::endl;
+
+  match_time += omp_get_wtime() - match_start;
+  solve_time += omp_get_wtime() - solve_start_;
+}
+
 void LaserMappingNode::compute_eigendecomposition(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   int avg_num_neighbours = 0;
@@ -641,16 +878,16 @@ void LaserMappingNode::compute_eigendecomposition(
     Eigen::Matrix3f Phi, P_skew;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
     Eigen::Matrix3f Cov2, Cov = Eigen::Matrix3f::Zero();
-    Eigen::Vector3f N_mean, Lambda, saliency, p_body, p_lidar, p_world, p_dash,
+    Eigen::Vector3f N_mean, Lambda, saliency, p_lidar, p_imu, p_world, p_dash,
         q, q_dash, norm_vec, C, A;
 
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
 
-    p_body = point_body.getVector3fMap();
-    p_lidar =
-        s.offset_R_L_I.cast<float>() * p_body + s.offset_T_L_I.cast<float>();
-    p_world = s.rot.cast<float>() * p_lidar + s.pos.cast<float>();
+    p_lidar = point_body.getVector3fMap();
+    p_imu =
+        s.offset_R_L_I.cast<float>() * p_lidar + s.offset_T_L_I.cast<float>();
+    p_world = s.rot.cast<float>() * p_imu + s.pos.cast<float>();
 
     point_world = point_body;
     point_world.getVector3fMap() = p_world;
@@ -778,7 +1015,7 @@ void LaserMappingNode::compute_eigendecomposition(
     res = norm_vec.norm();
     norm_vec.normalize();
 
-    P_skew << SKEW_SYM_MATRX(p_lidar);
+    P_skew << SKEW_SYM_MATRX(p_imu);
 
     C = s.rot.conjugate().cast<float>() * norm_vec;
     A = P_skew * C;
@@ -955,13 +1192,6 @@ LaserMappingNode::LaserMappingNode(
 
   memset(point_selected_surf, true, sizeof(point_selected_surf));
   memset(res_last, -1000.0f, sizeof(res_last));
-  // downSizeFilterSurf.setLeafSize(filter_size_surf_min,
-  // filter_size_surf_min,
-  //                                filter_size_surf_min);
-  // downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min,
-  //                               filter_size_map_min);
-  // downSizeFilterSurf.setRadiusSearch(filter_size_surf_min);
-  // downSizeFilterMap.setRadiusSearch(filter_size_map_min);
 
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
@@ -1011,12 +1241,6 @@ LaserMappingNode::LaserMappingNode(
 
   pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_registered", 1);
-  // pubLaserCloudFull_body_ =
-  //     this->create_publisher<sensor_msgs::msg::PointCloud2>(
-  //         "/cloud_registered_body", rclcpp::SensorDataQoS());
-  // pubLaserCloudEffect_ =
-  // this->create_publisher<sensor_msgs::msg::PointCloud2>(
-  //     "/cloud_effected", rclcpp::SensorDataQoS());
   pubLaserCloudMap_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 1);
   pubOdomAftMapped_ =
@@ -1188,18 +1412,8 @@ void LaserMappingNode::timer_callback() {
     // if (ikdtree.Root_Node == nullptr) {
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
-      size_t feats_undistort_size = feats_undistort->points.size();
-      if (feats_undistort_size > 5) {
-        feats_down_world->resize(feats_undistort_size);
-        for (int i = 0; i < feats_undistort_size; i++) {
-          pointBodyToWorld(&(feats_undistort->points[i]),
-                           &(feats_down_world->points[i]));
-        }
-        // ikdtree.Build(feats_down_world->points);
-        ioctree.initialize(*feats_down_world, idxs);
-        *map_cloud += FastLioPointCloud(*feats_down_world, idxs);
-        std::cerr << "Map idxs size: " << idxs.size() << std::endl;
-      }
+      if (feats_undistort->points.size() < NUM_MATCH_POINTS) return;
+      map_incremental(true);
       return;
     }
 
@@ -1261,10 +1475,9 @@ void LaserMappingNode::timer_callback() {
     state_update_time = t5 - t4;
 
     /*** add the feature points to map kdtree ***/
-    map_incremental();
+    map_incremental(false);
     t6 = omp_get_wtime();
     kdtree_update_time = t6 - t5;
-    // compute_eigendecomposition();
     t7 = omp_get_wtime();
     total_time = t7 - t0;
 

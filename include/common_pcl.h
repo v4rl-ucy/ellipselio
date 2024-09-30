@@ -20,9 +20,8 @@
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/octree/impl/octree_search.hpp>
 
-struct EIGEN_ALIGN16 PointXYZRGBINormal {
+struct EIGEN_ALIGN16 PointXYZRGBI {
   PCL_ADD_POINT4D;
-  PCL_ADD_NORMAL4D;
   union {
     struct {
       PCL_ADD_UNION_RGB
@@ -37,13 +36,12 @@ struct EIGEN_ALIGN16 PointXYZRGBINormal {
 };
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
-    PointXYZRGBINormal,
-    (float, x, x)(float, y, y)(float, z, z)(float, normal_x, normal_x)(
-        float, normal_y, normal_y)(float, normal_z, normal_z)(float, rgb, rgb)(
+    PointXYZRGBI,
+    (float, x, x)(float, y, y)(float, z, z)(float, rgb, rgb)(
         float, intensity, intensity)(float, offset_time,
                                      offset_time)(float, has_color, has_color))
 
-typedef PointXYZRGBINormal FastLioPoint;
+typedef PointXYZRGBI FastLioPoint;
 typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;
 typedef pcl::PointCloud<FastLioPoint>::Ptr FastLioPointCloudPtr;
 typedef std::vector<FastLioPoint, Eigen::aligned_allocator<FastLioPoint>>

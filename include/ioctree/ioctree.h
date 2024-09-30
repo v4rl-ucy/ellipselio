@@ -386,7 +386,6 @@ class Octree {
                                  {2, 4, 7, 0, 3, 5, 1}, {3, 5, 6, 1, 2, 4, 0}};
   bool ordered;
   RunDetails run_details;
-  InfoRecord info_record;
 
   Octree()
       : m_bucketSize(32), m_minExtent(0.01f), m_root_(0), m_downSize(false) {
@@ -451,7 +450,7 @@ class Octree {
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
-      cloud_ptr[3] = float(cloud_index);  // 保存在**原始**数据中的索引
+      cloud_ptr[3] = -((int)cloud_index + 1);  // 保存在**原始**数据中的索引
       points[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
@@ -467,7 +466,6 @@ class Octree {
       }
       cloud_index++;
     }
-    last_pts_num = cloud_index;
     points.resize(cloud_index);  // 删除多余元素
     float ctr[3] = {min[0], min[1], min[2]};
     float maxextent = 0.5f * (max[0] - min[0]);
@@ -484,7 +482,7 @@ class Octree {
     // 		<<"max: "<<max[0]<<", "<<max[1]<<", "<<max[2]<<", "
     // 		<<std::endl;
     // m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, 0, N - 1, N);
-    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points, idxs, 0);
+    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points, idxs);
     // std::cout<<"createOctant success!"<<std::endl;
 
     for (size_t i = 0; i < points.size(); ++i) {
@@ -508,7 +506,6 @@ class Octree {
     points_tmp.resize(pts_num, 0);
     size_t cloud_index = 0;
     float min[3], max[3];
-    const size_t N_old = last_pts_num;
 
     for (size_t i = 0; i < pts_num; ++i) {
       const float &x = pts_[i].x;
@@ -519,7 +516,7 @@ class Octree {
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
-      cloud_ptr[3] = N_old + cloud_index;
+      cloud_ptr[3] = -((int)cloud_index + 1);
       points_tmp[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
@@ -589,8 +586,7 @@ class Octree {
 
     if (points_tmp.size() == 0) return;
     // std::cout<<"updateOctant start: "<<points_tmp.size()<<std::endl;;
-    last_pts_num += points_tmp.size();
-    updateOctant(m_root_, points_tmp, idxs, N_old);
+    updateOctant(m_root_, points_tmp, idxs);
     // std::cout<<"updateOctant end\n";
 
     for (size_t i = 0; i < points_tmp.size(); ++i) {
@@ -605,7 +601,7 @@ class Octree {
 
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
-                       std::vector<size_t> &resultIndices) {
+                       std::vector<int> &resultIndices) {
     resultIndices.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
@@ -615,7 +611,7 @@ class Octree {
     resultIndices.resize(points_ptr.size());
 
     for (size_t i = 0; i < points_ptr.size(); i++) {
-      resultIndices[i] = size_t(points_ptr[i][3]);
+      resultIndices[i] = int(points_ptr[i][3]);
     }
   }
 
@@ -868,332 +864,6 @@ class Octree {
     }
   }
 
-  template <typename ContainerT>
-  void initialize_record(ContainerT &pts_) {
-    clear();
-    const size_t pts_num = pts_.size();
-    std::vector<float *> points;
-    int dim_ = 3;
-    points.resize(pts_num, 0);
-    size_t cloud_index = 0;
-    float min[3], max[3];
-
-    for (size_t i = 0; i < pts_num; ++i) {
-      const float &x = pts_[i].x;
-      const float &y = pts_[i].y;
-      const float &z = pts_[i].z;
-      if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
-      float *cloud_ptr = new float[dim];
-      cloud_ptr[0] = x;
-      cloud_ptr[1] = y;
-      cloud_ptr[2] = z;
-      cloud_ptr[3] = float(cloud_index);  // 保存在**原始**数据中的索引
-      points[cloud_index] = cloud_ptr;
-      if (cloud_index == 0) {
-        min[0] = max[0] = x;
-        min[1] = max[1] = y;
-        min[2] = max[2] = z;
-      } else {
-        min[0] = x < min[0] ? x : min[0];
-        min[1] = y < min[1] ? y : min[1];
-        min[2] = z < min[2] ? z : min[2];
-        max[0] = x > max[0] ? x : max[0];
-        max[1] = y > max[1] ? y : max[1];
-        max[2] = z > max[2] ? z : max[2];
-      }
-      cloud_index++;
-    }
-    last_pts_num = cloud_index;
-    points.resize(cloud_index);  // 删除多余元素
-    float ctr[3] = {min[0], min[1], min[2]};
-    float maxextent = 0.5f * (max[0] - min[0]);
-    maxextent = std::max(maxextent, 0.01f);
-    ctr[0] += maxextent;
-
-    for (size_t i = 1; i < 3; ++i) {
-      float extent = 0.5f * (max[i] - min[i]);
-      ctr[i] += extent;
-      if (extent > maxextent) maxextent = extent;
-    }
-    // std::cout<<"maxextent: "<<maxextent<<", "
-    // 		<<"min: "<<min[0]<<", "<<min[1]<<", "<<min[2]<<", "
-    // 		<<"max: "<<max[0]<<", "<<max[1]<<", "<<max[2]<<", "
-    // 		<<std::endl;
-    // m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, 0, N - 1, N);
-    m_root_ = createOctant_record(ctr[0], ctr[1], ctr[2], maxextent, points);
-    // std::cout<<"createOctant success!"<<std::endl;
-
-    for (size_t i = 0; i < points.size(); ++i) {
-      delete[] points[i];
-    }
-  }
-
-  Octant *createOctant_record(float x, float y, float z, float extent,
-                              std::vector<float *> &points) {
-    // For a leaf we don't have to change anything; points are already correctly
-    // linked or correctly reordered.
-    Octant *octant = new Octant;
-    const size_t size = points.size();
-    octant->x = x;
-    octant->y = y;
-    octant->z = z;
-    octant->extent = extent;
-    info_record.add_octant(octant);
-    static const float factor[] = {-0.5f, 0.5f};
-    if (size > m_bucketSize && extent > 2 * m_minExtent)  // 32 0
-    {
-      std::vector<std::vector<float *>> child_points(8, std::vector<float *>());
-
-      for (size_t i = 0; i < size; ++i) {
-        float *p = points[i];
-        size_t mortonCode = 0;
-        if (p[0] > x) mortonCode |= 1;
-        if (p[1] > y) mortonCode |= 2;
-        if (p[2] > z) mortonCode |= 4;
-        child_points[mortonCode].push_back(p);
-      }
-      // now, we can create the child nodes...
-      float childExtent = 0.5f * extent;
-      octant->init_child();
-
-      for (size_t i = 0; i < 8; ++i) {
-        if (child_points[i].size() == 0) continue;
-        float childX = x + factor[(i & 1) > 0] * extent;
-        float childY = y + factor[(i & 2) > 0] * extent;
-        float childZ = z + factor[(i & 4) > 0] * extent;
-        octant->child[i] = createOctant_record(childX, childY, childZ,
-                                               childExtent, child_points[i]);
-      }
-    } else {
-      const size_t size = points.size();
-      octant->points.resize(size, 0);
-      float *continue_points = new float[size * dim];
-
-      for (size_t i = 0; i < size; ++i) {
-        std::copy(points[i], points[i] + dim, continue_points + dim * i);
-        octant->points[i] = continue_points + dim * i;
-      }
-    }
-    return octant;
-  }
-
-  template <typename ContainerT>
-  void update_record(ContainerT &pts_, bool down_size = false) {
-    if (m_root_ == 0) {
-      initialize_record(pts_);
-      return;
-    }
-    // std::cout<<"update start\n";
-    m_downSize = down_size;
-    size_t pts_num = pts_.size();
-    // std::cout<<"updateOctant init: "<<pts_num<<std::endl;
-    std::vector<float *> points_tmp;
-    int dim_ = 3;
-    points_tmp.resize(pts_num, 0);
-    size_t cloud_index = 0;
-    float min[3], max[3];
-    const size_t N_old = last_pts_num;
-
-    for (size_t i = 0; i < pts_num; ++i) {
-      const float &x = pts_[i].x;
-      const float &y = pts_[i].y;
-      const float &z = pts_[i].z;
-      if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
-      float *cloud_ptr = new float[dim];
-      cloud_ptr[0] = x;
-      cloud_ptr[1] = y;
-      cloud_ptr[2] = z;
-      cloud_ptr[3] = N_old + cloud_index;
-      points_tmp[cloud_index] = cloud_ptr;
-      if (cloud_index == 0) {
-        min[0] = max[0] = x;
-        min[1] = max[1] = y;
-        min[2] = max[2] = z;
-      } else {
-        min[0] = x < min[0] ? x : min[0];
-        min[1] = y < min[1] ? y : min[1];
-        min[2] = z < min[2] ? z : min[2];
-        max[0] = x > max[0] ? x : max[0];
-        max[1] = y > max[1] ? y : max[1];
-        max[2] = z > max[2] ? z : max[2];
-      }
-      cloud_index++;
-    }
-    if (cloud_index == 0) return;
-    points_tmp.resize(cloud_index);
-    // std::cout<<"updateOctant filter: "<<cloud_index<<std::endl;
-    // 先创建一个对当前节点全包围的父节点，首先确定父节点中心所在的方向
-    static const float factor[] = {-0.5f, 0.5f};
-    // 判断是否存在越界
-    while (std::abs(max[0] - m_root_->x) > m_root_->extent ||
-           std::abs(max[1] - m_root_->y) > m_root_->extent ||
-           std::abs(max[2] - m_root_->z) > m_root_->extent) {
-      // 父节点中心坐标
-      float parentExtent = 2 * m_root_->extent;
-      float parentX = m_root_->x + factor[max[0] > m_root_->x] * parentExtent;
-      float parentY = m_root_->y + factor[max[1] > m_root_->y] * parentExtent;
-      float parentZ = m_root_->z + factor[max[2] > m_root_->z] * parentExtent;
-      // 构造父节点
-      Octant *octant = new Octant;
-      octant->x = parentX;
-      octant->y = parentY;
-      octant->z = parentZ;
-      octant->extent = parentExtent;
-      octant->init_child();
-      size_t mortonCode = 0;
-      if (m_root_->x > parentX) mortonCode |= 1;
-      if (m_root_->y > parentY) mortonCode |= 2;
-      if (m_root_->z > parentZ) mortonCode |= 4;
-      octant->child[mortonCode] = m_root_;
-      m_root_ = octant;
-      info_record.add_octant(octant);
-    }
-    while (std::abs(min[0] - m_root_->x) > m_root_->extent ||
-           std::abs(min[1] - m_root_->y) > m_root_->extent ||
-           std::abs(min[2] - m_root_->z) > m_root_->extent) {
-      // 父节点中心坐标
-      float parentExtent = 2 * m_root_->extent;
-      float parentX = m_root_->x + factor[min[0] > m_root_->x] * parentExtent;
-      float parentY = m_root_->y + factor[min[1] > m_root_->y] * parentExtent;
-      float parentZ = m_root_->z + factor[min[2] > m_root_->z] * parentExtent;
-      // 构造父节点
-      Octant *octant = new Octant;
-      // octant->isLeaf = false;
-      octant->x = parentX;
-      octant->y = parentY;
-      octant->z = parentZ;
-      octant->extent = parentExtent;
-      octant->init_child();
-      size_t mortonCode = 0;
-      if (m_root_->x > parentX) mortonCode |= 1;
-      if (m_root_->y > parentY) mortonCode |= 2;
-      if (m_root_->z > parentZ) mortonCode |= 4;
-      octant->child[mortonCode] = m_root_;
-      m_root_ = octant;
-      info_record.add_octant(octant);
-    }
-
-    if (points_tmp.size() == 0) return;
-    // std::cout<<"updateOctant start: "<<points_tmp.size()<<std::endl;;
-    last_pts_num += points_tmp.size();
-    updateOctant_record(m_root_, points_tmp);
-    // std::cout<<"updateOctant end\n";
-
-    for (size_t i = 0; i < points_tmp.size(); ++i) {
-      delete[] points_tmp[i];
-    }
-  }
-
-  void updateOctant_record(Octant *octant, const std::vector<float *> &points) {
-    // std::cout<<"updateOctant0 start "<<points.size()<<std::endl;
-    static const float factor[] = {-0.5f, 0.5f};
-    const float x = octant->x, y = octant->y, z = octant->z,
-                extent = octant->extent;
-    octant->isActive = true;  // 更新状态
-    if (octant->child == nullptr) {
-      if (octant->points.size() + points.size() > m_bucketSize &&
-          extent > 2 * m_minExtent)  // 32 0
-      {
-        octant->points.insert(octant->points.end(), points.begin(),
-                              points.end());
-        const size_t size = octant->points.size();
-        std::vector<std::vector<float *>> child_points(8,
-                                                       std::vector<float *>());
-
-        for (size_t i = 0; i < size; ++i) {
-          size_t mortonCode = 0;
-          if (octant->points[i][0] > x) mortonCode |= 1;
-          if (octant->points[i][1] > y) mortonCode |= 2;
-          if (octant->points[i][2] > z) mortonCode |= 4;
-          child_points[mortonCode].push_back(octant->points[i]);
-        }
-        float childExtent = 0.5f * extent;
-        octant->init_child();
-
-        for (size_t i = 0; i < 8; ++i) {
-          if (child_points[i].size() == 0) continue;
-          float childX = x + factor[(i & 1) > 0] * extent;
-          float childY = y + factor[(i & 2) > 0] * extent;
-          float childZ = z + factor[(i & 4) > 0] * extent;
-          octant->child[i] = createOctant_record(childX, childY, childZ,
-                                                 childExtent, child_points[i]);
-        }
-        delete[] octant->points[0];
-        std::vector<float *>().swap(octant->points);  // 清空非叶子节点索引
-      } else {
-        //* 如果有下采样且满足条件，直接不添加
-        if (m_downSize && extent <= 2 * m_minExtent &&
-            octant->points.size() > m_bucketSize / 8)
-          return;
-        octant->points.insert(octant->points.end(), points.begin(),
-                              points.end());
-        const size_t size = octant->points.size();
-        float *continue_points = new float[size * dim];
-        float *old_points = octant->points[0];
-
-        for (size_t i = 0; i < size; ++i) {
-          std::copy(octant->points[i], octant->points[i] + dim,
-                    continue_points + dim * i);
-          octant->points[i] = continue_points + dim * i;
-        }
-        delete[] old_points;
-      }
-    } else {
-      const size_t size = points.size();
-      std::vector<std::vector<float *>> child_points(8, std::vector<float *>());
-
-      for (size_t i = 0; i < size; ++i) {
-        size_t mortonCode = 0;
-        if (points[i][0] > x) mortonCode |= 1;
-        if (points[i][1] > y) mortonCode |= 2;
-        if (points[i][2] > z) mortonCode |= 4;
-        child_points[mortonCode].push_back(points[i]);
-      }
-      float childExtent = 0.5f * extent;
-
-      for (size_t i = 0; i < 8; ++i) {
-        if (child_points[i].size() >
-            0)  // 可能存在某些节点没有新分配点，但是存在点的情况！！！
-        {
-          if (octant->child[i] == 0) {
-            float childX = x + factor[(i & 1) > 0] * extent;
-            float childY = y + factor[(i & 2) > 0] * extent;
-            float childZ = z + factor[(i & 4) > 0] * extent;
-            octant->child[i] = createOctant_record(
-                childX, childY, childZ, childExtent, child_points[i]);
-          } else
-            updateOctant_record(octant->child[i], child_points[i]);
-        }
-      }
-    }
-  }
-
-  void write_info_record(std::string name = "otree_info", bool clear = false) {
-    info_record.write_to_txt(name);
-    if (clear) {
-      info_record.clear();
-    }
-  }
-
-  void write_remain_node_record(std::string name = "otree_info") {
-    if (m_root_ == 0) return;
-    std::vector<Octant *> nodes;
-    get_nodes(m_root_, nodes);
-    {
-      std::string filename =
-          "/media/zhujun/0DFD06D20DFD06D2/SLAM/octree_test/ikd-Tree-main/data/";
-      filename += name + ".txt";
-      std::ofstream log_file(filename, std::ios::out);
-      log_file << "# x y z extent" << std::endl;
-
-      for (int i = 0; i < nodes.size(); i++) {
-        log_file << nodes[i]->x << " " << nodes[i]->y << " " << nodes[i]->z
-                 << " " << nodes[i]->extent << "\n";
-      }
-      log_file.close();
-    }
-  }
-
  protected:
   Octant *m_root_;
   size_t last_pts_num, pts_num_deleted;  // 主要为了确定每个点的索引
@@ -1203,8 +873,7 @@ class Octree {
   Octree &operator=(const Octree &oct);
 
   Octant *createOctant(float x, float y, float z, float extent,
-                       std::vector<float *> &points, std::vector<int> &idxs,
-                       size_t old_size) {
+                       std::vector<float *> &points, std::vector<int> &idxs) {
     // For a leaf we don't have to change anything; points are already correctly
     // linked or correctly reordered.
     Octant *octant = new Octant;
@@ -1236,7 +905,7 @@ class Octree {
         float childY = y + factor[(i & 2) > 0] * extent;
         float childZ = z + factor[(i & 4) > 0] * extent;
         octant->child[i] = createOctant(childX, childY, childZ, childExtent,
-                                        child_points[i], idxs, old_size);
+                                        child_points[i], idxs);
       }
     } else {
       const size_t size = min(points.size(), m_bucketSize);
@@ -1246,15 +915,17 @@ class Octree {
       for (size_t i = 0; i < size; ++i) {
         std::copy(points[i], points[i] + dim, continue_points + dim * i);
         octant->points[i] = continue_points + dim * i;
-        if (octant->points[i][3] - old_size >= 0)
-          idxs.push_back(octant->points[i][3] - old_size);
+        if (octant->points[i][3] < 0) {
+          idxs.push_back(-(octant->points[i][3] + 1));
+          octant->points[i][3] = last_pts_num++;
+        }
       }
     }
     return octant;
   }
 
   void updateOctant(Octant *octant, const std::vector<float *> &points,
-                    std::vector<int> &idxs, size_t old_size) {
+                    std::vector<int> &idxs) {
     // std::cout<<"updateOctant0 start "<<points.size()<<std::endl;
     static const float factor[] = {-0.5f, 0.5f};
     const float x = octant->x, y = octant->y, z = octant->z,
@@ -1286,7 +957,7 @@ class Octree {
           float childY = y + factor[(i & 2) > 0] * extent;
           float childZ = z + factor[(i & 4) > 0] * extent;
           octant->child[i] = createOctant(childX, childY, childZ, childExtent,
-                                          child_points[i], idxs, old_size);
+                                          child_points[i], idxs);
         }
         delete[] octant->points[0];
         std::vector<float *>().swap(octant->points);  // 清空非叶子节点索引
@@ -1306,8 +977,10 @@ class Octree {
           std::copy(octant->points[i], octant->points[i] + dim,
                     continue_points + dim * i);
           octant->points[i] = continue_points + dim * i;
-          if (octant->points[i][3] - old_size >= 0)
-            idxs.push_back(octant->points[i][3] - old_size);
+          if (octant->points[i][3] < 0) {
+            idxs.push_back(-(octant->points[i][3] + 1));
+            octant->points[i][3] = last_pts_num++;
+          }
         }
         delete[] old_points;
       }
@@ -1333,9 +1006,9 @@ class Octree {
             float childY = y + factor[(i & 2) > 0] * extent;
             float childZ = z + factor[(i & 4) > 0] * extent;
             octant->child[i] = createOctant(childX, childY, childZ, childExtent,
-                                            child_points[i], idxs, old_size);
+                                            child_points[i], idxs);
           } else
-            updateOctant(octant->child[i], child_points[i], idxs, old_size);
+            updateOctant(octant->child[i], child_points[i], idxs);
         }
       }
     }

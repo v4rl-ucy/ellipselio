@@ -238,9 +238,6 @@ void Preprocess::l515_handler(
     added_pt.x = pl_orig.points[i].x;
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;
-    added_pt.normal_x = pl_orig.points[i].r;
-    added_pt.normal_y = pl_orig.points[i].g;
-    added_pt.normal_z = pl_orig.points[i].b;
 
     added_pt.offset_time = 0.0;
     pl_surf.push_back(std::move(added_pt));
@@ -276,9 +273,6 @@ void Preprocess::oust64_handler(
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.normal_x = 0;
-      added_pt.normal_y = 0;
-      added_pt.normal_z = 0;
       double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.3;
       if (yaw_angle >= 180.0) yaw_angle -= 360.0;
       if (yaw_angle <= -180.0) yaw_angle += 360.0;
@@ -324,9 +318,6 @@ void Preprocess::oust64_handler(
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
       added_pt.intensity = pl_orig.points[i].intensity;
-      added_pt.normal_x = 0;
-      added_pt.normal_y = 0;
-      added_pt.normal_z = 0;
       added_pt.offset_time =
           pl_orig.points[i].t * time_unit_scale;  // offset_time unit: ms
 
@@ -565,9 +556,6 @@ void Preprocess::xt32_handler(
 
     for (int i = 0; i < plsize; i++) {
       FastLioPoint added_pt;
-      added_pt.normal_x = 0;
-      added_pt.normal_y = 0;
-      added_pt.normal_z = 0;
       int layer = pl_orig.points[i].ring;
       if (layer >= N_SCANS) continue;
       added_pt.x = pl_orig.points[i].x;
@@ -628,9 +616,6 @@ void Preprocess::xt32_handler(
     for (int i = 0; i < plsize; i++) {
       FastLioPoint added_pt;
 
-      added_pt.normal_x = 0;
-      added_pt.normal_y = 0;
-      added_pt.normal_z = 0;
       added_pt.x = pl_orig.points[i].x;
       added_pt.y = pl_orig.points[i].y;
       added_pt.z = pl_orig.points[i].z;
@@ -665,9 +650,6 @@ void Preprocess::default_handler(
 
   for (uint i = 0; i < plsize; ++i) {
     FastLioPoint added_pt;
-    added_pt.normal_x = 0;
-    added_pt.normal_y = 0;
-    added_pt.normal_z = 0;
     added_pt.x = pl_orig.points[i].x;
     added_pt.y = pl_orig.points[i].y;
     added_pt.z = pl_orig.points[i].z;

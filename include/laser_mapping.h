@@ -80,22 +80,26 @@ class LaserMappingNode : public rclcpp::Node {
 
  private:
   void dump_lio_state_to_log(FILE *fp);
-  void pointBodyToWorld_ikfom(FastLioPoint const *const pi,
-                              FastLioPoint *const po, state_ikfom &s);
-  void pointBodyToWorld(FastLioPoint const *const pi, FastLioPoint *const po);
+  void pointLidarToWorld_ikfom(FastLioPoint const *const pi,
+                               FastLioPoint *const po, state_ikfom &s);
+  void pointLidarToIMU_ikfom(FastLioPoint const *const pi,
+                             FastLioPoint *const po, state_ikfom &s);
+  void pointLidarToWorld(FastLioPoint const *const pi, FastLioPoint *const po);
   template <typename T>
-  void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po);
-  void RGBpointBodyToWorld(FastLioPoint const *const pi,
-                           FastLioPoint *const po);
-  void RGBpointBodyLidarToIMU(FastLioPoint const *const pi,
-                              FastLioPoint *const po);
+  void pointLidarToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po);
+  void RGBpointLidarToWorld(FastLioPoint const *const pi,
+                            FastLioPoint *const po);
+  void RGBpointLidarLidarToIMU(FastLioPoint const *const pi,
+                               FastLioPoint *const po);
   void points_cache_collect();
   void lasermap_fov_segment();
   void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::UniquePtr msg);
   void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::UniquePtr msg);
   void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams);
-  void map_incremental();
+  int tensor_density_expection(Eigen::Vector3f &lambda, int num, float radius,
+                               float sigma);
+  void map_incremental(bool init_map);
   void publish_frame_world();
   void publish_frame_body();
   void publish_effect_world();
@@ -109,6 +113,8 @@ class LaserMappingNode : public rclcpp::Node {
                      esekfom::dyn_share_datastruct<double> &ekfom_data);
   void compute_eigendecomposition(
       state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
+  void compute_tensor_vote(state_ikfom &s,
+                           esekfom::dyn_share_datastruct<double> &ekfom_data);
 
   void init_cam_process();
   void timer_callback();
@@ -199,6 +205,9 @@ class LaserMappingNode : public rclcpp::Node {
                      flg_EKF_inited;
   bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
   bool is_first_lidar = true;
+
+  vector<Eigen::Matrix3f> tensors;
+  vector<vector<int>> filters;
 
   vector<string> cam_topics;
   vector<double> cam_intrinsics;
