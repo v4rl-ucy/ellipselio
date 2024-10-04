@@ -637,9 +637,9 @@ class Octree {
   template <typename PointT>
   void radiusNeighbors(
       const PointT &query, float radius,
-      std::vector<PointT, Eigen::aligned_allocator<PointT>> &resultIndices,
+      std::vector<PointT, Eigen::aligned_allocator<PointT>> &resultPoints,
       std::vector<float> &distances) {
-    resultIndices.clear();
+    resultPoints.clear();
     distances.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
@@ -647,20 +647,20 @@ class Octree {
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances);
     // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
-    resultIndices.resize(points_ptr.size());
+    resultPoints.resize(points_ptr.size());
 
-    for (size_t i = 0; i < resultIndices.size(); i++) {
+    for (size_t i = 0; i < resultPoints.size(); i++) {
       PointT pt;
       pt.x = points_ptr[i][0];
       pt.y = points_ptr[i][1];
       pt.z = points_ptr[i][2];
-      resultIndices[i] = pt;
+      resultPoints[i] = pt;
     }
   }
 
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
-                       Eigen::MatrixXf &resultIndices,
+                       Eigen::MatrixXf &resultMatrix,
                        std::vector<float> &distances) {
     // resultIndices.clear();
     distances.clear();
@@ -670,12 +670,35 @@ class Octree {
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances);
     // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
+    resultMatrix.resize(points_ptr.size(), 3);
+
+    for (size_t i = 0; i < resultMatrix.rows(); i++) {
+      resultMatrix(i, 0) = points_ptr[i][0];
+      resultMatrix(i, 1) = points_ptr[i][1];
+      resultMatrix(i, 2) = points_ptr[i][2];
+    }
+  }
+
+  template <typename PointT>
+  void radiusNeighbors(const PointT &query, float radius,
+                       Eigen::MatrixXf &resultMatrix,
+                       std::vector<int> &resultIndices) {
+    resultIndices.clear();
+    // distances.clear();
+    if (m_root_ == 0) return;
+    float sqrRadius = radius * radius;  // "squared" radius
+    float query_[3] = {query.x, query.y, query.z};
+    std::vector<float *> points_ptr;
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr);
+    // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
+    resultMatrix.resize(points_ptr.size(), 3);
     resultIndices.resize(points_ptr.size(), 3);
 
-    for (size_t i = 0; i < resultIndices.rows(); i++) {
-      resultIndices(i, 0) = points_ptr[i][0];
-      resultIndices(i, 1) = points_ptr[i][1];
-      resultIndices(i, 2) = points_ptr[i][2];
+    for (size_t i = 0; i < resultMatrix.rows(); i++) {
+      resultMatrix(i, 0) = points_ptr[i][0];
+      resultMatrix(i, 1) = points_ptr[i][1];
+      resultMatrix(i, 2) = points_ptr[i][2];
+      resultIndices[i] = size_t(points_ptr[i][3]);
     }
   }
 
@@ -1029,12 +1052,21 @@ class Octree {
         const size_t result_size = resultIndices.size();
         resultIndices.resize(result_size + size);
 
+        size_t m = 0;
         for (size_t i = 0; i < size; ++i) {
-          // const float * p = ordered? candidate_octants[k]->ordered_points[i]
-          // : candidate_octants[k]->points[i]; const float * p =
-          // candidate_octants[k]->points[i];
-          resultIndices[result_size + i] = candidate_octants[k]->points[i];
+          const float *p = candidate_octants[k]->points[i];
+          float dist = 0, diff = 0;
+
+          for (size_t j = 0; j < 3; ++j) {
+            diff = p[j] - query[j];
+            dist += diff * diff;
+          }
+          if (dist > 0) {
+            resultIndices[result_size + m] = candidate_octants[k]->points[i];
+            ++m;
+          }
         }
+        resultIndices.resize(result_size + m);
       }
       return;
     }
@@ -1051,7 +1083,8 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (dist < sqrRadius) resultIndices.push_back(octant->points[i]);
+        if (dist > 0 && dist < sqrRadius)
+          resultIndices.push_back(octant->points[i]);
       }
       return;
     }
@@ -1077,7 +1110,7 @@ class Octree {
         const size_t size = candidate_octants[k]->points.size();
         const size_t result_size = resultIndices.size();
         resultIndices.resize(result_size + size);
-
+        size_t m = 0;
         for (size_t i = 0; i < size; ++i) {
           const float *p = candidate_octants[k]->points[i];
           float dist = 0, diff = 0;
@@ -1086,9 +1119,13 @@ class Octree {
             diff = p[j] - query[j];
             dist += diff * diff;
           }
-          distances.push_back(dist);
-          resultIndices[result_size + i] = candidate_octants[k]->points[i];
+          if (dist > 0) {
+            distances.push_back(dist);
+            resultIndices[result_size + m] = candidate_octants[k]->points[i];
+            ++m;
+          }
         }
+        resultIndices.resize(result_size + m);
       }
       return;
     }
@@ -1103,7 +1140,7 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (dist < sqrRadius) {
+        if (dist > 0 && dist < sqrRadius) {
           resultIndices.push_back(octant->points[i]);
           distances.push_back(dist);
         }
@@ -1136,7 +1173,7 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (dist < sqrRadius) {
+        if (dist > 0 && dist < sqrRadius) {
           resultIndices.push_back(size_t(p[3]));
           distances.push_back(dist);
         }
@@ -1183,7 +1220,8 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (dist < heap.worstDist()) heap.addPoint(dist, octant->points[i]);
+        if (dist > 0 && dist < heap.worstDist())
+          heap.addPoint(dist, octant->points[i]);
       }
       // run_details.one_path = false;
       // run_details.pts_n += size;
@@ -1229,8 +1267,10 @@ class Octree {
           diff = *p++ - *query++;
           dist += diff * diff;
         }
-        PointType_CMP<size_t> pt(size_t(p[3]), dist);
-        heap.push(pt);
+        if (dist > 0) {
+          PointType_CMP<size_t> pt(size_t(p[3]), dist);
+          heap.push(pt);
+        }
       }
       return heap.full() &&
              inside(

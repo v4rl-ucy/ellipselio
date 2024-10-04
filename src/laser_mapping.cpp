@@ -435,7 +435,6 @@ void LaserMappingNode::map_incremental(bool init_map) {
 
 #pragma omp parallel for
     for (int j = 0; j < N_idxs.size(); j++) {
-      if (idxs[i] == N_idxs[j]) continue;
       if (filters[N_idxs[j]][0] == 1 && filters[N_idxs[j]][1] == 0) continue;
       Eigen::Vector3f p_j = map_cloud->points[N_idxs[j]].getVector3fMap();
       Eigen::Vector3f r_ij = (p_i - p_j).normalized();
@@ -732,124 +731,214 @@ void LaserMappingNode::h_share_model(
 
 void LaserMappingNode::compute_tensor_vote(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  int avg_num_neighbours = 0;
-  std::atomic_int feat_cnt = 0, line_cnt = 0, plane_cnt = 0, ellipse_cnt = 0;
+  std::atomic<int> filter_cnt = 0;
+  std::atomic<int> avg_num_neighbours = 0;
   Eigen::MatrixXd h(feats_down_size, 1);
   Eigen::MatrixXd h_x(feats_down_size, 12);
+  Eigen::VectorXf sali_vals(feats_down_size);
+  Eigen::VectorXi sali_idxs(feats_down_size);
+  Eigen::Vector3f filter_thres;
+  Eigen::Vector3f max_sali(0, 0, 0), min_sali(FLT_MAX, FLT_MAX, FLT_MAX);
+  std::atomic<int> feat_cnt = 0, plane_cnt = 0, cyl_cnt = 0, ellipse_cnt = 0;
 
   total_residual = 0.0;
 
   double match_start = omp_get_wtime();
   double solve_start_ = omp_get_wtime();
 
+  double rad_time = 0.0;
+  double knn_time = 0.0;
+  double cov_time = 0.0;
+  double eig_time = 0.0;
+  double sali_time = 0.0;
+
 #pragma omp parallel for
   for (int i = 0; i < feats_down_size; i++) {
-    int prim;
-    float res;
-    Eigen::VectorXf N_norm;
-    Eigen::MatrixXf N, N_bar;
-    std::vector<float> N_dist;
-    PointVector near_pt;
-    Eigen::Matrix3f Phi, P_skew;
+    int sali_idx;
+    float rad, residual;
+    Eigen::VectorXf n_norm;
+    Eigen::MatrixXf N, N_bar, N_bar_norm, Cov_full;
+    std::vector<int> N_idxs;
+    std::atomic<int> cnt = 0;
+    std::vector<float> N_dst;
+    PointVector N_pts;
+    Eigen::Vector3f c, a, ellipse_rad;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
-    Eigen::Matrix3f Cov2, Cov = Eigen::Matrix3f::Zero();
-    Eigen::Vector3f N_mean, Lambda, saliency, p_lidar, p_imu, p_world, p_dash,
-        q, q_dash, norm_vec, C, A;
+    Eigen::Matrix3f Phi, P_skew, Cov = Eigen::Matrix3f::Zero();
+    Eigen::Vector3f n_mean, lambda, sali, p_world, p_dash, q, q_dash, norm_vec;
 
     FastLioPoint point_imu;
-    FastLioPoint &point_body = feats_down_body->points[i];
+    FastLioPoint &point_lidar = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
 
-    pointLidarToWorld_ikfom(&point_body, &point_world, s);
-    pointLidarLidarToIMU_ikfom(&point_body, &point_imu, s);
+    pointLidarToIMU_ikfom(&point_lidar, &point_imu, s);
+    pointLidarToWorld_ikfom(&point_lidar, &point_world, s);
 
-    p_i = point_world.getVector3fMap();
-    ioctree.radiusNeighbors(point_world, filter_size_corner_min, N_idxs);
+    p_world = point_world.getVector3fMap();
 
+    double knn1 = omp_get_wtime();
+    ioctree.knnNeighbors(point_world, 1, N_pts, N_dst);
+    knn_time += omp_get_wtime() - knn1;
+
+    // if (N_dst[0] > filter_size_corner_min) continue;
+
+    double rad1 = omp_get_wtime();
+    ioctree.radiusNeighbors(point_world, filter_size_corner_min, N, N_idxs);
+    rad_time += omp_get_wtime() - rad1;
+
+    double cov1 = omp_get_wtime();
     if (N_idxs.size() < NUM_MATCH_POINTS) continue;
 
-#pragma omp parallel for
+    n_mean = N.colwise().mean();
+    N_bar = (N.rowwise() - n_mean.transpose());
+    n_norm = N_bar.rowwise().norm();
+    N_bar_norm = N_bar.rowwise().normalized();
+
+    avg_num_neighbours += N.rows();
+    Cov_full.resize(N.rows(), 9);
+
+    // #pragma omp parallel for
     for (int j = 0; j < N_idxs.size(); j++) {
-      if (filters[N_idxs[j]][0] == 1 && filters[N_idxs[j]][1] == 0) continue;
-      Eigen::Vector3f p_j = map_cloud->points[N_idxs[j]].getVector3fMap();
-      Eigen::Vector3f r_ij = (p_i - p_j).normalized();
-      Eigen::Matrix3f rrt = r_ij * r_ij.transpose();
+      if (filters[N_idxs[j]][0] == 1 && filters[N_idxs[j]][1] == 0) {
+        Cov_full.row(j) = Eigen::Matrix3f::Zero().reshaped(1, 9);
+        continue;
+      }
+      Eigen::Matrix3f rrt = N_bar_norm.row(j).transpose() * N_bar_norm.row(j);
       Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * rrt;
       Eigen::Matrix3f Rp_ij = (Eigen::Matrix3f::Identity() - 0.5 * rrt) * R_ij;
-      float d_ij = (p_i - p_j).norm();
-      float c_ij = std::exp(-std::pow(d_ij, 2) / filter_size_corner_min);
-      Eigen::Matrix3f A = c_ij * R_ij * Eigen::Matrix3f::Identity() * Rp_ij;
+      float c_ij = std::exp(-std::pow(n_norm(j), 2) / filter_size_corner_min);
+      Eigen::Matrix3f A = c_ij * R_ij * tensors[N_idxs[j]] * Rp_ij;
+      Cov_full.row(j) = A.reshaped(1, 9);
       cnt++;
-#pragma omp critical
-      Cov += A;
     }
+    Cov = Cov_full.colwise().sum().reshaped(3, 3);
+    cov_time += omp_get_wtime() - cov1;
 
     if (cnt < NUM_MATCH_POINTS) continue;
 
-    eig.compute(Cov);
+    double eig1 = omp_get_wtime();
+    eig.computeDirect(Cov);
     Phi = eig.eigenvectors();
     lambda = eig.eigenvalues();
+    eig_time += omp_get_wtime() - eig1;
 
-    if (prim == 0) {
+    double sali1 = omp_get_wtime();
+    sali << lambda(2) - lambda(1), lambda(1) - lambda(0), lambda(0);
+    sali /= float(cnt);
+    sali.maxCoeff(&sali_idx);
+
+    min_sali = min_sali.cwiseMin(sali);
+    max_sali = max_sali.cwiseMax(sali);
+
+    if (sali_idx == 0) {
       // Point to plane
-      q = p_world - N_mean;
+      q = p_world - n_mean;
       q_dash = q.dot(Phi.col(2)) * Phi.col(2);
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
-      ++line_cnt;
-      std::cerr << Phi.col(2) << std::endl;
-    } else if (prim == 1) {
-      // Point to curve
-      q = p_world - N_mean;
-      q_dash = q.dot(Phi.col(0)) * Phi.col(0);
-      p_dash = p_world - q_dash;
-      norm_vec = p_world - p_dash;
       ++plane_cnt;
-      std::cerr << Phi.col(0) << std::endl;
-    } else if (prim == 2) {
-      // Point to ellipsoid
-      p_dash = Phi.transpose() * (p_world - N_mean);
-      if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
+      // std::cerr << Phi.col(2) << std::endl;
+    } else if (sali_idx == 1) {
+      // continue;
+      //  Point to cylinder
+      rad = ((N_bar.rowwise().cross(Phi.col(0))).rowwise().norm()).mean();
+      // std::cerr << "Rad: " << rad << std::endl;
+      q = p_world - n_mean;
+      q_dash = q.dot(Phi.col(0)) * Phi.col(0);
+      p_dash = n_mean + q_dash;
+      norm_vec = p_world - p_dash;
+      norm_vec *= (1 - (rad / norm_vec.norm()));
+      ++cyl_cnt;
+      // std::cerr << Phi.col(0) << std::endl;
+    } else if (sali_idx == 2) {
+      // continue;
+      //  Point to ellipsoid
+      ellipse_rad(0) =
+          (N_bar.array().rowwise() * Phi.col(0).transpose().array())
+              .rowwise()
+              .sum()
+              .abs()
+              .mean();
+      ellipse_rad(1) =
+          (N_bar.array().rowwise() * Phi.col(1).transpose().array())
+              .rowwise()
+              .sum()
+              .abs()
+              .mean();
+      ellipse_rad(2) =
+          (N_bar.array().rowwise() * Phi.col(2).transpose().array())
+              .rowwise()
+              .sum()
+              .abs()
+              .mean();
+      // std::cerr << "Ellipse rad: " << ellipse_rad << std::endl;
+      p_dash = Phi.transpose() * (p_world - n_mean);
+      if (!projectEllipsoid(q_dash.data(), p_dash.data(), ellipse_rad.data())) {
         continue;
       }
-      q = Phi * q_dash + N_mean;
+      q = Phi * q_dash + n_mean;
       norm_vec = p_world - q;
       ++ellipse_cnt;
-      std::cerr << Phi.col(1) << std::endl;
+      // std::cerr << Phi.col(1) << std::endl;
     }
+    sali_time += omp_get_wtime() - sali1;
 
-    res = norm_vec.norm();
+    residual = norm_vec.norm();
     norm_vec.normalize();
 
-    P_skew << SKEW_SYM_MATRX(p_imu);
+    P_skew << SKEW_SYM_MATRX(point_imu.getVector3fMap());
 
-    C = s.rot.conjugate().cast<float>() * norm_vec;
-    A = P_skew * C;
+    c = s.rot.conjugate().cast<float>() * norm_vec;
+    a = P_skew * c;
 
     int feat_num = ++feat_cnt;
     // std::cerr << "Feat num: " << feat_num << std::endl;
     h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
-        VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    h(feat_num - 1) = -res;
+        VEC_FROM_ARRAY(a), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    h(feat_num - 1) = -residual;
 
-    total_residual += res;
+    sali_idxs(feat_num - 1) = sali_idx;
+    sali_vals(feat_num - 1) = sali(sali_idx);
+
+    total_residual += residual;
   }
+
+  std::cerr << "Rad time: " << rad_time << std::endl;
+  std::cerr << "Knn time: " << knn_time << std::endl;
+  std::cerr << "Cov time: " << cov_time << std::endl;
+  std::cerr << "Eig time: " << eig_time << std::endl;
+  std::cerr << "Sali time: " << sali_time << std::endl;
 
   h.conservativeResize(feat_cnt, 1);
   h_x.conservativeResize(feat_cnt, 12);
+
+  filter_thres = ((max_sali - min_sali) * 0.1) + min_sali;
+
+#pragma omp parallel for
+  for (int i = 0; i < feat_cnt; i++) {
+    if (sali_vals(i) >= filter_thres(sali_idxs(i))) {
+      int filter_idx = ++filter_cnt;
+      h.row(filter_idx - 1) = h.row(i);
+      h_x.row(filter_idx - 1) = h_x.row(i);
+    }
+  }
+
+  h.conservativeResize(filter_cnt, 1);
+  h_x.conservativeResize(filter_cnt, 12);
+
   ekfom_data.h = h;
   ekfom_data.h_x = h_x;
 
   res_mean_last = total_residual / feat_cnt;
-  avg_num_neighbours /= feats_down_size;
 
   std::cerr << "Res mean: " << res_mean_last << std::endl;
   std::cerr << "Num feats: " << feat_cnt << std::endl;
-  std::cerr << "Num planes: " << line_cnt << std::endl;
-  std::cerr << "Num curves: " << plane_cnt << std::endl;
-  std::cerr << "Num junctions: " << ellipse_cnt << std::endl;
-  std::cerr << "Average number of neighbours: " << avg_num_neighbours
-            << std::endl;
+  std::cerr << "Num filter: " << filter_cnt << std::endl;
+  std::cerr << "Num planes: " << plane_cnt << std::endl;
+  std::cerr << "Num cylinder: " << cyl_cnt << std::endl;
+  std::cerr << "Num ellipse: " << ellipse_cnt << std::endl;
+  std::cerr << "Average number of neighbours: "
+            << avg_num_neighbours / feats_down_size << std::endl;
 
   match_time += omp_get_wtime() - match_start;
   solve_time += omp_get_wtime() - solve_start_;
@@ -909,11 +998,11 @@ void LaserMappingNode::compute_eigendecomposition(
     // std::cerr << "Neighbours: " << N.rows() << std::endl;
 
     N = Eigen::MatrixXf::Zero(1000, 3);
-    N.col(0) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
-    N.col(1) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
-    // N.col(2) = filter_size_corner_min * Eigen::VectorXf::Random(1000);
+    N.col(0) = filter_size_corner_min * (Eigen::VectorXf::Random(1000));
+    N.col(1) = filter_size_corner_min * (Eigen::VectorXf::Random(1000));
+    N.col(2) = filter_size_corner_min * (Eigen::VectorXf::Random(1000));
 
-    N_mean = Eigen::Vector3f(0, 0, 0.1);
+    N_mean = N.colwise().mean();
     N_bar = (N.rowwise() - N_mean.transpose());
     N_norm = N_bar.rowwise().norm();
     N_bar.rowwise().normalize();
@@ -930,7 +1019,7 @@ void LaserMappingNode::compute_eigendecomposition(
       Cov += c_ij * R_ij * Eigen::Matrix3f::Identity() * Rt_ij;
     }
 
-    eig.compute(Cov);
+    eig.computeDirect(Cov);
     Phi = eig.eigenvectors();
     Lambda = eig.eigenvalues().cwiseAbs();
     std::cerr << "Eigenvalues TV: " << Lambda.transpose() << std::endl;
@@ -953,7 +1042,7 @@ void LaserMappingNode::compute_eigendecomposition(
       Cov += c_ij * R_ij * Cov2 * Rt_ij;
     }
 
-    eig.compute(Cov);
+    eig.computeDirect(Cov);
     Phi = eig.eigenvectors();
     Lambda = eig.eigenvalues().cwiseAbs();
     std::cerr << "Eigenvalues TV2: " << Lambda.transpose() << std::endl;
@@ -983,6 +1072,8 @@ void LaserMappingNode::compute_eigendecomposition(
     saliency << Lambda(2) - Lambda(1), Lambda(1) - Lambda(0), Lambda(0);
     saliency.maxCoeff(&prim);
     Lambda = Lambda.cwiseSqrt();
+
+    std::cerr << "Saliency: " << saliency << std::endl;
 
     if (prim == 0) {
       // Point to plane
@@ -1204,7 +1295,7 @@ LaserMappingNode::LaserMappingNode(
 
   fill(epsi, epsi + 23, 0.001);
   kf.init_dyn_share(get_f, df_dx, df_dw,
-                    std::bind(&LaserMappingNode::h_share_model, this,
+                    std::bind(&LaserMappingNode::compute_tensor_vote, this,
                               std::placeholders::_1, std::placeholders::_2),
                     NUM_MAX_ITERATIONS, epsi);
 
