@@ -775,16 +775,16 @@ void LaserMappingNode::tensor_registration(
   Eigen::Vector3f filter_thres;
   Eigen::MatrixXd h(feats_down_size, 1);
   Eigen::MatrixXd h_x(feats_down_size, 12);
-  std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
-  std::atomic<float> max_residual = 0;
+  std::atomic<int> feat_cnt = 0, filter_cnt = 0, plane_cnt = 0, curve_cnt = 0,
+                   junct_cnt = 0;
+  std::atomic<float> max_residual = 0, mean_residual = 0;
 
   total_residual = 0.0;
 
   double match_start = omp_get_wtime();
   double solve_start_ = omp_get_wtime();
 
-  filter_thres =
-      mean_sali / sali_cnt;  //((max_sali - min_sali) * 0.5) + min_sali;
+  filter_thres = 0.25 * (mean_sali / float(sali_cnt));
 
 #pragma omp parallel for
   for (int i = 0; i < feats_down_size; i++) {
@@ -820,12 +820,12 @@ void LaserMappingNode::tensor_registration(
       q_dash = q.dot(eigenvectors[N_idxs[0]].col(2)) *
                eigenvectors[N_idxs[0]].col(2);
       p_dash = p_world - q_dash;
-      point_proj.getVector3fMap() = p_dash;
-      ioctree.knnNeighbors(point_proj, 1, N_p_idxs, N_p_dst);
-      if (sqrt(N_p_dst[0]) > filter_size_map_min) {
-        // std::cerr << "Plane proximity triggered" << std::endl;
-        continue;
-      }
+      // point_proj.getVector3fMap() = p_dash;
+      // ioctree.knnNeighbors(point_proj, 1, N_p_idxs, N_p_dst);
+      // if (sqrt(N_p_dst[0]) > filter_size_map_min) {
+      //   std::cerr << "Plane proximity triggered" << std::endl;
+      //   continue;
+      // }
       norm_vec = p_world - p_dash;
       ++plane_cnt;
     } else if (sali_idx == 1) {
@@ -834,12 +834,12 @@ void LaserMappingNode::tensor_registration(
       q_dash = q.dot(eigenvectors[N_idxs[0]].col(0)) *
                eigenvectors[N_idxs[0]].col(0);
       p_dash = n_world + q_dash;
-      point_proj.getVector3fMap() = p_dash;
-      ioctree.knnNeighbors(point_proj, 1, N_p_idxs, N_p_dst);
-      if (sqrt(N_p_dst[0]) > filter_size_map_min) {
-        // std::cerr << "Curve proximity triggered" << std::endl;
-        continue;
-      }
+      // point_proj.getVector3fMap() = p_dash;
+      // ioctree.knnNeighbors(point_proj, 1, N_p_idxs, N_p_dst);
+      // if (sqrt(N_p_dst[0]) > filter_size_map_min) {
+      //   std::cerr << "Plane proximity triggered" << std::endl;
+      //   continue;
+      // }
       norm_vec = p_world - p_dash;
       ++curve_cnt;
     } else if (sali_idx == 2) {
@@ -851,6 +851,7 @@ void LaserMappingNode::tensor_registration(
     residual = norm_vec.norm();
     norm_vec.normalize();
     max_residual = fmax(max_residual, residual);
+    mean_residual = mean_residual + residual;
 
     P_skew << SKEW_SYM_MATRX(point_imu.getVector3fMap());
 
@@ -865,8 +866,22 @@ void LaserMappingNode::tensor_registration(
     total_residual += residual;
   }
 
+  mean_residual = mean_residual / feat_cnt;
+
   h.conservativeResize(feat_cnt, 1);
   h_x.conservativeResize(feat_cnt, 12);
+
+  // #pragma omp parallel for
+  //   for (int i = 0; i < feat_cnt; i++) {
+  //     if (h(i) > -mean_residual) {
+  //       int filter_idx = ++filter_cnt;
+  //       h.row(filter_idx - 1) = h.row(i);
+  //       h_x.row(filter_idx - 1) = h_x.row(i);
+  //     }
+  //   }
+
+  //   h.conservativeResize(filter_cnt, 1);
+  //   h_x.conservativeResize(filter_cnt, 12);
 
   ekfom_data.h = h;
   ekfom_data.h_x = h_x;
@@ -874,8 +889,10 @@ void LaserMappingNode::tensor_registration(
   res_mean_last = total_residual / feat_cnt;
 
   std::cerr << "Max residual: " << max_residual << std::endl;
+  std::cerr << "Mean residual: " << mean_residual << std::endl;
   std::cerr << "Res mean: " << res_mean_last << std::endl;
   std::cerr << "Num feats: " << feat_cnt << std::endl;
+  std::cerr << "Num filter: " << filter_cnt << std::endl;
   std::cerr << "Num planes: " << plane_cnt << std::endl;
   std::cerr << "Num curves: " << curve_cnt << std::endl;
   std::cerr << "Num junctions: " << junct_cnt << std::endl;
