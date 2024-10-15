@@ -66,7 +66,17 @@ def generate_launch_description():
         arguments = "-0.005 -0.010 -0.080 -0.001 0.001 -0.701 0.713 imu_fastlio base_fastlio".split(' ')
     )
 
-    fast_lio = ComposableNode(
+    # fast_lio_node = Node(
+    #     package='fast_lio',
+    #     executable='fastlio_mapping_node',
+    #     name='fast_lio',
+    #     parameters=[PathJoinSubstitution([config_path, config_file]),
+    #                 {'use_sim_time': use_sim_time}],
+    #     output='screen',
+    #     prefix=['gdbserver localhost:3000'],
+    # )
+
+    fast_lio_comp = ComposableNode(
         package='fast_lio',
         plugin='fastlio::LaserMappingNode',
         name='fast_lio',
@@ -78,7 +88,7 @@ def generate_launch_description():
     composable_node = LoadComposableNodes(
         target_container=container_name,
         composable_node_descriptions=[
-            fast_lio,
+            fast_lio_comp,
         ],
     )
 
@@ -93,5 +103,6 @@ def generate_launch_description():
     ld.add_action(rviz_node)
     ld.add_action(odom_tf_node)
     ld.add_action(base_tf_node)
+    # ld.add_action(fast_lio_node)
 
     return ld

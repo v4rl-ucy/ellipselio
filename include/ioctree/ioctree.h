@@ -429,9 +429,10 @@ class Octree {
   void set_down_size(bool down_size) { m_downSize = down_size; }
 
   template <typename ContainerT>
-  void initialize(ContainerT &pts_, std::vector<int> &idxs,
-                  bool down_size = true) {
-    idxs.clear();
+  void initialize(ContainerT &pts_, std::vector<int> &added_idxs,
+                  std::vector<int> &new_idxs, bool down_size = true) {
+    added_idxs.clear();
+    new_idxs.clear();
     m_downSize = down_size;
     clear();
     const size_t pts_num = pts_.size();
@@ -482,7 +483,8 @@ class Octree {
     // 		<<"max: "<<max[0]<<", "<<max[1]<<", "<<max[2]<<", "
     // 		<<std::endl;
     // m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, 0, N - 1, N);
-    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points, idxs);
+    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points,
+                           added_idxs, new_idxs);
     // std::cout<<"createOctant success!"<<std::endl;
 
     for (size_t i = 0; i < points.size(); ++i) {
@@ -491,12 +493,14 @@ class Octree {
   }
 
   template <typename ContainerT>
-  void update(ContainerT &pts_, std::vector<int> &idxs, bool down_size = true) {
+  void update(ContainerT &pts_, std::vector<int> &added_idxs,
+              std::vector<int> &new_idxs, bool down_size = true) {
     if (m_root_ == 0) {
-      initialize(pts_, idxs, down_size);
+      initialize(pts_, added_idxs, new_idxs, down_size);
       return;
     }
-    idxs.clear();
+    added_idxs.clear();
+    new_idxs.clear();
     // std::cout<<"update start\n";
     m_downSize = down_size;
     size_t pts_num = pts_.size();
@@ -586,7 +590,7 @@ class Octree {
 
     if (points_tmp.size() == 0) return;
     // std::cout<<"updateOctant start: "<<points_tmp.size()<<std::endl;;
-    updateOctant(m_root_, points_tmp, idxs);
+    updateOctant(m_root_, points_tmp, added_idxs, new_idxs);
     // std::cout<<"updateOctant end\n";
 
     for (size_t i = 0; i < points_tmp.size(); ++i) {
@@ -896,7 +900,9 @@ class Octree {
   Octree &operator=(const Octree &oct);
 
   Octant *createOctant(float x, float y, float z, float extent,
-                       std::vector<float *> &points, std::vector<int> &idxs) {
+                       std::vector<float *> &points,
+                       std::vector<int> &added_idxs,
+                       std::vector<int> &new_idxs) {
     // For a leaf we don't have to change anything; points are already correctly
     // linked or correctly reordered.
     Octant *octant = new Octant;
@@ -928,7 +934,7 @@ class Octree {
         float childY = y + factor[(i & 2) > 0] * extent;
         float childZ = z + factor[(i & 4) > 0] * extent;
         octant->child[i] = createOctant(childX, childY, childZ, childExtent,
-                                        child_points[i], idxs);
+                                        child_points[i], added_idxs, new_idxs);
       }
     } else {
       const size_t size = min(points.size(), m_bucketSize);
@@ -939,8 +945,9 @@ class Octree {
         std::copy(points[i], points[i] + dim, continue_points + dim * i);
         octant->points[i] = continue_points + dim * i;
         if (octant->points[i][3] < 0) {
-          idxs.push_back(-(octant->points[i][3] + 1));
+          added_idxs.push_back(-(octant->points[i][3] + 1));
           octant->points[i][3] = last_pts_num++;
+          new_idxs.push_back(octant->points[i][3]);
         }
       }
     }
@@ -948,7 +955,7 @@ class Octree {
   }
 
   void updateOctant(Octant *octant, const std::vector<float *> &points,
-                    std::vector<int> &idxs) {
+                    std::vector<int> &added_idxs, std::vector<int> &new_idxs) {
     // std::cout<<"updateOctant0 start "<<points.size()<<std::endl;
     static const float factor[] = {-0.5f, 0.5f};
     const float x = octant->x, y = octant->y, z = octant->z,
@@ -979,8 +986,9 @@ class Octree {
           float childX = x + factor[(i & 1) > 0] * extent;
           float childY = y + factor[(i & 2) > 0] * extent;
           float childZ = z + factor[(i & 4) > 0] * extent;
-          octant->child[i] = createOctant(childX, childY, childZ, childExtent,
-                                          child_points[i], idxs);
+          octant->child[i] =
+              createOctant(childX, childY, childZ, childExtent, child_points[i],
+                           added_idxs, new_idxs);
         }
         delete[] octant->points[0];
         std::vector<float *>().swap(octant->points);  // 清空非叶子节点索引
@@ -1001,8 +1009,9 @@ class Octree {
                     continue_points + dim * i);
           octant->points[i] = continue_points + dim * i;
           if (octant->points[i][3] < 0) {
-            idxs.push_back(-(octant->points[i][3] + 1));
+            added_idxs.push_back(-(octant->points[i][3] + 1));
             octant->points[i][3] = last_pts_num++;
+            new_idxs.push_back(octant->points[i][3]);
           }
         }
         delete[] old_points;
@@ -1028,10 +1037,12 @@ class Octree {
             float childX = x + factor[(i & 1) > 0] * extent;
             float childY = y + factor[(i & 2) > 0] * extent;
             float childZ = z + factor[(i & 4) > 0] * extent;
-            octant->child[i] = createOctant(childX, childY, childZ, childExtent,
-                                            child_points[i], idxs);
+            octant->child[i] =
+                createOctant(childX, childY, childZ, childExtent,
+                             child_points[i], added_idxs, new_idxs);
           } else
-            updateOctant(octant->child[i], child_points[i], idxs);
+            updateOctant(octant->child[i], child_points[i], added_idxs,
+                         new_idxs);
         }
       }
     }

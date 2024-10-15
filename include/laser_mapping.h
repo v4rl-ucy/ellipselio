@@ -57,6 +57,7 @@
 #include <mutex>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include <random>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -97,8 +98,9 @@ class LaserMappingNode : public rclcpp::Node {
   void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::UniquePtr msg);
   void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams);
-  int tensor_density_expection(Eigen::Vector3f &lambda, int num, float radius,
-                               float sigma);
+  bool tensor_density_expection(Eigen::Vector3f &eig_val);
+  void compute_tensor_vote(std::vector<int> &loop_idxs,
+                           std::vector<int> &return_idxs, bool first_pass);
   void map_incremental(bool init_map);
   void publish_frame_world();
   void publish_frame_body();
@@ -113,7 +115,7 @@ class LaserMappingNode : public rclcpp::Node {
                      esekfom::dyn_share_datastruct<double> &ekfom_data);
   void compute_eigendecomposition(
       state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
-  void compute_tensor_vote(state_ikfom &s,
+  void tensor_registration(state_ikfom &s,
                            esekfom::dyn_share_datastruct<double> &ekfom_data);
 
   void init_cam_process();
@@ -206,8 +208,21 @@ class LaserMappingNode : public rclcpp::Node {
   bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
   bool is_first_lidar = true;
 
+  int map_counter = 0;
+  float tensor_sigma = 0, tensor_radius = 0, tensor_d1 = 0, tensor_d2 = 0,
+        tensor_d3 = 0;
+
+  int sali_cnt = 0;
+  Eigen::Vector3f max_sali;
+  Eigen::Vector3f min_sali;
+  Eigen::Vector3f mean_sali;
+
   vector<Eigen::Matrix3f> tensors;
-  vector<vector<int>> filters;
+  vector<Eigen::Matrix3f> eigenvectors;
+  vector<Eigen::Vector3f> eigenvalues;
+  vector<vector<bool>> filters;
+  vector<int> last_pt_update;
+  vector<int> saliency_idxs;
 
   vector<string> cam_topics;
   vector<double> cam_intrinsics;
