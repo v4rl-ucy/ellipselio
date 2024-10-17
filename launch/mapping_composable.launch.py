@@ -65,16 +65,46 @@ def generate_launch_description():
         executable = "static_transform_publisher",
         arguments = "-0.005 -0.010 -0.080 -0.001 0.001 -0.701 0.713 imu_fastlio base_fastlio".split(' ')
     )
+    ouster_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "0 0 0 0 0 0 1 imu_fastlio os1_imu".split(' ')
+    )
+    rooster_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "-0.006253 0.011775 0.028535 0 0 1 0 os1_imu os1_lidar".split(' ')
+    )
+    camera_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "0.07796081 0.02937116 -0.01774574 -0.6490941 0.2612981 -0.2760486 0.6589365 os1_imu rs_cam1_optical".split(' ')
+    )
+    base_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "0 0 0 0.5 -0.5 0.5 0.5 rs_cam1_optical rs_cam1_base".split(' ')
+    )
+    odom_cam_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "0.07796081 0.02937116 -0.01774574 -0.6490941 0.2612981 -0.2760486 0.6589365 odom_fastlio odom_cam1_optical".split(' ')
+    )
+    odom_base_tf_node = Node(
+        package = "tf2_ros", 
+        executable = "static_transform_publisher",
+        arguments = "0 0 0 0.5 -0.5 0.5 0.5 odom_cam1_optical odom_cam1_base".split(' ')
+    )
 
-    # fast_lio_node = Node(
-    #     package='fast_lio',
-    #     executable='fastlio_mapping_node',
-    #     name='fast_lio',
-    #     parameters=[PathJoinSubstitution([config_path, config_file]),
-    #                 {'use_sim_time': use_sim_time}],
-    #     output='screen',
-    #     prefix=['gdbserver localhost:3000'],
-    # )
+    fast_lio_node = Node(
+        package='fast_lio',
+        executable='fastlio_mapping_node',
+        name='fast_lio',
+        parameters=[PathJoinSubstitution([config_path, config_file]),
+                    {'use_sim_time': use_sim_time}],
+        output='screen',
+        prefix=['gdbserver localhost:3000'],
+    )
 
     fast_lio_comp = ComposableNode(
         package='fast_lio',
@@ -101,8 +131,14 @@ def generate_launch_description():
     ld.add_action(container_name_arg)
     ld.add_action(composable_node)
     ld.add_action(rviz_node)
-    ld.add_action(odom_tf_node)
+    ld.add_action(ouster_tf_node)
+    ld.add_action(rooster_tf_node)
+    ld.add_action(camera_tf_node)
     ld.add_action(base_tf_node)
+    ld.add_action(odom_cam_tf_node)
+    ld.add_action(odom_base_tf_node)
+    # ld.add_action(odom_tf_node)
+    # ld.add_action(base_tf_node)
     # ld.add_action(fast_lio_node)
 
     return ld
