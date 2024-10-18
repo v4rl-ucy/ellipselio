@@ -604,7 +604,6 @@ void LaserMappingNode::publish_odometry() {
   odomAftMapped.child_frame_id = "imu_fastlio";
   odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
   set_posestamp(odomAftMapped.pose);
-  pubOdomAftMapped_->publish(odomAftMapped);
   auto P = kf.get_P();
   for (int i = 0; i < 6; i++) {
     int k = i < 3 ? i + 3 : i - 3;
@@ -615,6 +614,7 @@ void LaserMappingNode::publish_odometry() {
     odomAftMapped.pose.covariance[i * 6 + 4] = P(k, 1);
     odomAftMapped.pose.covariance[i * 6 + 5] = P(k, 2);
   }
+  pubOdomAftMapped_->publish(odomAftMapped);
 
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_fastlio";
@@ -1301,11 +1301,12 @@ LaserMappingNode::LaserMappingNode(
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
       std::bind(&LaserMappingNode::timer_callback, this));
-  pub_odom_timer_ =
-      rclcpp::create_timer(this, this->get_clock(),
-                           std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
-                           std::bind(&LaserMappingNode::publish_odometry, this),
-                           pub_callback_group_);
+  // pub_odom_timer_ =
+  //     rclcpp::create_timer(this, this->get_clock(),
+  //                          std::chrono::milliseconds(1000 /
+  //                          p_pre->SCAN_RATE),
+  //                          std::bind(&LaserMappingNode::publish_odometry,
+  //                          this), pub_callback_group_);
   pub_path_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
       std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
@@ -1526,6 +1527,7 @@ void LaserMappingNode::timer_callback() {
     geoQuat.y = state_point.rot.coeffs()[1];
     geoQuat.z = state_point.rot.coeffs()[2];
     geoQuat.w = state_point.rot.coeffs()[3];
+    publish_odometry();
 
     double t_update_end = omp_get_wtime();
     t5 = omp_get_wtime();
