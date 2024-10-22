@@ -98,9 +98,18 @@ class LaserMappingNode : public rclcpp::Node {
   void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::UniquePtr msg);
   void imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   bool sync_packages(MeasureGroup &meas, CamProcessVec &p_cams);
+
   bool tensor_density_expection(Eigen::Vector3f &eig_val);
-  void compute_tensor_vote(std::vector<int> &loop_idxs,
-                           std::vector<int> &return_idxs, bool first_pass);
+  void compute_tensor_vote(int i, int j, Eigen::Matrix3f &A_j, bool first_pass);
+  void compute_tensor_eigen(int i, Eigen::Matrix3f &tensor, bool first_pass);
+  void tensor_vote_pass_1(int old_map_size, std::vector<int> &added_idxs,
+                          std::vector<int> &updated_idxs);
+  void tensor_vote_pass_2(std::vector<int> &added_idxs,
+                          std::vector<int> &updated_idxs);
+  void compute_geometric_primitive(int map_i, int sali_idx,
+                                   Eigen::Vector3f &p_world,
+                                   Eigen::Vector3f &norm_vec);
+
   void map_incremental(bool init_map);
   void publish_frame_world();
   void publish_frame_body();
@@ -111,6 +120,7 @@ class LaserMappingNode : public rclcpp::Node {
   void set_posestamp(T &out);
   void publish_odometry();
   void publish_path();
+
   void h_share_model(state_ikfom &s,
                      esekfom::dyn_share_datastruct<double> &ekfom_data);
   void compute_eigendecomposition(
@@ -212,17 +222,20 @@ class LaserMappingNode : public rclcpp::Node {
   float tensor_sigma = 0, tensor_radius = 0, tensor_d1 = 0, tensor_d2 = 0,
         tensor_d3 = 0;
 
-  int sali_cnt = 0;
-  Eigen::Vector3f max_sali;
-  Eigen::Vector3f min_sali;
   Eigen::Vector3f mean_sali;
 
-  vector<Eigen::Matrix3f> tensors;
+  vector<Eigen::Matrix3f> tensors_p1;
+  vector<Eigen::Matrix3f> tensors_p2;
   vector<Eigen::Matrix3f> eigenvectors;
-  vector<Eigen::Vector3f> eigenvalues;
-  vector<vector<bool>> filters;
+  vector<Eigen::Vector3f> salivalues;
+
+  vector<int> update_cnt;
   vector<int> last_pt_update;
   vector<int> saliency_idxs;
+  vector<float> mean_diff_1;
+  vector<float> mean_diff_2;
+  vector<vector<bool>> filters;
+  vector<vector<int>> neighbours;
 
   vector<string> cam_topics;
   vector<double> cam_intrinsics;

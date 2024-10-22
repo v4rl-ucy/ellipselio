@@ -310,7 +310,7 @@ void Preprocess::oust64_handler(
                      pl_orig.points[i].y * pl_orig.points[i].y +
                      pl_orig.points[i].z * pl_orig.points[i].z;
 
-      if (range < (blind * blind)) continue;
+      if (sqrt(range) < blind) continue;
 
       Eigen::Vector3d pt_vec;
       FastLioPoint added_pt;
