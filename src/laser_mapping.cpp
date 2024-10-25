@@ -426,6 +426,17 @@ void LaserMappingNode::compute_tensor_eigen(int i, Eigen::Matrix3f &tensor,
     salivalues[i] = sali_val;
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].intensity = (saliency_idxs[i] + 1) * 85;
+
+    if (saliency_idxs[i] == 0) {
+      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(2);
+      map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
+    } else if (saliency_idxs[i] == 1) {
+      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(0);
+      map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
+    } else if (saliency_idxs[i] == 2) {
+      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(2);
+      map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
+    }
   }
 }
 
@@ -445,6 +456,8 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     map_cloud->points[map_i].intensity = 0;
+    map_cloud->points[map_i].curvature = 0;
+    map_cloud->points[map_i].getNormalVector3fMap() = Eigen::Vector3f::Zero();
 
     ioctree.radiusNeighbors(map_cloud->points[map_i], filter_size_corner_min,
                             N_idxs);
