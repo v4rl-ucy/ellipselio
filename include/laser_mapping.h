@@ -229,13 +229,14 @@ class LaserMappingNode : public rclcpp::Node {
   vector<Eigen::Matrix3f> eigenvectors;
   vector<Eigen::Vector3f> salivalues;
 
+  std::vector<int> new_neighbours_map_idx;
+  std::vector<std::atomic<int>> new_neighbours_size;
+  std::vector<std::vector<int>> new_neighbours;
+
   vector<int> update_cnt;
   vector<int> update_idx;
   vector<int> last_pt_update;
-  vector<int> last_pt_update_2;
   vector<int> saliency_idxs;
-  vector<float> mean_diff_1;
-  vector<float> mean_diff_2;
   vector<vector<bool>> filters;
   vector<vector<int>> neighbours;
 

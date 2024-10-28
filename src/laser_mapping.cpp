@@ -444,9 +444,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
                                           std::vector<int> &added_idxs,
                                           std::vector<int> &updated_idxs) {
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
-  std::vector<int> new_neighbours_map_idx(100000);
-  std::vector<std::atomic<int>> new_neighbours_size(100000);
-  std::vector<std::vector<int>> new_neighbours(100000, std::vector<int>(100));
+
   Eigen::VectorXi filter_cnt = Eigen::VectorXi::Zero(added_idxs.size());
   Eigen::VectorXi neighbours_cnt = Eigen::VectorXi::Zero(added_idxs.size());
 
@@ -477,16 +475,16 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
       compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
 
-      if (last_pt_update_2[map_j] != map_counter) {
-        last_pt_update_2[map_j] = map_counter;
+      if (last_pt_update[map_j] != map_counter) {
+        last_pt_update[map_j] = map_counter;
         update_idx[map_j] = new_neighbours_idx++;
         new_neighbours_map_idx[update_idx[map_j]] = map_j;
         new_neighbours_size[update_idx[map_j]] = 0;
         new_neighbours[update_idx[map_j]]
-                      [new_neighbours_size[update_idx[map_j]]++] = map_j;
+                      [new_neighbours_size[update_idx[map_j]]++] = map_i;
       } else if (map_j < old_map_size) {
         new_neighbours[update_idx[map_j]]
-                      [new_neighbours_size[update_idx[map_j]]++] = map_j;
+                      [new_neighbours_size[update_idx[map_j]]++] = map_i;
       }
     }
     tensors_p1[map_i] = K.colwise().sum().reshaped(3, 3);
@@ -516,7 +514,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
 #pragma omp parallel for
     for (int j = 0; j < loop_cnt; j++) {
       Eigen::Matrix3f A_j;
-      int map_j = new_neighbours[map_i][j];
+      int map_j = new_neighbours[i][j];
       compute_tensor_vote(map_i, map_j, A_j, false);
       K.row(j) = A_j.reshaped(1, 9);
     }
@@ -615,10 +613,7 @@ void LaserMappingNode::map_incremental(bool init_map) {
   saliency_idxs.resize(map_cloud->size(), 0);
   update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
-  mean_diff_1.resize(map_cloud->size(), 0);
-  mean_diff_2.resize(map_cloud->size(), 0);
   last_pt_update.resize(map_cloud->size(), map_counter);
-  last_pt_update_2.resize(map_cloud->size(), map_counter);
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(3, false));
 
@@ -632,9 +627,14 @@ void LaserMappingNode::map_incremental(bool init_map) {
 
   std::cerr << "Added idxs size: " << new_idxs.size() << std::endl;
   if (added_idxs.size() > 0) {
+    double pass_1_start = omp_get_wtime();
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
+    double pass_1_end = omp_get_wtime();
+    std::cerr << "Pass 1 time: " << pass_1_end - pass_1_start << std::endl;
     std::cerr << "Updated idxs size: " << updated_idxs.size() << std::endl;
     tensor_vote_pass_2(new_idxs, updated_idxs);
+    double pass_2_end = omp_get_wtime();
+    std::cerr << "Pass 2 time: " << pass_2_end - pass_1_end << std::endl;
   }
 
   map_counter++;
@@ -1334,6 +1334,11 @@ LaserMappingNode::LaserMappingNode(
 
   mean_sali = Eigen::Vector3f::Zero();
 
+  new_neighbours_map_idx = std::vector<int>(1000000);
+  new_neighbours_size = std::vector<std::atomic<int>>(1000000);
+  new_neighbours =
+      std::vector<std::vector<int>>(1000000, std::vector<int>(1000));
+
   tensor_sigma = filter_size_map_min;
   tensor_radius = filter_size_corner_min;
   tensor_d1 = (std::sqrt(M_PI * tensor_sigma) *
@@ -1595,17 +1600,17 @@ void LaserMappingNode::timer_callback() {
     std::cerr << "Scan size: " << feats_undistort->size() << std::endl;
     std::cerr << "Downsample size: " << added_idxs.size() << std::endl;
 
-    for (int i = 0; i < added_idxs.size(); i++) {
-      ioctree_scan.knnNeighbors(feats_undistort->points[added_idxs[i]], 1,
-                                N_idxs, N_dst);
-      if (sqrt(N_dst[0]) <= filter_size_corner_min) {
-        filter_idxs.push_back(added_idxs[i]);
-      }
-    }
+    // for (int i = 0; i < added_idxs.size(); i++) {
+    //   ioctree_scan.knnNeighbors(feats_undistort->points[added_idxs[i]], 1,
+    //                             N_idxs, N_dst);
+    //   if (sqrt(N_dst[0]) <= filter_size_corner_min) {
+    //     filter_idxs.push_back(added_idxs[i]);
+    //   }
+    // }
 
-    std::cerr << "Filtered scan size: " << filter_idxs.size() << std::endl;
+    // std::cerr << "Filtered scan size: " << filter_idxs.size() << std::endl;
 
-    *feats_down_body = FastLioPointCloud(*feats_undistort, filter_idxs);
+    *feats_down_body = FastLioPointCloud(*feats_undistort, added_idxs);
 
     feats_down_size = feats_down_body->points.size();
 
