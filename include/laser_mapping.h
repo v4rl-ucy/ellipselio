@@ -230,7 +230,9 @@ class LaserMappingNode : public rclcpp::Node {
   vector<Eigen::Vector3f> salivalues;
 
   vector<int> update_cnt;
+  vector<int> update_idx;
   vector<int> last_pt_update;
+  vector<int> last_pt_update_2;
   vector<int> saliency_idxs;
   vector<float> mean_diff_1;
   vector<float> mean_diff_2;
