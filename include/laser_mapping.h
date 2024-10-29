@@ -235,7 +235,7 @@ class LaserMappingNode : public rclcpp::Node {
 
   vector<int> update_cnt;
   vector<int> update_idx;
-  vector<int> last_pt_update;
+  vector<int> updated_pt;
   vector<int> saliency_idxs;
   vector<vector<bool>> filters;
   vector<vector<int>> neighbours;

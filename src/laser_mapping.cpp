@@ -443,10 +443,11 @@ void LaserMappingNode::compute_tensor_eigen(int i, Eigen::Matrix3f &tensor,
 void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
                                           std::vector<int> &added_idxs,
                                           std::vector<int> &updated_idxs) {
+  int max_update_cnt = 0, max_neighbours = 0;
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
 
-  Eigen::VectorXi filter_cnt = Eigen::VectorXi::Zero(added_idxs.size());
-  Eigen::VectorXi neighbours_cnt = Eigen::VectorXi::Zero(added_idxs.size());
+  // Eigen::VectorXi filter_cnt = Eigen::VectorXi::Zero(added_idxs.size());
+  // Eigen::VectorXi neighbours_cnt = Eigen::VectorXi::Zero(added_idxs.size());
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -464,8 +465,8 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
                             N_idxs);
     neighbours[map_i] = N_idxs;
 
-    loop_cnt = neighbours[map_i].size();
-    neighbours_cnt(i) = loop_cnt;
+    loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
+    // neighbours_cnt(i) = loop_cnt;
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
 
 #pragma omp parallel for
@@ -475,8 +476,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
       compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
 
-      if (last_pt_update[map_j] != map_counter) {
-        last_pt_update[map_j] = map_counter;
+      if (!updated_pt[map_j]++) {
         update_idx[map_j] = new_neighbours_idx++;
         new_neighbours_map_idx[update_idx[map_j]] = map_j;
         new_neighbours_size[update_idx[map_j]] = 0;
@@ -496,18 +496,32 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     compute_tensor_eigen(map_i, tensor_i1, true);
   }
 
-  std::cerr << "Update idxs: " << new_neighbours_idx << std::endl;
-  std::cerr << "Average num neighbours: " << neighbours_cnt.mean() << std::endl;
+  // std::cerr << "Update idxs: " << new_neighbours_idx << std::endl;
+  // std::cerr << "Average num neighbours: " << neighbours_cnt.mean() <<
+  // std::endl; std::cerr << "Max num neighbours: " << neighbours_cnt.maxCoeff()
+  // << std::endl;
 
+  updated_idxs.resize(new_neighbours_idx);
 #pragma omp parallel for
   for (int i = 0; i < new_neighbours_idx; i++) {
-    int map_i = new_neighbours_map_idx[i];
-    int loop_cnt = new_neighbours_size[i];
     Eigen::MatrixXf K;
     Eigen::Matrix3f tensor_i1;
+    int map_i, loop_cnt, max_loop;
+
+    map_i = new_neighbours_map_idx[i];
+
+    if (neighbours[map_i].size() >= MAX_NEIGHBOURS) continue;
+
+    updated_idxs[upd_idx++] = map_i;
+
+    max_loop = MAX_NEIGHBOURS - neighbours[map_i].size();
+    loop_cnt = min(int(new_neighbours_size[i]), max_loop);
 
     neighbours[map_i].insert(neighbours[map_i].end(), new_neighbours[i].begin(),
                              new_neighbours[i].begin() + loop_cnt);
+
+    // max_update_cnt = max(max_update_cnt, update_cnt[map_i]++);
+    // max_neighbours = max(max_neighbours, int(neighbours[map_i].size()));
 
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
 
@@ -527,9 +541,10 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     tensor_i1 = tensors_p1[map_i] / float(neighbours[map_i].size());
     compute_tensor_eigen(map_i, tensor_i1, true);
   }
+  updated_idxs.resize(upd_idx);
 
-  updated_idxs.insert(updated_idxs.end(), new_neighbours_map_idx.begin(),
-                      new_neighbours_map_idx.begin() + new_neighbours_idx);
+  // std::cerr << "Max neighbours: " << max_neighbours << std::endl;
+  // std::cerr << "Max update cnt: " << max_update_cnt << std::endl;
 }
 
 void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
@@ -552,8 +567,9 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
-    loop_cnt = neighbours[map_i].size();
+    loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
 
+    updated_pt[map_i] = 0;
     if (!filters[map_i][0]) continue;
 
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
@@ -610,10 +626,10 @@ void LaserMappingNode::map_incremental(bool init_map) {
   ioctree.update(*feats_down_world, added_idxs, new_idxs);
   *map_cloud += FastLioPointCloud(*feats_down_world, added_idxs);
 
-  saliency_idxs.resize(map_cloud->size(), 0);
   update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
-  last_pt_update.resize(map_cloud->size(), map_counter);
+  updated_pt.resize(map_cloud->size(), 1);
+  saliency_idxs.resize(map_cloud->size(), 0);
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(3, false));
 
@@ -1334,10 +1350,9 @@ LaserMappingNode::LaserMappingNode(
 
   mean_sali = Eigen::Vector3f::Zero();
 
-  new_neighbours_map_idx = std::vector<int>(1000000);
-  new_neighbours_size = std::vector<std::atomic<int>>(1000000);
-  new_neighbours =
-      std::vector<std::vector<int>>(1000000, std::vector<int>(1000));
+  new_neighbours_map_idx = std::vector<int>(100000);
+  new_neighbours_size = std::vector<std::atomic<int>>(100000);
+  new_neighbours = std::vector<std::vector<int>>(100000, std::vector<int>(100));
 
   tensor_sigma = filter_size_map_min;
   tensor_radius = filter_size_corner_min;
