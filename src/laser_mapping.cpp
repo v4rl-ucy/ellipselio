@@ -424,6 +424,8 @@ void LaserMappingNode::compute_tensor_eigen(int i, Eigen::Matrix3f &tensor,
 
     filters[i][2] = true;
     salivalues[i] = sali_val;
+    eigenvalues[i] = (1.0 / (eig_val.array() + 1e-3)).matrix().normalized();
+    eigenvalues[i] *= filter_size_corner_min;
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].intensity = (saliency_idxs[i] + 1) * 85;
 
@@ -636,6 +638,7 @@ void LaserMappingNode::map_incremental(bool init_map) {
   tensors_p1.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
   tensors_p2.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
   salivalues.resize(map_cloud->size(), Eigen::Vector3f::Zero());
+  eigenvalues.resize(map_cloud->size(), Eigen::Vector3f::Zero());
   eigenvectors.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
 
   std::cerr << "Map size: " << map_cloud->size() << std::endl;
@@ -712,14 +715,13 @@ void LaserMappingNode::publish_markers() {
 
   start_idx = marker_start_idx;
   end_idx = map_cloud->points.size();
-  step_idx = ceil(1e-3 * (end_idx - start_idx));
+  step_idx = ceil(1e-2 * (end_idx - start_idx));
   count_idx = (end_idx - start_idx) / step_idx;
 
   marker_array.markers.resize(count_idx);
 #pragma omp parallel for
   for (int i = 0; i < count_idx; i++) {
     Eigen::Quaternionf quat;
-    Eigen::Vector3f eigenvalues;
     visualization_msgs::msg::Marker marker;
 
     int map_idx = start_idx + (i * step_idx);
@@ -749,32 +751,26 @@ void LaserMappingNode::publish_markers() {
     marker.pose.position.y = map_cloud->points[map_idx].y;
     marker.pose.position.z = map_cloud->points[map_idx].z;
 
-    eigenvalues(0) = salivalues[map_idx](2);
-    eigenvalues(1) = eigenvalues(0) + salivalues[map_idx](1);
-    eigenvalues(2) = eigenvalues(1) + salivalues[map_idx](0);
-    eigenvalues = (1.0 / (eigenvalues.array() + 1e-3)).matrix().normalized();
-    eigenvalues *= filter_size_corner_min;
-
     switch (saliency_idxs[map_idx]) {
       case 0:
         marker.type = visualization_msgs::msg::Marker::SPHERE;
-        marker.scale.x = eigenvalues(0);
-        marker.scale.y = eigenvalues(1);
-        marker.scale.z = eigenvalues(2);
+        marker.scale.x = 2 * eigenvalues[map_idx](0);
+        marker.scale.y = 2 * eigenvalues[map_idx](1);
+        marker.scale.z = 2 * eigenvalues[map_idx](2);
         marker.color.r = 1.0;
         break;
       case 1:
         marker.type = visualization_msgs::msg::Marker::SPHERE;
-        marker.scale.x = eigenvalues(0);
-        marker.scale.y = eigenvalues(1);
-        marker.scale.z = eigenvalues(2);
+        marker.scale.x = 2 * eigenvalues[map_idx](0);
+        marker.scale.y = 2 * eigenvalues[map_idx](1);
+        marker.scale.z = 2 * eigenvalues[map_idx](2);
         marker.color.g = 1.0;
         break;
       case 2:
         marker.type = visualization_msgs::msg::Marker::SPHERE;
-        marker.scale.x = eigenvalues(0);
-        marker.scale.y = eigenvalues(1);
-        marker.scale.z = eigenvalues(2);
+        marker.scale.x = 2 * eigenvalues[map_idx](0);
+        marker.scale.y = 2 * eigenvalues[map_idx](1);
+        marker.scale.z = 2 * eigenvalues[map_idx](2);
         marker.color.b = 1.0;
         break;
     }
@@ -1019,7 +1015,7 @@ void LaserMappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < feats_down_size; i++) {
-    int sali_idx;
+    int sali_idx, map_i;
     float residual;
     Eigen::Vector3f c, a;
     Eigen::Matrix3f P_skew;
@@ -1034,28 +1030,45 @@ void LaserMappingNode::tensor_registration(
     pointLidarToIMU_ikfom(&point_lidar, &point_imu, s);
     pointLidarToWorld_ikfom(&point_lidar, &point_world, s);
 
-    p_world = point_world.getVector3fMap();
-
     ioctree.knnNeighbors(point_world, 1, N_idxs, N_dst);
-    if (sqrt(N_dst[0]) > filter_size_corner_min || !filters[N_idxs[0]][2])
+    map_i = N_idxs[0];
+    if (!filters[map_i][2]) continue;
+
+    sali_idx = saliency_idxs[map_i];
+    if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
+
+    p_world = point_world.getVector3fMap();
+    n_world = map_cloud->points[map_i].getVector3fMap();
+
+    p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
+    if (p_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum() > 1.0) {
       continue;
-
-    sali_idx = saliency_idxs[N_idxs[0]];
-    if (salivalues[N_idxs[0]](sali_idx) < mean_sali(sali_idx)) continue;
-
-    switch (sali_idx) {
-      case 0:
-        plane_cnt++;
-        break;
-      case 1:
-        curve_cnt++;
-        break;
-      case 2:
-        junct_cnt++;
-        break;
     }
 
-    compute_geometric_primitive(N_idxs[0], sali_idx, p_world, norm_vec);
+    if (sali_idx == 0) {
+      // Point to plane
+      plane_cnt++;
+      q = p_world - n_world;
+      q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
+      p_dash = p_world - q_dash;
+      norm_vec = p_world - p_dash;
+      p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+    } else if (sali_idx == 1) {
+      //  Point to curve
+      curve_cnt++;
+      q = p_world - n_world;
+      q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
+      p_dash = n_world + q_dash;
+      norm_vec = p_world - p_dash;
+      p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+    } else if (sali_idx == 2) {
+      //  Point to junction
+      junct_cnt++;
+      norm_vec = p_world - n_world;
+    }
+    if (p_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum() > 1.0) {
+      continue;
+    }
 
     residual = norm_vec.norm();
     norm_vec.normalize();

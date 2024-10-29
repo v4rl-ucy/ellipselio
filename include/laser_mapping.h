@@ -231,6 +231,7 @@ class LaserMappingNode : public rclcpp::Node {
   vector<Eigen::Matrix3f> tensors_p1;
   vector<Eigen::Matrix3f> tensors_p2;
   vector<Eigen::Matrix3f> eigenvectors;
+  vector<Eigen::Vector3f> eigenvalues;
   vector<Eigen::Vector3f> salivalues;
 
   std::vector<int> new_neighbours_map_idx;
