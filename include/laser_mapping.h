@@ -64,6 +64,7 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <thread>
 #include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
@@ -115,6 +116,7 @@ class LaserMappingNode : public rclcpp::Node {
   void publish_frame_body();
   void publish_effect_world();
   void publish_map();
+  void publish_markers();
   void save_to_pcd();
   template <typename T>
   void set_posestamp(T &out);
@@ -143,6 +145,7 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubMarker_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
   rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr
@@ -154,6 +157,7 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr pub_path_timer_;
   rclcpp::TimerBase::SharedPtr pub_scan_timer_;
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
+  rclcpp::TimerBase::SharedPtr pub_marker_timer_;
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_srv_;
@@ -218,7 +222,7 @@ class LaserMappingNode : public rclcpp::Node {
   bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
   bool is_first_lidar = true;
 
-  int map_counter = 0;
+  int map_counter = 0, marker_start_idx = 0;
   float tensor_sigma = 0, tensor_radius = 0, tensor_d1 = 0, tensor_d2 = 0,
         tensor_d3 = 0;
 

@@ -434,7 +434,7 @@ void LaserMappingNode::compute_tensor_eigen(int i, Eigen::Matrix3f &tensor,
       map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(0);
       map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
     } else if (saliency_idxs[i] == 2) {
-      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(2);
+      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(1);
       map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
     }
   }
@@ -703,6 +703,85 @@ void LaserMappingNode::publish_effect_world() {
   laserCloudFullRes3.header.stamp = get_ros_time(lidar_end_time);
   laserCloudFullRes3.header.frame_id = "odom_fastlio";
   pubLaserCloudEffect_->publish(laserCloudFullRes3);
+}
+
+void LaserMappingNode::publish_markers() {
+  std::atomic<int> marker_idx = 0;
+  int start_idx, end_idx, step_idx, count_idx;
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  start_idx = marker_start_idx;
+  end_idx = map_cloud->points.size();
+  step_idx = ceil(1e-3 * (end_idx - start_idx));
+  count_idx = (end_idx - start_idx) / step_idx;
+
+  marker_array.markers.resize(count_idx);
+#pragma omp parallel for
+  for (int i = 0; i < count_idx; i++) {
+    Eigen::Quaternionf quat;
+    Eigen::Vector3f eigenvalues;
+    visualization_msgs::msg::Marker marker;
+
+    int map_idx = start_idx + (i * step_idx);
+    if (!filters[map_idx][2]) continue;
+
+    marker.id = map_idx;
+    marker.frame_locked = true;
+    marker.ns = "map_primitives";
+    marker.lifetime = rclcpp::Duration(0, 0);
+    marker.header.frame_id = "odom_fastlio";
+    marker.header.stamp = get_ros_time(lidar_end_time);
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    marker.color.a = 1.0;
+    marker.color.r = 0.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+
+    quat = eigenvectors[map_idx];
+
+    marker.pose.orientation.x = quat.x();
+    marker.pose.orientation.y = quat.y();
+    marker.pose.orientation.z = quat.z();
+    marker.pose.orientation.w = quat.w();
+
+    marker.pose.position.x = map_cloud->points[map_idx].x;
+    marker.pose.position.y = map_cloud->points[map_idx].y;
+    marker.pose.position.z = map_cloud->points[map_idx].z;
+
+    eigenvalues(0) = salivalues[map_idx](2);
+    eigenvalues(1) = eigenvalues(0) + salivalues[map_idx](1);
+    eigenvalues(2) = eigenvalues(1) + salivalues[map_idx](0);
+    eigenvalues = (1.0 / (eigenvalues.array() + 1e-3)).matrix().normalized();
+    eigenvalues *= filter_size_corner_min;
+
+    switch (saliency_idxs[map_idx]) {
+      case 0:
+        marker.type = visualization_msgs::msg::Marker::SPHERE;
+        marker.scale.x = eigenvalues(0);
+        marker.scale.y = eigenvalues(1);
+        marker.scale.z = eigenvalues(2);
+        marker.color.r = 1.0;
+        break;
+      case 1:
+        marker.type = visualization_msgs::msg::Marker::SPHERE;
+        marker.scale.x = eigenvalues(0);
+        marker.scale.y = eigenvalues(1);
+        marker.scale.z = eigenvalues(2);
+        marker.color.g = 1.0;
+        break;
+      case 2:
+        marker.type = visualization_msgs::msg::Marker::SPHERE;
+        marker.scale.x = eigenvalues(0);
+        marker.scale.y = eigenvalues(1);
+        marker.scale.z = eigenvalues(2);
+        marker.color.b = 1.0;
+        break;
+    }
+    marker_array.markers[marker_idx++] = marker;
+  }
+  marker_array.markers.resize(marker_idx);
+  pubMarker_->publish(marker_array);
 }
 
 void LaserMappingNode::publish_map() {
@@ -1356,6 +1435,7 @@ LaserMappingNode::LaserMappingNode(
 
   tensor_sigma = filter_size_map_min;
   tensor_radius = filter_size_corner_min;
+
   tensor_d1 = (std::sqrt(M_PI * tensor_sigma) *
                std::erf(tensor_radius / std::sqrt(tensor_sigma))) /
               (2. * tensor_radius);
@@ -1435,6 +1515,8 @@ LaserMappingNode::LaserMappingNode(
   pubOdomAftMapped_ =
       this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 1);
   pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 1);
+  pubMarker_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+      "/visualization_marker", 1);
   tf_br_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   loop_callback_group_ =
@@ -1463,6 +1545,9 @@ LaserMappingNode::LaserMappingNode(
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
+  pub_marker_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
+      std::bind(&LaserMappingNode::publish_markers, this), pub_callback_group_);
 
   map_save_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "map_save", std::bind(&LaserMappingNode::map_save_callback, this,
