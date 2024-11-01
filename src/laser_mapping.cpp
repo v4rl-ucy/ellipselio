@@ -445,11 +445,7 @@ void LaserMappingNode::compute_tensor_eigen(int i, Eigen::Matrix3f &tensor,
 void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
                                           std::vector<int> &added_idxs,
                                           std::vector<int> &updated_idxs) {
-  int max_update_cnt = 0, max_neighbours = 0;
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
-
-  // Eigen::VectorXi filter_cnt = Eigen::VectorXi::Zero(added_idxs.size());
-  // Eigen::VectorXi neighbours_cnt = Eigen::VectorXi::Zero(added_idxs.size());
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -468,7 +464,6 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     neighbours[map_i] = N_idxs;
 
     loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
-    // neighbours_cnt(i) = loop_cnt;
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
 
 #pragma omp parallel for
@@ -478,7 +473,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
       compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
 
-      if (!updated_pt[map_j]++) {
+      if (!(updated_pt[map_j]++)) {
         update_idx[map_j] = new_neighbours_idx++;
         new_neighbours_map_idx[update_idx[map_j]] = map_j;
         new_neighbours_size[update_idx[map_j]] = 0;
@@ -498,19 +493,16 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     compute_tensor_eigen(map_i, tensor_i1, true);
   }
 
-  // std::cerr << "Update idxs: " << new_neighbours_idx << std::endl;
-  // std::cerr << "Average num neighbours: " << neighbours_cnt.mean() <<
-  // std::endl; std::cerr << "Max num neighbours: " << neighbours_cnt.maxCoeff()
-  // << std::endl;
-
   updated_idxs.resize(new_neighbours_idx);
 #pragma omp parallel for
   for (int i = 0; i < new_neighbours_idx; i++) {
     Eigen::MatrixXf K;
     Eigen::Matrix3f tensor_i1;
-    int map_i, loop_cnt, max_loop;
+    int map_i, loop_cnt, max_loop, old_size;
 
     map_i = new_neighbours_map_idx[i];
+    if (!updated_pt[map_i]) continue;
+    updated_pt[map_i] = 0;
 
     if (neighbours[map_i].size() >= MAX_NEIGHBOURS) continue;
 
@@ -519,11 +511,8 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     max_loop = MAX_NEIGHBOURS - neighbours[map_i].size();
     loop_cnt = min(int(new_neighbours_size[i]), max_loop);
 
-    neighbours[map_i].insert(neighbours[map_i].end(), new_neighbours[i].begin(),
-                             new_neighbours[i].begin() + loop_cnt);
-
-    // max_update_cnt = max(max_update_cnt, update_cnt[map_i]++);
-    // max_neighbours = max(max_neighbours, int(neighbours[map_i].size()));
+    old_size = neighbours[map_i].size();
+    neighbours[map_i].resize(old_size + loop_cnt);
 
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
 
@@ -531,6 +520,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     for (int j = 0; j < loop_cnt; j++) {
       Eigen::Matrix3f A_j;
       int map_j = new_neighbours[i][j];
+      neighbours[map_i][old_size + j] = map_j;
       compute_tensor_vote(map_i, map_j, A_j, false);
       K.row(j) = A_j.reshaped(1, 9);
     }
@@ -544,9 +534,6 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     compute_tensor_eigen(map_i, tensor_i1, true);
   }
   updated_idxs.resize(upd_idx);
-
-  // std::cerr << "Max neighbours: " << max_neighbours << std::endl;
-  // std::cerr << "Max update cnt: " << max_update_cnt << std::endl;
 }
 
 void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
@@ -571,7 +558,6 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                   : updated_idxs[i - added_idxs.size()];
     loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
 
-    updated_pt[map_i] = 0;
     if (!filters[map_i][0]) continue;
 
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
@@ -630,7 +616,7 @@ void LaserMappingNode::map_incremental(bool init_map) {
 
   update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
-  updated_pt.resize(map_cloud->size(), 1);
+  updated_pt.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(3, false));
@@ -855,11 +841,7 @@ void LaserMappingNode::h_share_model(
   corr_normvect->clear();
   total_residual = 0.0;
 
-  /** closest surface search and residual computation **/
-// #ifdef MP_EN
-//   omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
-  // #endif
   for (int i = 0; i < feats_down_size; i++) {
     FastLioPoint &point_body = feats_down_body->points[i];
     FastLioPoint &point_world = feats_down_world->points[i];
@@ -1032,7 +1014,7 @@ void LaserMappingNode::tensor_registration(
 
     ioctree.knnNeighbors(point_world, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
-    if (!filters[map_i][2]) continue;
+    if (sqrt(N_dst[0]) > filter_size_corner_min || !filters[map_i][2]) continue;
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
@@ -1040,34 +1022,39 @@ void LaserMappingNode::tensor_registration(
     p_world = point_world.getVector3fMap();
     n_world = map_cloud->points[map_i].getVector3fMap();
 
-    p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
-    if (p_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum() > 1.0) {
-      continue;
-    }
-
     if (sali_idx == 0) {
       // Point to plane
-      plane_cnt++;
       q = p_world - n_world;
       q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+      if (p_dash.cwiseQuotient(0.1 * eigenvalues[map_i]).cwiseAbs2().sum() >
+          1.0) {
+        continue;
+      }
+      plane_cnt++;
     } else if (sali_idx == 1) {
       //  Point to curve
-      curve_cnt++;
       q = p_world - n_world;
       q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
       p_dash = n_world + q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+      if (p_dash.cwiseQuotient(0.1 * eigenvalues[map_i]).cwiseAbs2().sum() >
+          1.0) {
+        continue;
+      }
+      curve_cnt++;
     } else if (sali_idx == 2) {
       //  Point to junction
-      junct_cnt++;
       norm_vec = p_world - n_world;
-    }
-    if (p_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum() > 1.0) {
-      continue;
+      p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
+      if (p_dash.cwiseQuotient(0.1 * eigenvalues[map_i]).cwiseAbs2().sum() >
+          1.0) {
+        continue;
+      }
+      junct_cnt++;
     }
 
     residual = norm_vec.norm();
@@ -1713,18 +1700,7 @@ void LaserMappingNode::timer_callback() {
     std::cerr << "Scan size: " << feats_undistort->size() << std::endl;
     std::cerr << "Downsample size: " << added_idxs.size() << std::endl;
 
-    // for (int i = 0; i < added_idxs.size(); i++) {
-    //   ioctree_scan.knnNeighbors(feats_undistort->points[added_idxs[i]], 1,
-    //                             N_idxs, N_dst);
-    //   if (sqrt(N_dst[0]) <= filter_size_corner_min) {
-    //     filter_idxs.push_back(added_idxs[i]);
-    //   }
-    // }
-
-    // std::cerr << "Filtered scan size: " << filter_idxs.size() << std::endl;
-
     *feats_down_body = FastLioPointCloud(*feats_undistort, added_idxs);
-
     feats_down_size = feats_down_body->points.size();
 
     t2 = omp_get_wtime();

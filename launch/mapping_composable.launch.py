@@ -129,7 +129,6 @@ def generate_launch_description():
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_rviz_config_path_cmd)
     ld.add_action(container_name_arg)
-    ld.add_action(composable_node)
     ld.add_action(rviz_node)
     ld.add_action(ouster_tf_node)
     ld.add_action(rooster_tf_node)
@@ -139,6 +138,7 @@ def generate_launch_description():
     ld.add_action(odom_base_tf_node)
     # ld.add_action(odom_tf_node)
     # ld.add_action(base_tf_node)
+    ld.add_action(composable_node)
     # ld.add_action(fast_lio_node)
 
     return ld
