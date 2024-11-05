@@ -1003,7 +1003,8 @@ void LaserMappingNode::tensor_registration(
     Eigen::Matrix3f P_skew;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    Eigen::Vector3f sali, p_world, n_world, p_dash, q, q_dash, norm_vec;
+    Eigen::Vector3f sali, p_world, n_world, p_dash, q, q_dash, norm_vec,
+        eig_vals;
 
     FastLioPoint point_imu, point_proj;
     FastLioPoint &point_lidar = feats_down_body->points[i];
@@ -1022,6 +1023,8 @@ void LaserMappingNode::tensor_registration(
     p_world = point_world.getVector3fMap();
     n_world = map_cloud->points[map_i].getVector3fMap();
 
+    eig_vals = eigenvalues[map_i];
+
     if (sali_idx == 0) {
       // Point to plane
       q = p_world - n_world;
@@ -1029,10 +1032,7 @@ void LaserMappingNode::tensor_registration(
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(0.1 * eigenvalues[map_i]).cwiseAbs2().sum() >
-          1.0) {
-        continue;
-      }
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       plane_cnt++;
     } else if (sali_idx == 1) {
       //  Point to curve
@@ -1041,19 +1041,13 @@ void LaserMappingNode::tensor_registration(
       p_dash = n_world + q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(0.1 * eigenvalues[map_i]).cwiseAbs2().sum() >
-          1.0) {
-        continue;
-      }
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       curve_cnt++;
     } else if (sali_idx == 2) {
       //  Point to junction
       norm_vec = p_world - n_world;
       p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
-      if (p_dash.cwiseQuotient(0.1 * eigenvalues[map_i]).cwiseAbs2().sum() >
-          1.0) {
-        continue;
-      }
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       junct_cnt++;
     }
 
