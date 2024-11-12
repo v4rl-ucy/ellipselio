@@ -459,7 +459,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     map_cloud->points[map_i].curvature = 0;
     map_cloud->points[map_i].getNormalVector3fMap() = Eigen::Vector3f::Zero();
 
-    ioctree.radiusNeighbors(map_cloud->points[map_i], filter_size_corner_min,
+    ioctree.radiusNeighbors(map_cloud->points[map_i], map_search_radius,
                             N_idxs);
     neighbours[map_i] = N_idxs;
 
@@ -611,6 +611,8 @@ void LaserMappingNode::map_incremental(bool init_map) {
 
   double st_time = omp_get_wtime();
   int old_map_size = map_cloud->size();
+
+  ioctree.set_bucket_size(map_bucket_size);
   ioctree.update(*feats_down_world, added_idxs, new_idxs);
   *map_cloud += FastLioPointCloud(*feats_down_world, added_idxs);
 
@@ -1015,7 +1017,7 @@ void LaserMappingNode::tensor_registration(
 
     ioctree.knnNeighbors(point_world, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
-    if (sqrt(N_dst[0]) > filter_size_corner_min || !filters[map_i][2]) continue;
+    if (sqrt(N_dst[0]) > map_search_radius || !filters[map_i][2]) continue;
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
@@ -1680,6 +1682,16 @@ void LaserMappingNode::timer_callback() {
     std::vector<float> N_dst;
     std::vector<int> added_idxs, new_idxs, N_idxs, filter_idxs;
 
+    scan_min_extent = 0.01 * p_pre->mean_range;
+    map_bucket_size =
+        1 + floor((1.0 - fmin(1.0, scan_min_extent / filter_size_map_min)) *
+                  MAX_NEIGHBOURS);
+    map_search_radius = fmin(filter_size_corner_min, 10 * scan_min_extent);
+
+    std::cerr << "Min extent: " << scan_min_extent << std::endl;
+    std::cerr << "Bucket size: " << map_bucket_size << std::endl;
+    std::cerr << "Search radius: " << map_search_radius << std::endl;
+
     /*** initialize the map kdtree ***/
     // if (ikdtree.Root_Node == nullptr) {
     if (ioctree.size() == 0) {
@@ -1690,7 +1702,9 @@ void LaserMappingNode::timer_callback() {
     }
 
     /*** downsample the feature points in a scan ***/
+    ioctree_scan.set_min_extent(scan_min_extent);
     ioctree_scan.initialize(*feats_undistort, added_idxs, new_idxs);
+
     std::cerr << "Scan size: " << feats_undistort->size() << std::endl;
     std::cerr << "Downsample size: " << added_idxs.size() << std::endl;
 

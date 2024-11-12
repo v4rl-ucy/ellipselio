@@ -161,6 +161,7 @@ class Preprocess
   int               lidar_type, point_filter_num, SCAN_RATE, N_SCANS, MAX_LINE_NUM, time_unit;
   double            blind, blind_sqr;
   double            time_unit_scale;
+  double            mean_range;
   bool              feature_enabled, given_offset_time, calib_laser;
 
 private:

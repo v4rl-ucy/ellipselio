@@ -226,6 +226,9 @@ class LaserMappingNode : public rclcpp::Node {
   float tensor_sigma = 0, tensor_radius = 0, tensor_d1 = 0, tensor_d2 = 0,
         tensor_d3 = 0;
 
+  int map_bucket_size;
+  double scan_min_extent, map_search_radius;
+
   Eigen::Vector3f mean_sali;
 
   vector<Eigen::Matrix3f> tensors_p1;

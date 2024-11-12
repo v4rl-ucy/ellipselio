@@ -25,6 +25,7 @@ Preprocess::Preprocess()
   smallp_ratio = 1.2;
   given_offset_time = false;
   blind_sqr = blind * blind;
+  mean_range = FLT_MAX;
 
   jump_up_limit = cos(jump_up_limit / 180 * M_PI);
   jump_down_limit = cos(jump_down_limit / 180 * M_PI);
@@ -302,6 +303,8 @@ void Preprocess::oust64_handler(
     }
   } else {
     double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
+    double dyn_blind = fmin(blind, 0.1 * mean_range);
+    mean_range = 0.0;
 
     for (int i = 0; i < pl_orig.points.size(); i++) {
       if (i % point_filter_num != 0) continue;
@@ -310,7 +313,9 @@ void Preprocess::oust64_handler(
                      pl_orig.points[i].y * pl_orig.points[i].y +
                      pl_orig.points[i].z * pl_orig.points[i].z;
 
-      if (sqrt(range) < blind) continue;
+      if (sqrt(range) < dyn_blind) continue;
+
+      mean_range += sqrt(range);
 
       Eigen::Vector3d pt_vec;
       FastLioPoint added_pt;
@@ -323,6 +328,8 @@ void Preprocess::oust64_handler(
 
       pl_surf.push_back(std::move(added_pt));
     }
+
+    mean_range /= pl_surf.points.size();
   }
 }
 
