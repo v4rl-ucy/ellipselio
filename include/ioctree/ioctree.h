@@ -937,7 +937,7 @@ class Octree {
                                         child_points[i], added_idxs, new_idxs);
       }
     } else {
-      const size_t size = min(points.size(), m_bucketSize);
+      const size_t size = std::min(points.size(), m_bucketSize);
       octant->points.resize(size, 0);
       float *continue_points = new float[size * dim];
 
@@ -997,7 +997,7 @@ class Octree {
         if (m_downSize && octant->points.size() >= m_bucketSize) return;
         const size_t old_oct_size = octant->points.size();
         const size_t remain_size =
-            min(points.size(), m_bucketSize - old_oct_size);
+            std::min(points.size(), m_bucketSize - old_oct_size);
         octant->points.insert(octant->points.end(), points.begin(),
                               points.begin() + remain_size);
         const size_t size = octant->points.size();

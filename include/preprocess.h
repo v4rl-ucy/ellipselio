@@ -4,6 +4,7 @@
 #define PREPROCESS_H
 
 #include <common_pcl.h>
+#include <ioctree/ioctree.h>
 
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -161,7 +162,7 @@ class Preprocess
   int               lidar_type, point_filter_num, SCAN_RATE, N_SCANS, MAX_LINE_NUM, time_unit;
   double            blind, blind_sqr;
   double            time_unit_scale;
-  double            mean_range;
+  double            scan_min_extent;
   bool              feature_enabled, given_offset_time, calib_laser;
 
 private:
@@ -188,6 +189,9 @@ private:
   double edgea, edgeb;
   double smallp_intersect, smallp_ratio;
   double vx, vy, vz;
+  double mean_range;
+
+  iOctree::Octree ioctree;
 };
 
 #endif  // PREPROCESS_H

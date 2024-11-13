@@ -227,7 +227,7 @@ class LaserMappingNode : public rclcpp::Node {
         tensor_d3 = 0;
 
   int map_bucket_size;
-  double scan_min_extent, map_search_radius;
+  double map_search_radius;
 
   Eigen::Vector3f mean_sali;
 
@@ -277,7 +277,6 @@ class LaserMappingNode : public rclcpp::Node {
 
   KD_TREE<FastLioPoint> ikdtree;
   iOctree::Octree ioctree;
-  iOctree::Octree ioctree_scan;
 
   V3F XAxisPoint_body;
   V3F XAxisPoint_world;

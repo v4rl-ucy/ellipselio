@@ -111,7 +111,14 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::UniquePtr& msg,
       default_handler(msg);
       break;
   }
-  *pcl_out = pl_surf;
+
+  std::vector<int> added_idxs, new_idxs;
+  scan_min_extent = 0.01 * mean_range;
+
+  ioctree.set_bucket_size(1);
+  ioctree.set_min_extent(scan_min_extent);
+  ioctree.initialize(pl_surf, added_idxs, new_idxs);
+  *pcl_out = FastLioPointCloud(pl_surf, added_idxs);
 }
 
 void Preprocess::avia_handler(
@@ -303,19 +310,19 @@ void Preprocess::oust64_handler(
     }
   } else {
     double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
-    double dyn_blind = fmin(blind, 0.1 * mean_range);
+    double dyn_blind_min = fmin(blind, 0.1 * mean_range);
+    double dyn_blind_max = fmin(100, 10 * mean_range);
+
     mean_range = 0.0;
-
     for (int i = 0; i < pl_orig.points.size(); i++) {
-      if (i % point_filter_num != 0) continue;
-
       double range = pl_orig.points[i].x * pl_orig.points[i].x +
                      pl_orig.points[i].y * pl_orig.points[i].y +
                      pl_orig.points[i].z * pl_orig.points[i].z;
 
-      if (sqrt(range) < dyn_blind) continue;
-
       mean_range += sqrt(range);
+
+      if (sqrt(range) < dyn_blind_min) continue;
+      if (sqrt(range) > dyn_blind_max) continue;
 
       Eigen::Vector3d pt_vec;
       FastLioPoint added_pt;

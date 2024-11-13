@@ -1420,8 +1420,6 @@ LaserMappingNode::LaserMappingNode(
 
   ioctree.set_min_extent(filter_size_map_min);
   ioctree.set_bucket_size(1);
-  ioctree_scan.set_min_extent(filter_size_surf_min);
-  ioctree_scan.set_bucket_size(1);
 
   mean_sali = Eigen::Vector3f::Zero();
 
@@ -1679,16 +1677,14 @@ void LaserMappingNode::timer_callback() {
     /*** Segment the map in lidar FOV ***/
     // lasermap_fov_segment();
 
-    std::vector<float> N_dst;
-    std::vector<int> added_idxs, new_idxs, N_idxs, filter_idxs;
-
-    scan_min_extent = 0.01 * p_pre->mean_range;
     map_bucket_size =
-        1 + floor((1.0 - fmin(1.0, scan_min_extent / filter_size_map_min)) *
-                  MAX_NEIGHBOURS);
-    map_search_radius = fmin(filter_size_corner_min, 10 * scan_min_extent);
+        1 +
+        floor((1.0 - fmin(1.0, p_pre->scan_min_extent / filter_size_map_min)) *
+              MAX_NEIGHBOURS);
+    map_search_radius =
+        fmin(filter_size_corner_min, 10 * p_pre->scan_min_extent);
 
-    std::cerr << "Min extent: " << scan_min_extent << std::endl;
+    std::cerr << "Min extent: " << p_pre->scan_min_extent << std::endl;
     std::cerr << "Bucket size: " << map_bucket_size << std::endl;
     std::cerr << "Search radius: " << map_search_radius << std::endl;
 
@@ -1701,14 +1697,9 @@ void LaserMappingNode::timer_callback() {
       return;
     }
 
-    /*** downsample the feature points in a scan ***/
-    ioctree_scan.set_min_extent(scan_min_extent);
-    ioctree_scan.initialize(*feats_undistort, added_idxs, new_idxs);
-
     std::cerr << "Scan size: " << feats_undistort->size() << std::endl;
-    std::cerr << "Downsample size: " << added_idxs.size() << std::endl;
 
-    *feats_down_body = FastLioPointCloud(*feats_undistort, added_idxs);
+    *feats_down_body = *feats_undistort;
     feats_down_size = feats_down_body->points.size();
 
     t2 = omp_get_wtime();
