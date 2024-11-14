@@ -4,7 +4,7 @@ project(fast_lio)
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
 set(CMAKE_CXX_STANDARD 14)
-set(DEFAULT_BUILD "Release")
+set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -fopenmp -fPIC")
 
 find_package(ament_cmake_auto REQUIRED)
