@@ -25,7 +25,6 @@ Preprocess::Preprocess()
   smallp_ratio = 1.2;
   given_offset_time = false;
   blind_sqr = blind * blind;
-  mean_range = FLT_MAX;
 
   jump_up_limit = cos(jump_up_limit / 180 * M_PI);
   jump_down_limit = cos(jump_down_limit / 180 * M_PI);
@@ -113,7 +112,7 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::UniquePtr& msg,
   }
 
   std::vector<int> added_idxs, new_idxs;
-  scan_min_extent = 0.01 * mean_range;
+  scan_min_extent = 0.02 * mean_range;
 
   ioctree.set_bucket_size(1);
   ioctree.set_min_extent(scan_min_extent);
@@ -309,10 +308,6 @@ void Preprocess::oust64_handler(
       give_feature(pl, types);
     }
   } else {
-    double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
-    double dyn_blind_min = fmin(blind, 0.1 * mean_range);
-    double dyn_blind_max = fmin(100, 10 * mean_range);
-
     mean_range = 0.0;
     for (int i = 0; i < pl_orig.points.size(); i++) {
       double range = pl_orig.points[i].x * pl_orig.points[i].x +
@@ -320,6 +315,17 @@ void Preprocess::oust64_handler(
                      pl_orig.points[i].z * pl_orig.points[i].z;
 
       mean_range += sqrt(range);
+    }
+    mean_range /= pl_orig.points.size();
+
+    double time_stamp = rclcpp::Time(msg->header.stamp).seconds();
+    double dyn_blind_min = fmin(blind, 0.1 * mean_range);
+    double dyn_blind_max = fmin(100, 10 * mean_range);
+
+    for (int i = 0; i < pl_orig.points.size(); i++) {
+      double range = pl_orig.points[i].x * pl_orig.points[i].x +
+                     pl_orig.points[i].y * pl_orig.points[i].y +
+                     pl_orig.points[i].z * pl_orig.points[i].z;
 
       if (sqrt(range) < dyn_blind_min) continue;
       if (sqrt(range) > dyn_blind_max) continue;
@@ -335,8 +341,6 @@ void Preprocess::oust64_handler(
 
       pl_surf.push_back(std::move(added_pt));
     }
-
-    mean_range /= pl_surf.points.size();
   }
 }
 

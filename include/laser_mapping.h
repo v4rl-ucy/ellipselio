@@ -159,6 +159,8 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
   rclcpp::TimerBase::SharedPtr pub_marker_timer_;
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_srv_;
 

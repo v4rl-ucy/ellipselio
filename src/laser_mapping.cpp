@@ -212,7 +212,7 @@ void LaserMappingNode::lasermap_fov_segment() {
 
 void LaserMappingNode::standard_pcl_cbk(
     const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
-  mtx_buffer.lock();
+  // mtx_buffer.lock();
   scan_count++;
   double cur_time = get_time_sec(msg->header.stamp);
   double preprocess_start_time = omp_get_wtime();
@@ -229,14 +229,14 @@ void LaserMappingNode::standard_pcl_cbk(
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(cur_time);
   last_timestamp_lidar = cur_time;
-  s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
-  mtx_buffer.unlock();
-  sig_buffer.notify_all();
+  // s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
+  // mtx_buffer.unlock();
+  // sig_buffer.notify_all();
 }
 
 void LaserMappingNode::livox_pcl_cbk(
     const livox_ros_driver2::msg::CustomMsg::UniquePtr msg) {
-  mtx_buffer.lock();
+  // mtx_buffer.lock();
   double cur_time = get_time_sec(msg->header.stamp);
   double preprocess_start_time = omp_get_wtime();
   scan_count++;
@@ -269,9 +269,9 @@ void LaserMappingNode::livox_pcl_cbk(
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(last_timestamp_lidar);
 
-  s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
-  mtx_buffer.unlock();
-  sig_buffer.notify_all();
+  // s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
+  // mtx_buffer.unlock();
+  // sig_buffer.notify_all();
 }
 
 void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
@@ -286,7 +286,7 @@ void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
 
   double timestamp = get_time_sec(msg->header.stamp);
 
-  mtx_buffer.lock();
+  // mtx_buffer.lock();
 
   if (timestamp < last_timestamp_imu) {
     std::cerr << "lidar loop back, clear buffer" << std::endl;
@@ -296,8 +296,8 @@ void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
   last_timestamp_imu = timestamp;
 
   imu_buffer.push_back(msg);
-  mtx_buffer.unlock();
-  sig_buffer.notify_all();
+  // mtx_buffer.unlock();
+  // sig_buffer.notify_all();
 }
 
 bool LaserMappingNode::sync_packages(MeasureGroup &meas,
@@ -807,7 +807,7 @@ void LaserMappingNode::publish_odometry() {
     odomAftMapped.pose.covariance[i * 6 + 4] = P(k, 1);
     odomAftMapped.pose.covariance[i * 6 + 5] = P(k, 2);
   }
-  pubOdomAftMapped_->publish(odomAftMapped);
+  // pubOdomAftMapped_->publish(odomAftMapped);
 
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_fastlio";
@@ -1425,7 +1425,8 @@ LaserMappingNode::LaserMappingNode(
 
   new_neighbours_map_idx = std::vector<int>(100000);
   new_neighbours_size = std::vector<std::atomic<int>>(100000);
-  new_neighbours = std::vector<std::vector<int>>(100000, std::vector<int>(100));
+  new_neighbours =
+      std::vector<std::vector<int>>(100000, std::vector<int>(1000));
 
   tensor_sigma = filter_size_map_min;
   tensor_radius = filter_size_corner_min;
@@ -1485,52 +1486,50 @@ LaserMappingNode::LaserMappingNode(
   else
     cout << "~~~~" << ROOT_DIR << " doesn't exist" << endl;
 
+  loop_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  imu_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  lidar_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  pub_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+
+  rclcpp::SubscriptionOptions imu_opt, lidar_opt;
+  imu_opt.callback_group = imu_callback_group_;
+  lidar_opt.callback_group = lidar_callback_group_;
+
   /*** ROS subscribe initialization ***/
   if (p_pre->lidar_type == AVIA) {
     sub_pcl_livox_ =
         this->create_subscription<livox_ros_driver2::msg::CustomMsg>(
             lid_topic, rclcpp::SensorDataQoS(),
             std::bind(&LaserMappingNode::livox_pcl_cbk, this,
-                      std::placeholders::_1));
+                      std::placeholders::_1),
+            lidar_opt);
   } else {
     sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         lid_topic, rclcpp::SensorDataQoS(),
         std::bind(&LaserMappingNode::standard_pcl_cbk, this,
-                  std::placeholders::_1));
+                  std::placeholders::_1),
+        lidar_opt);
   }
   sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
       imu_topic, rclcpp::SensorDataQoS(),
-      std::bind(&LaserMappingNode::imu_cbk, this, std::placeholders::_1));
+      std::bind(&LaserMappingNode::imu_cbk, this, std::placeholders::_1),
+      imu_opt);
 
   pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_registered", 1);
   pubLaserCloudMap_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 1);
-  pubOdomAftMapped_ =
-      this->create_publisher<nav_msgs::msg::Odometry>("/Odometry", 1);
-  pubPath_ = this->create_publisher<nav_msgs::msg::Path>("/path", 1);
   pubMarker_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "/visualization_marker", 1);
   tf_br_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-  loop_callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
-      std::bind(&LaserMappingNode::timer_callback, this));
-  // pub_odom_timer_ =
-  //     rclcpp::create_timer(this, this->get_clock(),
-  //                          std::chrono::milliseconds(1000 /
-  //                          p_pre->SCAN_RATE),
-  //                          std::bind(&LaserMappingNode::publish_odometry,
-  //                          this), pub_callback_group_);
-  pub_path_timer_ = rclcpp::create_timer(
-      this, this->get_clock(),
-      std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
-      std::bind(&LaserMappingNode::publish_path, this), pub_callback_group_);
+      std::bind(&LaserMappingNode::timer_callback, this), loop_callback_group_);
   pub_scan_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
       std::chrono::milliseconds(1000 / p_pre->SCAN_RATE),
@@ -1542,10 +1541,6 @@ LaserMappingNode::LaserMappingNode(
   pub_marker_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&LaserMappingNode::publish_markers, this), pub_callback_group_);
-
-  map_save_srv_ = this->create_service<std_srvs::srv::Trigger>(
-      "map_save", std::bind(&LaserMappingNode::map_save_callback, this,
-                            std::placeholders::_1, std::placeholders::_2));
 
   RCLCPP_INFO(this->get_logger(), "Node init finished.");
 }
@@ -1680,7 +1675,7 @@ void LaserMappingNode::timer_callback() {
     map_bucket_size =
         1 +
         floor((1.0 - fmin(1.0, p_pre->scan_min_extent / filter_size_map_min)) *
-              MAX_NEIGHBOURS);
+              NUM_MATCH_POINTS);
     map_search_radius =
         fmin(filter_size_corner_min, 10 * p_pre->scan_min_extent);
 
