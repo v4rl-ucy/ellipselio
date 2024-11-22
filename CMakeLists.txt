@@ -61,7 +61,7 @@ fastlio_mapping_msgs "rosidl_typesupport_cpp")
 
 # ament_export_dependencies(rosidl_default_runtime)
 
-ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/ikd_tree.cpp src/preprocess.cpp src/imu_processing.cpp src/cam_processing.cpp src/project_ellipse.cpp)
+ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/preprocess.cpp src/imu_processing.cpp src/cam_processing.cpp)
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 target_link_libraries(fastlio_mapping "${cpp_typesupport_target}")
 

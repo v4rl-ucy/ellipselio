@@ -153,66 +153,8 @@ void LaserMappingNode::RGBpointLidarLidarToIMU(FastLioPoint const *const pi,
   po->has_color = pi->has_color;
 }
 
-void LaserMappingNode::points_cache_collect() {
-  PointVector points_history;
-  // ikdtree.acquire_removed_points(points_history);
-}
-
-void LaserMappingNode::lasermap_fov_segment() {
-  cub_needrm.clear();
-  kdtree_delete_counter = 0;
-  kdtree_delete_time = 0.0;
-  pointLidarToWorld(XAxisPoint_body, XAxisPoint_world);
-  V3D pos_LiD = pos_lid;
-  if (!Localmap_Initialized) {
-    for (int i = 0; i < 3; i++) {
-      LocalMap_Points.vertex_min[i] = pos_LiD(i) - cube_len / 2.0;
-      LocalMap_Points.vertex_max[i] = pos_LiD(i) + cube_len / 2.0;
-    }
-    Localmap_Initialized = true;
-    return;
-  }
-  float dist_to_map_edge[3][2];
-  bool need_move = false;
-  for (int i = 0; i < 3; i++) {
-    dist_to_map_edge[i][0] = fabs(pos_LiD(i) - LocalMap_Points.vertex_min[i]);
-    dist_to_map_edge[i][1] = fabs(pos_LiD(i) - LocalMap_Points.vertex_max[i]);
-    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE ||
-        dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE)
-      need_move = true;
-  }
-  if (!need_move) return;
-  BoxPointType New_LocalMap_Points, tmp_boxpoints;
-  New_LocalMap_Points = LocalMap_Points;
-  float mov_dist = max((cube_len - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9,
-                       double(DET_RANGE * (MOV_THRESHOLD - 1)));
-  for (int i = 0; i < 3; i++) {
-    tmp_boxpoints = LocalMap_Points;
-    if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE) {
-      New_LocalMap_Points.vertex_max[i] -= mov_dist;
-      New_LocalMap_Points.vertex_min[i] -= mov_dist;
-      tmp_boxpoints.vertex_min[i] = LocalMap_Points.vertex_max[i] - mov_dist;
-      cub_needrm.push_back(tmp_boxpoints);
-    } else if (dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE) {
-      New_LocalMap_Points.vertex_max[i] += mov_dist;
-      New_LocalMap_Points.vertex_min[i] += mov_dist;
-      tmp_boxpoints.vertex_max[i] = LocalMap_Points.vertex_min[i] + mov_dist;
-      cub_needrm.push_back(tmp_boxpoints);
-    }
-  }
-  LocalMap_Points = New_LocalMap_Points;
-
-  points_cache_collect();
-  double delete_begin = omp_get_wtime();
-  if (cub_needrm.size() > 0) {
-    // kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
-  }
-  kdtree_delete_time = omp_get_wtime() - delete_begin;
-}
-
 void LaserMappingNode::standard_pcl_cbk(
     const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
-  // mtx_buffer.lock();
   scan_count++;
   double cur_time = get_time_sec(msg->header.stamp);
   double preprocess_start_time = omp_get_wtime();
@@ -229,14 +171,10 @@ void LaserMappingNode::standard_pcl_cbk(
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(cur_time);
   last_timestamp_lidar = cur_time;
-  // s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
-  // mtx_buffer.unlock();
-  // sig_buffer.notify_all();
 }
 
 void LaserMappingNode::livox_pcl_cbk(
     const livox_ros_driver2::msg::CustomMsg::UniquePtr msg) {
-  // mtx_buffer.lock();
   double cur_time = get_time_sec(msg->header.stamp);
   double preprocess_start_time = omp_get_wtime();
   scan_count++;
@@ -268,10 +206,6 @@ void LaserMappingNode::livox_pcl_cbk(
   p_pre->process(msg, ptr);
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(last_timestamp_lidar);
-
-  // s_plot11[scan_count] = omp_get_wtime() - preprocess_start_time;
-  // mtx_buffer.unlock();
-  // sig_buffer.notify_all();
 }
 
 void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
@@ -286,8 +220,6 @@ void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
 
   double timestamp = get_time_sec(msg->header.stamp);
 
-  // mtx_buffer.lock();
-
   if (timestamp < last_timestamp_imu) {
     std::cerr << "lidar loop back, clear buffer" << std::endl;
     imu_buffer.clear();
@@ -296,8 +228,6 @@ void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
   last_timestamp_imu = timestamp;
 
   imu_buffer.push_back(msg);
-  // mtx_buffer.unlock();
-  // sig_buffer.notify_all();
 }
 
 bool LaserMappingNode::sync_packages(MeasureGroup &meas,
@@ -797,17 +727,6 @@ void LaserMappingNode::publish_odometry() {
   odomAftMapped.child_frame_id = "imu_fastlio";
   odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
   set_posestamp(odomAftMapped.pose);
-  auto P = kf.get_P();
-  for (int i = 0; i < 6; i++) {
-    int k = i < 3 ? i + 3 : i - 3;
-    odomAftMapped.pose.covariance[i * 6 + 0] = P(k, 3);
-    odomAftMapped.pose.covariance[i * 6 + 1] = P(k, 4);
-    odomAftMapped.pose.covariance[i * 6 + 2] = P(k, 5);
-    odomAftMapped.pose.covariance[i * 6 + 3] = P(k, 0);
-    odomAftMapped.pose.covariance[i * 6 + 4] = P(k, 1);
-    odomAftMapped.pose.covariance[i * 6 + 5] = P(k, 2);
-  }
-  // pubOdomAftMapped_->publish(odomAftMapped);
 
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_fastlio";
@@ -821,169 +740,6 @@ void LaserMappingNode::publish_odometry() {
   trans.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
   trans.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
   tf_br_->sendTransform(trans);
-}
-
-void LaserMappingNode::publish_path() {
-  path.header.stamp = get_ros_time(lidar_end_time);
-  path.header.frame_id = "odom_fastlio";
-
-  set_posestamp(msg_body_pose);
-  msg_body_pose.header.stamp =
-      get_ros_time(lidar_end_time);  // ros::Time().fromSec(lidar_end_time);
-  msg_body_pose.header.frame_id = "odom_fastlio";
-
-  path.poses.push_back(msg_body_pose);
-  pubPath_->publish(path);
-}
-
-void LaserMappingNode::h_share_model(
-    state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  double match_start = omp_get_wtime();
-  laserCloudOri->clear();
-  corr_normvect->clear();
-  total_residual = 0.0;
-
-#pragma omp parallel for
-  for (int i = 0; i < feats_down_size; i++) {
-    FastLioPoint &point_body = feats_down_body->points[i];
-    FastLioPoint &point_world = feats_down_world->points[i];
-
-    /* transform to world frame */
-    V3D p_lidar(point_body.x, point_body.y, point_body.z);
-    V3D p_global(s.rot * (s.offset_R_L_I * p_lidar + s.offset_T_L_I) + s.pos);
-    point_world.x = p_global(0);
-    point_world.y = p_global(1);
-    point_world.z = p_global(2);
-    point_world.intensity = point_body.intensity;
-    point_world.r = point_body.r;
-    point_world.g = point_body.g;
-    point_world.b = point_body.b;
-    point_world.has_color = point_body.has_color;
-
-    vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-
-    auto &points_near = Nearest_Points[i];
-
-    if (ekfom_data.converge) {
-      /** Find the closest surfaces in the map **/
-      // ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near,
-      // pointSearchSqDis);
-      ioctree.knnNeighbors(point_world, NUM_MATCH_POINTS, points_near,
-                           pointSearchSqDis);
-      point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false
-                               : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5
-                                   ? false
-                                   : true;
-    }
-
-    if (!point_selected_surf[i]) continue;
-
-    VF(4) pabcd;
-    point_selected_surf[i] = false;
-    if (esti_plane(pabcd, points_near, 0.1f)) {
-      float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
-                  pabcd(2) * point_world.z + pabcd(3);
-      float s = 1 - 0.9 * fabs(pd2) / sqrt(p_lidar.norm());
-
-      if (s > 0.9) {
-        point_selected_surf[i] = true;
-        normvec->points[i].x = pabcd(0);
-        normvec->points[i].y = pabcd(1);
-        normvec->points[i].z = pabcd(2);
-        normvec->points[i].intensity = pd2;
-        res_last[i] = abs(pd2);
-      }
-    }
-  }
-
-  effct_feat_num = 0;
-
-  for (int i = 0; i < feats_down_size; i++) {
-    if (point_selected_surf[i]) {
-      laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
-      corr_normvect->points[effct_feat_num] = normvec->points[i];
-      total_residual += res_last[i];
-      effct_feat_num++;
-    }
-  }
-
-  std::cerr << "Effective points: " << effct_feat_num << std::endl;
-
-  if (effct_feat_num < 1) {
-    ekfom_data.valid = false;
-    std::cerr << "No Effective Points!" << std::endl;
-    // ROS_WARN("No Effective Points! \n");
-    return;
-  }
-
-  std::cerr << "Mean Residual: " << total_residual / effct_feat_num
-            << std::endl;
-  res_mean_last = total_residual / effct_feat_num;
-  match_time += omp_get_wtime() - match_start;
-  double solve_start_ = omp_get_wtime();
-
-  /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
-  ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12);  // 23
-  ekfom_data.h.resize(effct_feat_num);
-
-  for (int i = 0; i < effct_feat_num; i++) {
-    const FastLioPoint &laser_p = laserCloudOri->points[i];
-    V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
-    M3D point_be_crossmat;
-    point_be_crossmat << SKEW_SYM_MATRX(point_this_be);
-    V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
-    M3D point_crossmat;
-    point_crossmat << SKEW_SYM_MATRX(point_this);
-
-    /*** get the normal vector of closest surface/corner ***/
-    const FastLioPoint &norm_p = corr_normvect->points[i];
-    V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
-
-    /*** calculate the Measuremnt Jacobian matrix H ***/
-    V3D C(s.rot.conjugate() * norm_vec);
-    V3D A(point_crossmat * C);
-
-    double res = norm_p.intensity;
-
-    if (extrinsic_est_en) {
-      V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() *
-            C);  // s.rot.conjugate()*norm_vec);
-      ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec(0), norm_vec(1),
-          norm_vec(2), VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
-    } else {
-      ekfom_data.h_x.block<1, 12>(i, 0) << norm_vec(0), norm_vec(1),
-          norm_vec(2), VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    }
-
-    /*** Measuremnt: distance to the closest surface/corner ***/
-    ekfom_data.h(i) = -res;
-  }
-  solve_time += omp_get_wtime() - solve_start_;
-}
-
-void LaserMappingNode::compute_geometric_primitive(int map_i, int sali_idx,
-                                                   Eigen::Vector3f &p_world,
-                                                   Eigen::Vector3f &norm_vec) {
-  Eigen::Vector3f q, q_dash, p_dash, n_world;
-
-  n_world = map_cloud->points[map_i].getVector3fMap();
-
-  if (sali_idx == 0) {
-    // Point to plane
-    q = p_world - n_world;
-    q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
-    p_dash = p_world - q_dash;
-    norm_vec = p_world - p_dash;
-  } else if (sali_idx == 1) {
-    //  Point to curve
-    q = p_world - n_world;
-    q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
-    p_dash = n_world + q_dash;
-    norm_vec = p_world - p_dash;
-  } else if (sali_idx == 2) {
-    //  Point to junction
-    norm_vec = p_world - n_world;
-  }
 }
 
 void LaserMappingNode::tensor_registration(
@@ -1082,210 +838,6 @@ void LaserMappingNode::tensor_registration(
   std::cerr << "Num planes: " << plane_cnt << std::endl;
   std::cerr << "Num curves: " << curve_cnt << std::endl;
   std::cerr << "Num junctions: " << junct_cnt << std::endl;
-
-  match_time += omp_get_wtime() - match_start;
-  solve_time += omp_get_wtime() - solve_start_;
-}
-
-void LaserMappingNode::compute_eigendecomposition(
-    state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  int avg_num_neighbours = 0;
-  std::atomic_int feat_cnt = 0, line_cnt = 0, plane_cnt = 0, ellipse_cnt = 0;
-  Eigen::MatrixXd h(feats_down_size, 1);
-  Eigen::MatrixXd h_x(feats_down_size, 12);
-
-  total_residual = 0.0;
-
-  double match_start = omp_get_wtime();
-  double solve_start_ = omp_get_wtime();
-
-  // #pragma omp parallel for
-  for (int i = 0; i < feats_down_size; i++) {
-    int prim;
-    float res;
-    Eigen::VectorXf N_norm;
-    Eigen::MatrixXf N, N_bar;
-    std::vector<float> N_dist;
-    PointVector near_pt;
-    Eigen::Matrix3f Phi, P_skew;
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig;
-    Eigen::Matrix3f Cov2, Cov = Eigen::Matrix3f::Zero();
-    Eigen::Vector3f N_mean, Lambda, saliency, p_lidar, p_imu, p_world, p_dash,
-        q, q_dash, norm_vec, C, A;
-
-    FastLioPoint &point_body = feats_down_body->points[i];
-    FastLioPoint &point_world = feats_down_world->points[i];
-
-    p_lidar = point_body.getVector3fMap();
-    p_imu =
-        s.offset_R_L_I.cast<float>() * p_lidar + s.offset_T_L_I.cast<float>();
-    p_world = s.rot.cast<float>() * p_imu + s.pos.cast<float>();
-
-    point_world = point_body;
-    point_world.getVector3fMap() = p_world;
-
-    // ioctree.knnNeighbors(point_world, 1, near_pt, N_dist);
-    // if (N_dist[0] > filter_size_corner_min) {
-    //   // std::cerr << "Not enough neighbours!" << std::endl;
-    //   continue;
-    // }
-    // ioctree.radiusNeighbors(near_pt[0], filter_size_corner_min, N, N_dist);
-
-    // std::cerr << "world_pt: " << point_world.getVector3fMap() << std::endl;
-    // std::cerr << "near_pt: " << near_pt[0].getVector3fMap() << std::endl;
-
-    // if (N.rows() < NUM_MATCH_POINTS) {
-    //  std::cerr << "Not enough neighbours!" << std::endl;
-    // continue;
-    //}
-    // std::cerr << "Neighbours: " << N.rows() << std::endl;
-
-    N = Eigen::MatrixXf::Zero(1000, 3);
-    N.col(0) = filter_size_corner_min * (Eigen::VectorXf::Random(1000));
-    N.col(1) = filter_size_corner_min * (Eigen::VectorXf::Random(1000));
-    // N.col(2) = filter_size_corner_min * (Eigen::VectorXf::Random(1000));
-
-    N_mean = Eigen::Vector3f(1, 1, 0);
-    N_bar = (N.rowwise() - N_mean.transpose());
-    N_norm = N_bar.rowwise().norm();
-    N_bar.rowwise().normalize();
-
-    // #pragma omp parallel for
-    for (int j = 0; j < N.rows(); j++) {
-      if (N_norm(j) == 0) {
-        continue;
-      }
-      Eigen::Matrix3f N_j = N_bar.row(j).transpose() * N_bar.row(j);
-      Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * N_j;
-      Eigen::Matrix3f Rt_ij = (Eigen::Matrix3f::Identity() - 0.5 * N_j) * R_ij;
-      float c_ij = std::exp(-std::pow(N_norm(j), 2) / filter_size_corner_min);
-      Cov += c_ij * R_ij * Eigen::Matrix3f::Identity() * Rt_ij;
-    }
-
-    eig.computeDirect(Cov);
-    Phi = eig.eigenvectors();
-    Lambda = eig.eigenvalues().cwiseAbs();
-    std::cerr << "Eigenvalues TV: " << Lambda.transpose() << std::endl;
-
-    Cov2 = ((Lambda(2) - Lambda(1)) / N.rows()) * Phi.col(2) *
-               Phi.col(2).transpose() +
-           ((Lambda(1) - Lambda(0)) / N.rows()) *
-               (Phi.col(2) * Phi.col(2).transpose() +
-                Phi.col(1) * Phi.col(1).transpose());
-
-    Cov = Eigen::Matrix3f::Zero();
-    for (int j = 0; j < N.rows(); j++) {
-      if (N_norm(j) == 0) {
-        continue;
-      }
-      Eigen::Matrix3f N_j = N_bar.row(j).transpose() * N_bar.row(j);
-      Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * N_j;
-      Eigen::Matrix3f Rt_ij = (Eigen::Matrix3f::Identity() - 0.5 * N_j) * R_ij;
-      float c_ij = std::exp(-std::pow(N_norm(j), 2) / filter_size_corner_min);
-      Cov += c_ij * R_ij * Cov2 * Rt_ij;
-    }
-
-    eig.computeDirect(Cov);
-    Phi = eig.eigenvectors();
-    Lambda = eig.eigenvalues().cwiseAbs();
-    std::cerr << "Eigenvalues TV2: " << Lambda.transpose() << std::endl;
-    std::cerr << "Eigenvector Max: " << Phi.col(2) << std::endl;
-    std::cerr << "Eigenvector Mean: " << Phi.col(1) << std::endl;
-    std::cerr << "Eigenvector Min: " << Phi.col(0) << std::endl;
-    std::cerr << "Mean vec: "
-              << (N.colwise().mean().transpose() - N_mean).normalized()
-              << std::endl;
-    std::cerr << "Mean vec norm: "
-              << (N.colwise().mean().transpose() - N_mean).norm() << std::endl;
-
-    // N_mean = N.colwise().mean();
-    // N_bar = (N.rowwise() - N_mean.transpose());
-    // Cov = (N_bar.adjoint() * N_bar) / float(N_bar.rows() - 1);
-    // eig.compute(Cov);
-    // Phi = eig.eigenvectors();
-    // Lambda = eig.eigenvalues().cwiseAbs();
-    // std::cerr << "Eigenvalues PCA: " << Lambda.transpose() << std::endl;
-
-    if (eig.info() != Eigen::Success) {
-      std::cerr << "Eigendecomposition failed!" << std::endl;
-      continue;
-    }
-
-    if (eig.eigenvalues().minCoeff() < 0.0) {
-      std::cerr << "Negative eigenvalue!" << std::endl;
-      continue;
-    }
-
-    avg_num_neighbours += N.rows();
-
-    std::cerr << "N: " << N.rows() << std::endl;
-
-    saliency << Lambda(2) - Lambda(1), Lambda(1) - Lambda(0), Lambda(0);
-    saliency.maxCoeff(&prim);
-    Lambda = Lambda.cwiseSqrt();
-
-    std::cerr << "Saliency: " << saliency << std::endl;
-
-    if (prim == 0) {
-      // Point to plane
-      q = p_world - N_mean;
-      q_dash = q.dot(Phi.col(2)) * Phi.col(2);
-      p_dash = p_world - q_dash;
-      norm_vec = p_world - p_dash;
-      ++line_cnt;
-      std::cerr << Phi.col(2) << std::endl;
-    } else if (prim == 1) {
-      // Point to curve
-      q = p_world - N_mean;
-      q_dash = q.dot(Phi.col(0)) * Phi.col(0);
-      p_dash = p_world - q_dash;
-      norm_vec = p_world - p_dash;
-      ++plane_cnt;
-      std::cerr << Phi.col(0) << std::endl;
-    } else if (prim == 2) {
-      // Point to ellipsoid
-      p_dash = Phi.transpose() * (p_world - N_mean);
-      if (!projectEllipsoid(q_dash.data(), p_dash.data(), Lambda.data())) {
-        continue;
-      }
-      q = Phi * q_dash + N_mean;
-      norm_vec = p_world - q;
-      ++ellipse_cnt;
-      std::cerr << Phi.col(1) << std::endl;
-    }
-
-    res = norm_vec.norm();
-    norm_vec.normalize();
-
-    P_skew << SKEW_SYM_MATRX(p_imu);
-
-    C = s.rot.conjugate().cast<float>() * norm_vec;
-    A = P_skew * C;
-
-    int feat_num = ++feat_cnt;
-    // std::cerr << "Feat num: " << feat_num << std::endl;
-    h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
-        VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    h(feat_num - 1) = -res;
-
-    total_residual += res;
-  }
-
-  h.conservativeResize(feat_cnt, 1);
-  h_x.conservativeResize(feat_cnt, 12);
-  ekfom_data.h = h;
-  ekfom_data.h_x = h_x;
-
-  res_mean_last = total_residual / feat_cnt;
-  avg_num_neighbours /= feats_down_size;
-
-  std::cerr << "Res mean: " << res_mean_last << std::endl;
-  std::cerr << "Num feats: " << feat_cnt << std::endl;
-  std::cerr << "Num planes: " << line_cnt << std::endl;
-  std::cerr << "Num curves: " << plane_cnt << std::endl;
-  std::cerr << "Num junctions: " << ellipse_cnt << std::endl;
-  std::cerr << "Average number of neighbours: " << avg_num_neighbours
-            << std::endl;
 
   match_time += omp_get_wtime() - match_start;
   solve_time += omp_get_wtime() - solve_start_;
@@ -1669,8 +1221,6 @@ void LaserMappingNode::timer_callback() {
 
     flg_EKF_inited =
         (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
-    /*** Segment the map in lidar FOV ***/
-    // lasermap_fov_segment();
 
     map_bucket_size =
         1 +
@@ -1683,8 +1233,6 @@ void LaserMappingNode::timer_callback() {
     std::cerr << "Bucket size: " << map_bucket_size << std::endl;
     std::cerr << "Search radius: " << map_search_radius << std::endl;
 
-    /*** initialize the map kdtree ***/
-    // if (ikdtree.Root_Node == nullptr) {
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
       if (feats_undistort->points.size() < NUM_MATCH_POINTS) return;

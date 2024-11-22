@@ -32,17 +32,17 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
 #include <Python.h>
 #include <cam_processing.h>
 #include <common_pcl.h>
-#include <ikd_tree.h>
 #include <imu_processing.h>
-#include <ioctree/ioctree.h>
+#include <ioctree.h>
 #include <math.h>
 #include <omp.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <preprocess.h>
-#include <project_ellipse/project_ellipse.h>
+#include <project_ellipse.h>
 #include <so3_math.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <unistd.h>
@@ -256,7 +256,6 @@ class LaserMappingNode : public rclcpp::Node {
   vector<double> R_cam_lidars;
 
   vector<vector<int>> pointSearchInd_surf;
-  vector<BoxPointType> cub_needrm;
   vector<PointVector> Nearest_Points;
   vector<double> extrinT;
   vector<double> extrinR;
@@ -277,7 +276,6 @@ class LaserMappingNode : public rclcpp::Node {
   FastLioPointCloud::Ptr corr_colorvect;
   FastLioPointCloud::Ptr _featsArray;
 
-  KD_TREE<FastLioPoint> ikdtree;
   iOctree::Octree ioctree;
 
   V3F XAxisPoint_body;
@@ -298,7 +296,6 @@ class LaserMappingNode : public rclcpp::Node {
   geometry_msgs::msg::Quaternion geoQuat;
   geometry_msgs::msg::PoseStamped msg_body_pose;
 
-  BoxPointType LocalMap_Points;
   bool Localmap_Initialized = false;
 
   double timediff_lidar_wrt_imu = 0.0;

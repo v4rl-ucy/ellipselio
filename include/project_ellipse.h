@@ -1,3 +1,11 @@
+#pragma once
+
+#ifndef PROJECT_ELLIPSE_H
+#define PROJECT_ELLIPSE_H
+
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
 
 /**
  These two C-routines calculate the projection P of a point W on the ellipse,
@@ -14,11 +22,6 @@
  Yu. N. Kiseliov
  Lithuanian Mathematical Journal, Vol. 34, No. 2, 1994
  */
-
-#include <assert.h>
-#include <math.h>
-#include <project_ellipse/project_ellipse.h>
-#include <stdio.h>
 
 /**
  Calculate the projection P = (pX, pY) of the point W = (wX, wY) on the ellipse
@@ -45,6 +48,9 @@
  We follow Newton's rule to find the root of F(h), and use the formula above to
  calculate the projection.
  */
+
+/// calculate `(pX, pY)`, the projection of `(wX, wY)` on the ellipse of axes
+/// `radX, radY`
 void projectEllipse(float& pX, float& pY, float wX, float wY, float radX,
                     float radY) {
   // handle the pathological cases:
@@ -154,6 +160,9 @@ void projectEllipse(float& pX, float& pY, float wX, float wY, float radX,
  We follow Newton's rule to find the root of F(h), and use the formula above to
  calculate the projection.
  */
+
+/// calculate `p`, the projection of a 3D point `w` on the ellipse of axes given
+/// in `rad[]`
 bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
   assert(rad[0] == rad[0] && rad[0] > 0);
   assert(rad[1] == rad[1] && rad[1] > 0);
@@ -271,3 +280,5 @@ bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
   }
   return true;
 }
+
+#endif
