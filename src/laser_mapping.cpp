@@ -32,6 +32,7 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
 #include <laser_mapping.h>
 
 namespace fastlio {
@@ -171,41 +172,6 @@ void LaserMappingNode::standard_pcl_cbk(
   lidar_buffer.push_back(ptr);
   time_buffer.push_back(cur_time);
   last_timestamp_lidar = cur_time;
-}
-
-void LaserMappingNode::livox_pcl_cbk(
-    const livox_ros_driver2::msg::CustomMsg::UniquePtr msg) {
-  double cur_time = get_time_sec(msg->header.stamp);
-  double preprocess_start_time = omp_get_wtime();
-  scan_count++;
-  if (!is_first_lidar && cur_time < last_timestamp_lidar) {
-    std::cerr << "lidar loop back, clear buffer" << std::endl;
-    lidar_buffer.clear();
-  }
-  if (is_first_lidar) {
-    is_first_lidar = false;
-  }
-  last_timestamp_lidar = cur_time;
-
-  if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0 &&
-      !imu_buffer.empty() && !lidar_buffer.empty()) {
-    printf("IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf \n",
-           last_timestamp_imu, last_timestamp_lidar);
-  }
-
-  if (time_sync_en && !timediff_set_flg &&
-      abs(last_timestamp_lidar - last_timestamp_imu) > 1 &&
-      !imu_buffer.empty()) {
-    timediff_set_flg = true;
-    timediff_lidar_wrt_imu = last_timestamp_lidar + 0.1 - last_timestamp_imu;
-    printf("Self sync IMU and LiDAR, time diff is %.10lf \n",
-           timediff_lidar_wrt_imu);
-  }
-
-  FastLioPointCloud::Ptr ptr(new FastLioPointCloud());
-  p_pre->process(msg, ptr);
-  lidar_buffer.push_back(ptr);
-  time_buffer.push_back(last_timestamp_lidar);
 }
 
 void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
@@ -1051,21 +1017,11 @@ LaserMappingNode::LaserMappingNode(
   imu_opt.callback_group = imu_callback_group_;
   lidar_opt.callback_group = lidar_callback_group_;
 
-  /*** ROS subscribe initialization ***/
-  if (p_pre->lidar_type == AVIA) {
-    sub_pcl_livox_ =
-        this->create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            lid_topic, rclcpp::SensorDataQoS(),
-            std::bind(&LaserMappingNode::livox_pcl_cbk, this,
-                      std::placeholders::_1),
-            lidar_opt);
-  } else {
-    sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        lid_topic, rclcpp::SensorDataQoS(),
-        std::bind(&LaserMappingNode::standard_pcl_cbk, this,
-                  std::placeholders::_1),
-        lidar_opt);
-  }
+  sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      lid_topic, rclcpp::SensorDataQoS(),
+      std::bind(&LaserMappingNode::standard_pcl_cbk, this,
+                std::placeholders::_1),
+      lidar_opt);
   sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
       imu_topic, rclcpp::SensorDataQoS(),
       std::bind(&LaserMappingNode::imu_cbk, this, std::placeholders::_1),
