@@ -237,10 +237,10 @@ void ImuProcess::UndistortPcl(
     for (; it_pcl->offset_time / double(1000) > head->offset_time; it_pcl--) {
       dt = it_pcl->offset_time / double(1000) - head->offset_time;
 
-      it_pcl->has_color = 0;
       it_pcl->r = 0;
       it_pcl->g = 0;
       it_pcl->b = 0;
+      it_pcl->a = 0;
       for (auto p_cam : p_cams) {
         p_cam->ColorPoint(*it_pcl, *head, *tail, pcl_beg_time);
       }

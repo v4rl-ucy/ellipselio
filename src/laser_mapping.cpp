@@ -69,9 +69,10 @@ void LaserMappingNode::pointLidarToWorld_ikfom(FastLioPoint const *const pi,
   po->r = pi->r;
   po->g = pi->g;
   po->b = pi->b;
+  po->a = pi->a;
+
   po->intensity = pi->intensity;
   po->offset_time = pi->offset_time;
-  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::pointLidarToIMU_ikfom(FastLioPoint const *const pi,
@@ -86,9 +87,10 @@ void LaserMappingNode::pointLidarToIMU_ikfom(FastLioPoint const *const pi,
   po->r = pi->r;
   po->g = pi->g;
   po->b = pi->b;
+  po->a = pi->a;
+
   po->intensity = pi->intensity;
   po->offset_time = pi->offset_time;
-  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::pointLidarToWorld(FastLioPoint const *const pi,
@@ -103,9 +105,10 @@ void LaserMappingNode::pointLidarToWorld(FastLioPoint const *const pi,
   po->r = pi->r;
   po->g = pi->g;
   po->b = pi->b;
+  po->a = pi->a;
+
   po->intensity = pi->intensity;
   po->offset_time = pi->offset_time;
-  po->has_color = pi->has_color;
 }
 
 template <typename T>
@@ -133,9 +136,10 @@ void LaserMappingNode::RGBpointLidarToWorld(FastLioPoint const *const pi,
   po->r = pi->r;
   po->g = pi->g;
   po->b = pi->b;
+  po->a = pi->a;
+
   po->intensity = pi->intensity;
   po->offset_time = pi->offset_time;
-  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::RGBpointLidarLidarToIMU(FastLioPoint const *const pi,
@@ -149,9 +153,10 @@ void LaserMappingNode::RGBpointLidarLidarToIMU(FastLioPoint const *const pi,
   po->r = pi->r;
   po->g = pi->g;
   po->b = pi->b;
+  po->a = pi->a;
+
   po->intensity = pi->intensity;
   po->offset_time = pi->offset_time;
-  po->has_color = pi->has_color;
 }
 
 void LaserMappingNode::standard_pcl_cbk(

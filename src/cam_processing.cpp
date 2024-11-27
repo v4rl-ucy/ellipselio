@@ -136,11 +136,11 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
       uv.y < matched_it->cv_img->image.rows && pt_img(2) > 0) {
     color = matched_it->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
 
-    if (!pt.has_color) {
+    if (!pt.a) {
       pt.r = color[2];
       pt.g = color[1];
       pt.b = color[0];
-      pt.has_color = 1;
+      pt.a = 255;
     } else {
       pt.r = (pt.r + color[2]) / 2;
       pt.g = (pt.g + color[1]) / 2;
