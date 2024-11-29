@@ -5,10 +5,10 @@
 
 #include <common_pcl.h>
 #include <so3_math.h>
+#include <use_ikfom.h>
 
 #include <Eigen/Eigen>
 #include <deque>
-#include <fast_lio/msg/pose6_d.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -38,7 +38,6 @@ using namespace Eigen;
                                 mat.data() + mat.rows() * mat.cols())
 #define DEBUG_FILE_DIR(name) (string(string(ROOT_DIR) + "Log/" + name))
 
-typedef fast_lio::msg::Pose6D Pose6D;
 typedef Vector3d V3D;
 typedef Matrix3d M3D;
 typedef Vector3f V3F;
@@ -161,21 +160,14 @@ T deg2rad(T degrees) {
   return degrees * PI_M / 180.0;
 }
 
-template <typename T>
-auto set_pose6d(const double t, const Matrix<T, 3, 1> &a,
-                const Matrix<T, 3, 1> &g, const Matrix<T, 3, 1> &v,
-                const Matrix<T, 3, 1> &p, const Matrix<T, 3, 3> &R) {
-  Pose6D rot_kp;
-  rot_kp.offset_time = t;
-  for (int i = 0; i < 3; i++) {
-    rot_kp.acc[i] = a(i);
-    rot_kp.gyr[i] = g(i);
-    rot_kp.vel[i] = v(i);
-    rot_kp.pos[i] = p(i);
-    for (int j = 0; j < 3; j++) rot_kp.rot[i * 3 + j] = R(i, j);
-  }
-  return move(rot_kp);
-}
+struct Pose6D {
+  rclcpp::Time time;
+  Eigen::Vector3f acc;
+  Eigen::Vector3f gyr;
+  Eigen::Vector3f vel;
+  Eigen::Vector3f pos;
+  Eigen::Matrix3f rot;
+};
 
 /* comment
 plane equation: Ax + By + Cz + D = 0
@@ -258,5 +250,12 @@ inline rclcpp::Time get_ros_time(double timestamp) {
   uint32_t nanosec = nanosec_d;
   return rclcpp::Time(sec, nanosec);
 }
+
+struct state_time {
+  state_ikfom state;
+  rclcpp::Time time;
+};
+
+typedef std::shared_ptr<state_time> StateTimeSPtr;
 
 #endif

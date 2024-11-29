@@ -10,8 +10,8 @@ LidarProcess::LidarProcess(int lidar_type, float min_range, float max_range,
   max_range_ = max_range;
   lidar_type_ = lidar_type;
 
-  lidar_callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  lidar_callback_group_ = node_->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive);
 
   rclcpp::SubscriptionOptions lidar_opt;
   lidar_opt.callback_group = lidar_callback_group_;
@@ -23,7 +23,10 @@ LidarProcess::LidarProcess(int lidar_type, float min_range, float max_range,
 }
 
 void LidarProcess::LidarCallback(
-    const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
+    const sensor_msgs::msg::PointCloud2::UniquePtr msg_in) {
+  sensor_msgs::msg::PointCloud2::SharedPtr msg(
+      new sensor_msgs::msg::PointCloud2(*msg_in));
+
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
     return;
   }
@@ -31,7 +34,7 @@ void LidarProcess::LidarCallback(
   Process(msg);
 }
 
-void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
+void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   FastLioPointCloudPtr new_pc(new FastLioPointCloud());
 
   switch (lidar_type) {
@@ -67,7 +70,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
 }
 
 void LidarProcess::OusterHandler(
-    const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
     FastLioPointCloudPtr new_pc) {
   pcl::PointCloud<ouster_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
@@ -113,7 +116,7 @@ void LidarProcess::OusterHandler(
 }
 
 void LidarProcess::VelodyneHandler(
-    const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
     FastLioPointCloudPtr new_pc) {
   pcl::PointCloud<velodyne_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
@@ -159,7 +162,7 @@ void LidarProcess::VelodyneHandler(
 }
 
 void LidarProcess::LivoxHandler(
-    const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
     FastLioPointCloudPtr new_pc) {
   pcl::PointCloud<livox_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
@@ -205,7 +208,7 @@ void LidarProcess::LivoxHandler(
 }
 
 void LidarProcess::HesaiHandler(
-    const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
     FastLioPointCloudPtr new_pc) {
   pcl::PointCloud<hesai_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);

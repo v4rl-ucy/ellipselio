@@ -159,48 +159,6 @@ void LaserMappingNode::RGBpointLidarLidarToIMU(FastLioPoint const *const pi,
   po->offset_time = pi->offset_time;
 }
 
-void LaserMappingNode::standard_pcl_cbk(
-    const sensor_msgs::msg::PointCloud2::UniquePtr msg) {
-  scan_count++;
-  double cur_time = get_time_sec(msg->header.stamp);
-  double preprocess_start_time = omp_get_wtime();
-  if (!is_first_lidar && cur_time < last_timestamp_lidar) {
-    std::cerr << "lidar loop back, clear buffer" << std::endl;
-    lidar_buffer.clear();
-  }
-  if (is_first_lidar) {
-    is_first_lidar = false;
-  }
-
-  FastLioPointCloud::Ptr ptr(new FastLioPointCloud());
-  p_pre->process(msg, ptr);
-  lidar_buffer.push_back(ptr);
-  time_buffer.push_back(cur_time);
-  last_timestamp_lidar = cur_time;
-}
-
-void LaserMappingNode::imu_cbk(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
-  sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
-
-  msg->header.stamp =
-      get_ros_time(get_time_sec(msg_in->header.stamp) - time_diff_lidar_to_imu);
-  if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en) {
-    msg->header.stamp = rclcpp::Time(timediff_lidar_wrt_imu +
-                                     get_time_sec(msg_in->header.stamp));
-  }
-
-  double timestamp = get_time_sec(msg->header.stamp);
-
-  if (timestamp < last_timestamp_imu) {
-    std::cerr << "lidar loop back, clear buffer" << std::endl;
-    imu_buffer.clear();
-  }
-
-  last_timestamp_imu = timestamp;
-
-  imu_buffer.push_back(msg);
-}
-
 bool LaserMappingNode::sync_packages(MeasureGroup &meas,
                                      CamProcessVec &p_cams) {
   if (lidar_buffer.empty() || imu_buffer.empty()) {
@@ -835,6 +793,7 @@ LaserMappingNode::LaserMappingNode(
       position_last(Zero3d),
       Lidar_T_wrt_IMU(Zero3d),
       Lidar_R_wrt_IMU(Eye3d),
+      kf(new KfFastlio()),
       p_pre(new Preprocess()),
       p_imu(new ImuProcess()) {
   this->declare_parameter<int>("publish.pub_map_n_secs", 1);
@@ -990,10 +949,10 @@ LaserMappingNode::LaserMappingNode(
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
   fill(epsi, epsi + 23, 0.001);
-  kf.init_dyn_share(get_f, df_dx, df_dw,
-                    std::bind(&LaserMappingNode::tensor_registration, this,
-                              std::placeholders::_1, std::placeholders::_2),
-                    NUM_MAX_ITERATIONS, epsi);
+  kf->init_dyn_share(get_f, df_dx, df_dw,
+                     std::bind(&LaserMappingNode::tensor_registration, this,
+                               std::placeholders::_1, std::placeholders::_2),
+                     NUM_MAX_ITERATIONS, epsi);
 
   /*** debug record ***/
   // FILE *fp;
@@ -1011,26 +970,8 @@ LaserMappingNode::LaserMappingNode(
 
   loop_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  imu_callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  lidar_callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   pub_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-
-  rclcpp::SubscriptionOptions imu_opt, lidar_opt;
-  imu_opt.callback_group = imu_callback_group_;
-  lidar_opt.callback_group = lidar_callback_group_;
-
-  sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      lid_topic, rclcpp::SensorDataQoS(),
-      std::bind(&LaserMappingNode::standard_pcl_cbk, this,
-                std::placeholders::_1),
-      lidar_opt);
-  sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic, rclcpp::SensorDataQoS(),
-      std::bind(&LaserMappingNode::imu_cbk, this, std::placeholders::_1),
-      imu_opt);
 
   pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_registered", 1);
@@ -1169,7 +1110,7 @@ void LaserMappingNode::timer_callback() {
     t0 = omp_get_wtime();
 
     p_imu->Process(Measures, kf, feats_undistort, p_cams);
-    state_point = kf.get_x();
+    state_point = kf->get_x();
     pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
     t1 = omp_get_wtime();
@@ -1242,8 +1183,8 @@ void LaserMappingNode::timer_callback() {
     t4 = omp_get_wtime();
     double t_update_start = omp_get_wtime();
     double solve_H_time = 0;
-    kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
-    state_point = kf.get_x();
+    kf->update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+    state_point = kf->get_x();
     euler_cur = SO3ToEuler(state_point.rot);
     pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
     geoQuat.x = state_point.rot.coeffs()[0];

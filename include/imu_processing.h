@@ -26,67 +26,56 @@
 
 /// *************Preconfiguration
 
-#define MAX_INI_COUNT (10)
-
-inline const bool time_list(FastLioPoint &x, FastLioPoint &y) {
-  return (x.offset_time < y.offset_time);
-};
+#define MAX_INI_COUNT (100)
 
 /// *************IMU Process and undistortion
 class ImuProcess {
  public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  ImuProcess();
   ~ImuProcess();
+  ImuProcess(KfFastlioSPtr kf, StateTimeSPtr kf_state, int imu_freq,
+             std::string imu_topic, rclcpp::Node::SharedPtr node);
 
-  void Reset();
-  // void Reset(double start_timestamp, const sensor_msgs::ImuConstPtr
-  // &lastimu);
-  void Reset(double start_timestamp,
-             const sensor_msgs::msg::Imu::ConstSharedPtr &lastimu);
-  void set_extrinsic(const V3D &transl, const M3D &rot);
-  void set_extrinsic(const V3D &transl);
-  void set_extrinsic(const MD(4, 4) & T);
-  void set_gyr_cov(const V3D &scaler);
-  void set_acc_cov(const V3D &scaler);
+  void set_gyr_cov(const V3D &gyr_cov);
+  void set_acc_cov(const V3D &acc_cov);
   void set_gyr_bias_cov(const V3D &b_g);
   void set_acc_bias_cov(const V3D &b_a);
-  Eigen::Matrix<double, 12, 12> Q;
-  void Process(const MeasureGroup &meas,
-               esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-               FastLioPointCloud::Ptr pcl_un_, CamProcessVec &p_cams);
-
-  ofstream fout_imu;
-  V3D cov_acc;
-  V3D cov_gyr;
-  V3D cov_acc_scale;
-  V3D cov_gyr_scale;
-  V3D cov_bias_gyr;
-  V3D cov_bias_acc;
-  double first_lidar_time;
+  void set_extrinsic(const V3D &transl, const M3D &rot);
 
  private:
-  void IMU_init(const MeasureGroup &meas,
-                esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
+  void Reset();
+  void Process(const sensor_msgs::msg::Imu::SharedPtr msg);
+  void IMU_init(const sensor_msgs::msg::Imu::SharedPtr msg);
+  void ImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
   void UndistortPcl(const MeasureGroup &meas,
                     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
                     FastLioPointCloud &pcl_in_out, CamProcessVec &p_cams);
 
-  FastLioPointCloud::Ptr cur_pcl_un_;
-  // sensor_msgs::ImuConstPtr last_imu_;
-  sensor_msgs::msg::Imu::ConstSharedPtr last_imu_;
-  deque<sensor_msgs::msg::Imu::ConstSharedPtr> v_imu_;
-  vector<Pose6D> IMUpose;
-  vector<M3D> v_rot_pcl_;
+  KfFastlioSPtr kf_;
+  StateTimeSPtr kf_state_;
+
+  std::mutex imu_mutex_;
+
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Time imu_start_time_, imu_end_time_;
+  rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
+
+  boost::circular_buffer<Pose6D> imu_poses_;
+  boost::circular_buffer<state_time> kf_states_;
+  boost::circular_buffer<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
+
   M3D Lidar_R_wrt_IMU;
   V3D Lidar_T_wrt_IMU;
   V3D mean_acc;
   V3D mean_gyr;
-  V3D angvel_last;
-  V3D acc_s_last;
-  double start_timestamp_;
-  double last_lidar_end_time_;
+  V3D cov_acc;
+  V3D cov_gyr;
+  V3D cov_bias_gyr;
+  V3D cov_bias_acc;
+
+  Eigen::Matrix<double, 12, 12> Q;
+
+  int imu_freq_;
   int init_iter_num = 1;
   bool b_first_frame_ = true;
   bool imu_need_init_ = true;

@@ -52,10 +52,6 @@ find_package(PCL REQUIRED COMPONENTS common io)
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 message(STATUS "PCL: ${PCL_INCLUDE_DIRS}")
 
-rosidl_generate_interfaces(fastlio_mapping_msgs
-  "msg/Pose6D.msg"
-  LIBRARY_NAME fastlio_mapping
-)
 rosidl_get_typesupport_target(cpp_typesupport_target
 fastlio_mapping_msgs "rosidl_typesupport_cpp")
 

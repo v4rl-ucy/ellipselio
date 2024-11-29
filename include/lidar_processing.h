@@ -77,15 +77,15 @@ class LidarProcess {
                std::string lidar_topic, rclcpp::Node::SharedPtr node);
 
  private:
-  void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg);
-  void Process(const sensor_msgs::msg::PointCloud2::UniquePtr msg);
-  void LivoxHandler(const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+  void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
+  void Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  void LivoxHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                     FastLioPointCloudPtr new_pc);
-  void VelodyneHandler(const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+  void VelodyneHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                        FastLioPointCloudPtr new_pc);
-  void OusterHandler(const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+  void OusterHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                      FastLioPointCloudPtr new_pc);
-  void HesaiHandler(const sensor_msgs::msg::PointCloud2::UniquePtr msg,
+  void HesaiHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                     FastLioPointCloudPtr new_pc);
 
   rclcpp::Node::SharedPtr node_;

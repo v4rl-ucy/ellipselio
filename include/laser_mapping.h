@@ -146,10 +146,6 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubMarker_;
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
-  rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr
-      sub_pcl_livox_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_br_;
   rclcpp::TimerBase::SharedPtr loop_timer_;
@@ -159,8 +155,6 @@ class LaserMappingNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
   rclcpp::TimerBase::SharedPtr pub_marker_timer_;
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
-  rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
-  rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_srv_;
 
@@ -287,7 +281,8 @@ class LaserMappingNode : public rclcpp::Node {
 
   /*** EKF inputs and output ***/
   MeasureGroup Measures;
-  esekfom::esekf<state_ikfom, 12, input_ikfom> kf;
+  KfFastlioSPtr kf;
+  StateTimeSPtr kf_state;
   state_ikfom state_point;
   vect3 pos_lid;
 

@@ -118,4 +118,7 @@ inline vect3 SO3ToEuler(const SO3 &orient) {
   return euler_ang;
 }
 
+typedef esekfom::esekf<state_ikfom, 12, input_ikfom> KfFastlio;
+typedef std::shared_ptr<KfFastlio> KfFastlioSPtr;
+
 #endif
