@@ -160,15 +160,6 @@ T deg2rad(T degrees) {
   return degrees * PI_M / 180.0;
 }
 
-struct Pose6D {
-  rclcpp::Time time;
-  Eigen::Vector3f acc;
-  Eigen::Vector3f gyr;
-  Eigen::Vector3f vel;
-  Eigen::Vector3f pos;
-  Eigen::Matrix3f rot;
-};
-
 /* comment
 plane equation: Ax + By + Cz + D = 0
 convert to: A/D*x + B/D*y + C/D*z = -1
@@ -251,11 +242,20 @@ inline rclcpp::Time get_ros_time(double timestamp) {
   return rclcpp::Time(sec, nanosec);
 }
 
-struct state_time {
-  state_ikfom state;
+struct KfState {
   rclcpp::Time time;
+  state_ikfom state;
+  KfFastlio::cov cov;
 };
 
-typedef std::shared_ptr<state_time> StateTimeSPtr;
+typedef std::shared_ptr<KfState> KfStateSPtr;
+
+struct ImuState {
+  KfState state;
+  Eigen::Vector3d acc;
+  Eigen::Vector3d gyr;
+  Eigen::Vector3d acc_avr;
+  Eigen::Vector3d gyr_avr;
+};
 
 #endif

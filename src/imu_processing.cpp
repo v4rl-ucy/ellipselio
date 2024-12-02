@@ -2,29 +2,13 @@
 
 ImuProcess::~ImuProcess() {}
 
-ImuProcess::ImuProcess(KfFastlioSPtr kf, StateTimeSPtr kf_state, int imu_freq,
-                       std::string imu_topic, rclcpp::Node::SharedPtr node)
+ImuProcess::ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
+                       rclcpp::Node::SharedPtr node)
     : b_first_frame_(true),
-      imu_need_init_(true),
-      start_timestamp_(-1),
       imu_freq_(imu_freq),
       kf_(kf),
-      kf_state_(kf_state),
       node_(node),
-      imu_buffer_(2 * imu_freq),
-      imu_poses_(2 * imu_freq) {
-  init_iter_num = 1;
-  Q = process_noise_cov();
-  cov_acc = V3D(0.1, 0.1, 0.1);
-  cov_gyr = V3D(0.1, 0.1, 0.1);
-  cov_bias_gyr = V3D(0.0001, 0.0001, 0.0001);
-  cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
-  mean_acc = V3D(0, 0, -1.0);
-  mean_gyr = V3D(0, 0, 0);
-  angvel_last = Zero3d;
-  Lidar_T_wrt_IMU = Zero3d;
-  Lidar_R_wrt_IMU = Eye3d;
-
+      imu_states_(2 * imu_freq) {
   imu_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -52,11 +36,11 @@ void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
 void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   double dt;
   input_ikfom in;
-  Pose6D imu_pose;
+  ImuState imu_state;
   V3D gyr_avr, acc_avr;
 
   if (imu_need_init_) {
-    IMU_init(msg);
+    InitImu(msg);
     return;
   }
 
@@ -64,45 +48,39 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
     acc_avr = mean_acc * G_m_s2 / mean_acc.norm();
     gyr_avr = mean_gyr;
   } else {
-    gyr_avr = msg->angular_velocity + imu_buffer_.back()->angular_velocity;
-    gyr_avr = gyr_avr / 2.0;
-    acc_avr =
-        msg->linear_acceleration + imu_buffer_.back()->linear_acceleration;
-    acc_avr = acc_avr / 2.0;
-    acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
+    gyr_avr = msg->angular_velocity;
+    gyr_avr += imu_states_.back().gyr;
+    gyr_avr *= 0.5;
+    acc_avr = msg->linear_acceleration;
+    acc_avr += imu_states_.back().acc;
+    acc_avr *= 0.5 * G_m_s2 / mean_acc.norm();
   }
 
-  dt = (rclcpp::Time(msg->header.stamp) - kf_state_->time).seconds();
+  dt = (rclcpp::Time(msg->header.stamp) - kf_state_.time).seconds();
 
   in.acc = acc_avr;
   in.gyro = gyr_avr;
   kf_.predict(dt, Q, in);
 
-  kf_state_->state = kf_->get_x();
-  kf_state_->time = rclcpp::Time(msg->header.stamp);
+  kf_state_.state = kf_->get_x();
+  kf_state_.cov = kf_->get_P();
+  kf_state_.time = rclcpp::Time(msg->header.stamp);
 
-  imu_pose.time = rclcpp::Time(msg->header.stamp);
-  imu_pose.acc = kf_state_->state.rot * (acc_avr - kf_state_->state.ba);
-  imu_pose.acc += kf_state_->state.grav.get_vect();
-  imu_pose.gyr = gyr_avr - kf_state_->state.bg;
-  imu_pose.vel = kf_state_->state.vel;
-  imu_pose.pos = kf_state_->state.pos;
-  imu_pose.rot = kf_state_->state.rot.toRotationMatrix();
+  imu_state.state = kf_state_;
+  imu_state.acc = msg->linear_acceleration;
+  imu_state.gyr = msg->angular_velocity;
+  imu_state.acc_avr = kf_state_.state.rot * (acc_avr - kf_state_.state.ba);
+  imu_state.acc_avr += kf_state_.state.grav.get_vect();
+  imu_state.gyr_avr = gyr_avr - kf_state_.state.bg;
 
-  imu_buffer_.push_back(msg);
-  imu_poses_.push_back(imu_pose);
-  kf_states_.push_back(*kf_state_);
-  imu_start_time_ = rclcpp::Time(imu_buffer_.front()->header.stamp);
-  imu_end_time_ = rclcpp::Time(imu_buffer_.back()->header.stamp);
+  imu_states_.push_back(imu_state);
+  imu_start_time_ = rclcpp::Time(imu_states_.front().state.time);
+  imu_end_time_ = rclcpp::Time(imu_states_.back().state.time);
 }
 
 void ImuProcess::Reset() {
-  mean_acc = V3D(0, 0, -1.0);
-  mean_gyr = V3D(0, 0, 0);
-  angvel_last = Zero3d;
-  imu_need_init_ = true;
-  start_timestamp_ = -1;
   init_iter_num = 1;
+  imu_need_init_ = true;
   Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
   Q.block<3, 3>(3, 3).diagonal() = cov_acc;
   Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
@@ -122,11 +100,9 @@ void ImuProcess::set_gyr_bias_cov(const V3D &b_g) { cov_bias_gyr = b_g; }
 
 void ImuProcess::set_acc_bias_cov(const V3D &b_a) { cov_bias_acc = b_a; }
 
-void ImuProcess::IMU_init(const sensor_msgs::msg::Imu::SharedPtr msg) {
+void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
-
-  V3D cur_acc, cur_gyr;
 
   if (b_first_frame_) {
     Reset();
@@ -136,6 +112,7 @@ void ImuProcess::IMU_init(const sensor_msgs::msg::Imu::SharedPtr msg) {
     mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
   } else {
+    V3D cur_acc, cur_gyr;
     const auto &imu_acc = msg->linear_acceleration;
     const auto &gyr_acc = msg->angular_velocity;
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
@@ -150,85 +127,152 @@ void ImuProcess::IMU_init(const sensor_msgs::msg::Imu::SharedPtr msg) {
   if (init_iter_num > MAX_INI_COUNT) {
     imu_need_init_ = false;
 
-    kf_state_->state = kf_->get_x();
-    kf_state_->state.grav = S2(-mean_acc / mean_acc.norm() * G_m_s2);
-    kf_state_->state.bg = mean_gyr;
-    kf_state_->state.offset_T_L_I = Lidar_T_wrt_IMU;
-    kf_state_->state.offset_R_L_I = Lidar_R_wrt_IMU;
-    kf_->change_x(kf_state->state);
+    kf_state_.time = rclcpp::Time(msg->header.stamp);
 
-    kf_state_->time = rclcpp::Time(msg->header.stamp);
+    kf_state_.state = kf_->get_x();
+    kf_state_.state.grav = S2(-mean_acc / mean_acc.norm() * G_m_s2);
+    kf_state_.state.bg = mean_gyr;
+    kf_state_.state.offset_T_L_I = Lidar_T_wrt_IMU;
+    kf_state_.state.offset_R_L_I = Lidar_R_wrt_IMU;
+    kf_->change_x(kf_state_.state);
 
-    KfFastlio::cov init_P = kf_->get_P();
-    init_P.setIdentity();
-    init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;
-    init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;
-    init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;
-    init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;
-    init_P(21, 21) = init_P(22, 22) = 0.00001;
-    kf_->change_P(init_P);
+    kf_state_.cov = kf_->get_P();
+    kf_state_.cov.setIdentity();
+    kf_state_.cov(6, 6) = kf_state_.cov(7, 7) = kf_state_.cov(8, 8) = 0.00001;
+    kf_state_.cov(9, 9) = kf_state_.cov(10, 10) = kf_state_.cov(11, 11) =
+        0.00001;
+    kf_state_.cov(15, 15) = kf_state_.cov(16, 16) = kf_state_.cov(17, 17) =
+        0.0001;
+    kf_state_.cov(18, 18) = kf_state_.cov(19, 19) = kf_state_.cov(20, 20) =
+        0.001;
+    kf_state_.cov(21, 21) = kf_state_.cov(22, 22) = 0.00001;
+    kf_->change_P(kf_state_.cov);
   }
 }
 
-void ImuProcess::UndistortPcl(FastLioPointCloudPtr pc,
-                              rclcpp::Time lidar_end_time) {
-  /*** forward propagation at each imu point ***/
-  V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
-  M3D R_imu;
-
-  int match_idx;
+void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time match_time) {
+  double time_diff;
   bool match_flag = false;
-  double dt, match_time;
 
-  Eigen::Vector3d P_i, P_dash;
-  Eigen::Isometry3d T_imu_lidar, T_world_imu_p, T_world_imu_e, T_imu_e_imu_p;
+  time_diff = (match_time - imu_start_time_).seconds();
+  match_idx = std::floor(time_diff * imu_freq_);
+
+  while (!match_flag) {
+    if (imu_poses_[match_idx].time > match_time) {
+      if (match_idx == 0) {
+        match_flag = true;
+      } else if (imu_poses_[match_idx - 1].time > match_time) {
+        match_idx--;
+      } else {
+        match_flag = true;
+      }
+    } else if (match_idx == imu_states_.size() - 1) {
+      match_flag = true;
+    } else {
+      match_idx++;
+    }
+  }
+}
+
+void ImuProcess::UndistortPointcloud(FastLioPointCloudPtr pc,
+                                     rclcpp::Time lidar_end_time) {
+  int match_idx;
+  Eigen::Isometry3d T_imu_lidar, T_world_imu_e;
 
   imu_mutex_.lock();
 
-  match_time = (lidar_end_time - imu_start_time_).seconds();
-  match_idx = std::floor(match_time * imu_freq_);
+  lidar_last_time_ = lidar_end_time;
+  GetTimeMatch(match_idx, lidar_end_time);
 
-  while (!match_flag) {
-    if (imu_poses_[match_idx].time > lidar_end_time) {
-      match_flag = true;
-    } else {
-      match_idx--;
-    }
+  T_imu_lidar.linear() =
+      imu_states_[match_idx].state.state.offset_R_L_I.toRotationMatrix();
+  T_imu_lidar.translation() = imu_states_[match_idx].state.state.offset_T_L_I;
+  T_world_imu_e.linear() =
+      imu_states_[match_idx].state.state.rot.toRotationMatrix();
+  T_world_imu_e.translation() = imu_states_[match_idx].state.state.pos;
+
+  for (size_t i = 0; i < pc.points.size(); i++) {
+    int head_idx, tail_idx;
+    Eigen::Isometry3d T_world_imu_p, T_imu_e_imu_p;
+
+    rclcpp::Time pt_time = rclcpp::Time(pc.points[i].time_secs,
+                                        pc.points[i].time_nsecs, RCL_ROS_TIME);
+
+    GetTimeMatch(tail_idx, pt_time);
+    head_idx = max(tail_idx - 1, 0);
+
+    M3D R_imu = imu_states_[head_idx].state.state.rot.toRotationMatrix();
+    V3D vel_imu = imu_states_[head_idx].state.state.vel;
+    V3D pos_imu = imu_states_[head_idx].state.state.pos;
+    V3D acc_avr = imu_states_[tail_idx].acc_avr;
+    V3D gyr_avr = imu_states_[tail_idx].gyr_avr;
+
+    double dt = (pt_time - imu_states_[head_idx].state.time).seconds();
+
+    T_world_imu_p.linear() = R_imu * Exp(gyr_avr, dt);
+    T_world_imu_p.translation() =
+        pos_imu + vel_imu * dt + 0.5 * acc_avr * dt * dt;
+    T_imu_e_imu_p = T_world_imu_e.inverse() * T_world_imu_p;
+    pc.points[i].getVector3fMap() = T_imu_lidar.inverse() * T_imu_e_imu_p *
+                                    T_imu_lidar * pc.points[i].getVector3fMap();
   }
 
-  T_imu_lidar.linear() = imu_state.offset_R_L_I.toRotationMatrix();
-  T_imu_lidar.translation() = imu_state.offset_T_L_I;
-  T_world_imu_e.linear() = imu_state.rot.toRotationMatrix();
-  T_world_imu_e.translation() = imu_state.pos;
+  imu_mutex_.unlock();
+}
 
-  /*** undistort each lidar point (backward propagation) ***/
-  if (pcl_out.points.begin() == pcl_out.points.end()) return;
-  auto it_pcl = pcl_out.points.end() - 1;
-  for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--) {
-    auto head = it_kp - 1;
-    auto tail = it_kp;
-    R_imu << MAT_FROM_ARRAY(head->rot);
-    vel_imu << VEC_FROM_ARRAY(head->vel);
-    pos_imu << VEC_FROM_ARRAY(head->pos);
-    acc_imu << VEC_FROM_ARRAY(tail->acc);
-    angvel_avr << VEC_FROM_ARRAY(tail->gyr);
+void ImuProcess::UpdateStatesWithLidar(double &solve_H_time) {
+  int match_idx;
 
-    for (; it_pcl->offset_time / double(1000) > head->offset_time; it_pcl--) {
-      dt = it_pcl->offset_time / double(1000) - head->offset_time;
+  imu_mutex_.lock();
+  GetTimeMatch(match_idx, lidar_last_time_);
 
-      P_i << it_pcl->x, it_pcl->y, it_pcl->z;
-      T_world_imu_p.linear() = R_imu * Exp(angvel_avr, dt);
-      T_world_imu_p.translation() =
-          pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
-      T_imu_e_imu_p = T_world_imu_e.inverse() * T_world_imu_p;
-      P_dash = T_imu_lidar.inverse() * T_imu_e_imu_p * T_imu_lidar * P_i;
+  kf_->change_x(imu_states_[match_idx].state.state);
+  kf_->change_P(imu_states_[match_idx].state.cov);
+  kf_->update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
 
-      it_pcl->x = P_dash(0);
-      it_pcl->y = P_dash(1);
-      it_pcl->z = P_dash(2);
+  imu_states_[match_idx].state.state = kf_->get_x();
+  imu_states_[match_idx].state.cov = kf_->get_P();
 
-      if (it_pcl == pcl_out.points.begin()) break;
-    }
+  for (size_t i = match_idx + 1; i < imu_states_.size(); i++) {
+    double dt;
+    int head_idx, tail_idx;
+    input_ikfom in;
+    V3D gyr_avr, acc_avr;
+
+    tail_idx = i;
+    head_idx = i - 1;
+
+    gyr_avr = 0.5 * (imu_states_[tail_idx].gyr + imu_states_[head_idx].gyr);
+    acc_avr = 0.5 * (imu_states_[tail_idx].acc + imu_states_[head_idx].acc);
+    acc_avr *= G_m_s2 / mean_acc.norm();
+
+    dt = (imu_states_[tail_idx].state.time - imu_states_[head_idx].state.time)
+             .seconds();
+
+    in.acc = acc_avr;
+    in.gyro = gyr_avr;
+    kf_.predict(dt, Q, in);
+
+    imu_states_[tail_idx].state.state = kf_->get_x();
+    imu_states_[tail_idx].state.cov = kf_->get_P();
+    imu_states_[tail_idx].acc_avr =
+        imu_states_[tail_idx].state.state.rot *
+        (acc_avr - imu_states_[tail_idx].state.state.ba);
+    imu_states_[tail_idx].acc_avr +=
+        imu_states_[tail_idx].state.state.grav.get_vect();
+    imu_states_[tail_idx].gyr_avr =
+        gyr_avr - imu_states_[tail_idx].state.state.bg;
   }
+
+  kf_state_.state = imu_states_.back().state.state;
+  kf_state_.cov = imu_states_.back().state.cov;
+  kf_state_.time = imu_states_.back().state.time;
+
+  imu_mutex_.unlock();
+}
+
+void ImuProcess::GetKfState(KfState &kf_state) {
+  imu_mutex_.lock();
+  kf_state = kf_state_;
   imu_mutex_.unlock();
 }

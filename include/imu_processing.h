@@ -24,16 +24,19 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <thread>
 
-/// *************Preconfiguration
-
 #define MAX_INI_COUNT (100)
+#define LASER_POINT_COV (0.001)
 
-/// *************IMU Process and undistortion
 class ImuProcess {
  public:
   ~ImuProcess();
-  ImuProcess(KfFastlioSPtr kf, StateTimeSPtr kf_state, int imu_freq,
+  ImuProcess(KfFastlioSPtr kf, KfStateSPtr kf_state, int imu_freq,
              std::string imu_topic, rclcpp::Node::SharedPtr node);
+
+  void UndistortPointcloud(FastLioPointCloudPtr pc,
+                           rclcpp::Time lidar_end_time);
+  void UpdateStatesWithLidar(double &solve_H_time);
+  void GetKfState(KfState &kf_state);
 
   void set_gyr_cov(const V3D &gyr_cov);
   void set_acc_cov(const V3D &acc_cov);
@@ -44,25 +47,21 @@ class ImuProcess {
  private:
   void Reset();
   void Process(const sensor_msgs::msg::Imu::SharedPtr msg);
-  void IMU_init(const sensor_msgs::msg::Imu::SharedPtr msg);
+  void InitImu(const sensor_msgs::msg::Imu::SharedPtr msg);
   void ImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
-  void UndistortPcl(const MeasureGroup &meas,
-                    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                    FastLioPointCloud &pcl_in_out, CamProcessVec &p_cams);
+  void GetTimeMatch(int &match_idx, rclcpp::Time match_time);
 
   KfFastlioSPtr kf_;
-  StateTimeSPtr kf_state_;
+  KfState kf_state_;
 
   std::mutex imu_mutex_;
 
   rclcpp::Node::SharedPtr node_;
-  rclcpp::Time imu_start_time_, imu_end_time_;
+  rclcpp::Time imu_start_time_, imu_end_time_, lidar_last_time_;
   rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
 
-  boost::circular_buffer<Pose6D> imu_poses_;
-  boost::circular_buffer<state_time> kf_states_;
-  boost::circular_buffer<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
+  boost::circular_buffer<ImuState> imu_states_;
 
   M3D Lidar_R_wrt_IMU;
   V3D Lidar_T_wrt_IMU;

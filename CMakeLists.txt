@@ -10,7 +10,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -fopenmp -fPIC")
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
-# ROS dependencies
 find_package(ament_cmake REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -43,7 +42,6 @@ set(dependencies
   image_transport
 )
 
-# Thirdparty libraries
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -54,8 +52,6 @@ message(STATUS "PCL: ${PCL_INCLUDE_DIRS}")
 
 rosidl_get_typesupport_target(cpp_typesupport_target
 fastlio_mapping_msgs "rosidl_typesupport_cpp")
-
-# ament_export_dependencies(rosidl_default_runtime)
 
 ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/preprocess.cpp src/imu_processing.cpp src/cam_processing.cpp)
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
