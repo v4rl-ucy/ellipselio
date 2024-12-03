@@ -75,6 +75,11 @@ class LidarProcess {
   ~LidarProcess();
   LidarProcess(int lidar_type, float min_range, float max_range,
                std::string lidar_topic, rclcpp::Node::SharedPtr node);
+  void ClearPointCloud();
+  void GetPointCloud(FastLioPointCloudPtr pc, rclcpp::Time &end_time);
+
+  rclcpp::Time lidar_start_time_, lidar_end_time_;
+  float min_range_, max_range_, mean_range_, time_unit_scale_, scan_min_extent_;
 
  private:
   void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
@@ -92,13 +97,13 @@ class LidarProcess {
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
-  FastLioPointCloud fastlio_pc_;
+  FastLioPointCloudPtr fastlio_pc_;
 
   iOctree::Octree ioctree_;
-  rclcpp::Time lidar_start_time_, lidar_end_time_;
+
+  std::mutex lidar_mutex_;
 
   int lidar_type_;
-  float min_range_, max_range_, mean_range_, time_unit_scale_, scan_min_extent_;
 };
 
 #endif  // LIDARPROCESS_H

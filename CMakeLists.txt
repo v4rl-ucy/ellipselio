@@ -50,12 +50,9 @@ find_package(PCL REQUIRED COMPONENTS common io)
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 message(STATUS "PCL: ${PCL_INCLUDE_DIRS}")
 
-rosidl_get_typesupport_target(cpp_typesupport_target
-fastlio_mapping_msgs "rosidl_typesupport_cpp")
 
-ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/preprocess.cpp src/imu_processing.cpp src/cam_processing.cpp)
+ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/lidar_processing.cpp src/imu_processing.cpp) # src/cam_processing.cpp)
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
-target_link_libraries(fastlio_mapping "${cpp_typesupport_target}")
 
 target_include_directories(fastlio_mapping PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

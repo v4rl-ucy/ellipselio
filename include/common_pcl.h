@@ -5,20 +5,12 @@
 
 #define PCL_NO_PRECOMPILE
 
-#include <pcl/common/io.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/search/octree.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <Eigen/Core>
-#include <pcl/common/impl/io.hpp>
 #include <pcl/impl/point_types.hpp>
-#include <pcl/io/impl/pcd_io.hpp>
-#include <pcl/kdtree/impl/kdtree_flann.hpp>
-#include <pcl/octree/impl/octree_search.hpp>
 
 struct EIGEN_ALIGN16 PointXYZNRGBIT {
   PCL_ADD_POINT4D;
@@ -57,10 +49,5 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
 typedef PointXYZNRGBIT FastLioPoint;
 typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;
 typedef pcl::PointCloud<FastLioPoint>::Ptr FastLioPointCloudPtr;
-typedef std::vector<FastLioPoint, Eigen::aligned_allocator<FastLioPoint>>
-    PointVector;
-typedef pcl::octree::OctreePointCloudSearch<FastLioPoint> FastLioPointOctree;
-typedef pcl::octree::OctreePointCloudSearch<FastLioPoint>::Ptr
-    FastLioPointOctreePtr;
 
 #endif  // COMMON_PCL_H

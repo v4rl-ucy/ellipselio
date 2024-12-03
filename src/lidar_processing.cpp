@@ -37,7 +37,7 @@ void LidarProcess::LidarCallback(
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   FastLioPointCloudPtr new_pc(new FastLioPointCloud());
 
-  switch (lidar_type) {
+  switch (lidar_type_) {
     case LIVOX:
       LivoxHandler(msg, new_pc);
       break;
@@ -55,9 +55,11 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   std::vector<int> added_idxs, new_idxs;
   scan_min_extent_ = 0.02 * mean_range_;
 
-  ioctree.set_bucket_size(1);
-  ioctree.set_min_extent(scan_min_extent_);
-  ioctree.initialize(new_pc, added_idxs, new_idxs);
+  ioctree_.set_bucket_size(1);
+  ioctree_.set_min_extent(scan_min_extent_);
+  ioctree_.initialize(*new_pc, added_idxs, new_idxs);
+
+  lidar_mutex_.lock();
   *fastlio_pc_ += FastLioPointCloud(*new_pc, added_idxs);
 
   int start_secs = fastlio_pc_->points.front().time_secs;
@@ -67,6 +69,23 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
   lidar_start_time_ = rclcpp::Time(start_secs, start_nsecs, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(end_secs, end_nsecs, RCL_ROS_TIME);
+  lidar_mutex_.unlock();
+}
+
+void LidarProcess::ClearPointCloud() {
+  lidar_mutex_.lock();
+  fastlio_pc_->clear();
+  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_mutex_.unlock();
+}
+
+void LidarProcess::GetPointCloud(FastLioPointCloudPtr pc,
+                                 rclcpp::Time &end_time) {
+  lidar_mutex_.lock();
+  pc = std::make_shared<FastLioPointCloud>(*fastlio_pc_);
+  end_time = lidar_end_time_;
+  lidar_mutex_.unlock();
 }
 
 void LidarProcess::OusterHandler(
@@ -77,19 +96,19 @@ void LidarProcess::OusterHandler(
 
   new_pc->reserve(msg_pc.size());
 
-  mean_range = 0.0;
+  mean_range_ = 0.0;
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
                    msg_pc.points[i].y * msg_pc.points[i].y +
                    msg_pc.points[i].z * msg_pc.points[i].z;
 
-    mean_range += sqrt(range);
+    mean_range_ += sqrt(range);
   }
-  mean_range /= msg_pc.points.size();
+  mean_range_ /= msg_pc.points.size();
 
   rclcpp::Time timestamp = msg->header.stamp;
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range);
-  double dyn_range_max = fmin(100, 10 * mean_range);
+  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
+  double dyn_range_max = fmin(100, 10 * mean_range_);
 
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
@@ -109,7 +128,7 @@ void LidarProcess::OusterHandler(
     added_pt.z = msg_pc.points[i].z;
     added_pt.intensity = msg_pc.points[i].intensity;
     added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nsec;
+    added_pt.time_nsecs = msg_time.nanosec;
 
     new_pc->push_back(std::move(added_pt));
   }
@@ -123,19 +142,19 @@ void LidarProcess::VelodyneHandler(
 
   new_pc->reserve(msg_pc.size());
 
-  mean_range = 0.0;
+  mean_range_ = 0.0;
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
                    msg_pc.points[i].y * msg_pc.points[i].y +
                    msg_pc.points[i].z * msg_pc.points[i].z;
 
-    mean_range += sqrt(range);
+    mean_range_ += sqrt(range);
   }
-  mean_range /= msg_pc.points.size();
+  mean_range_ /= msg_pc.points.size();
 
   rclcpp::Time timestamp = msg->header.stamp;
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range);
-  double dyn_range_max = fmin(100, 10 * mean_range);
+  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
+  double dyn_range_max = fmin(100, 10 * mean_range_);
 
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
@@ -155,7 +174,7 @@ void LidarProcess::VelodyneHandler(
     added_pt.z = msg_pc.points[i].z;
     added_pt.intensity = msg_pc.points[i].intensity;
     added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nsec;
+    added_pt.time_nsecs = msg_time.nanosec;
 
     new_pc->push_back(std::move(added_pt));
   }
@@ -169,19 +188,19 @@ void LidarProcess::LivoxHandler(
 
   new_pc->reserve(msg_pc.size());
 
-  mean_range = 0.0;
+  mean_range_ = 0.0;
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
                    msg_pc.points[i].y * msg_pc.points[i].y +
                    msg_pc.points[i].z * msg_pc.points[i].z;
 
-    mean_range += sqrt(range);
+    mean_range_ += sqrt(range);
   }
-  mean_range /= msg_pc.points.size();
+  mean_range_ /= msg_pc.points.size();
 
   rclcpp::Time timestamp = msg->header.stamp;
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range);
-  double dyn_range_max = fmin(100, 10 * mean_range);
+  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
+  double dyn_range_max = fmin(100, 10 * mean_range_);
 
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
@@ -201,7 +220,7 @@ void LidarProcess::LivoxHandler(
     added_pt.z = msg_pc.points[i].z;
     added_pt.intensity = msg_pc.points[i].reflectivity;
     added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nsec;
+    added_pt.time_nsecs = msg_time.nanosec;
 
     new_pc->push_back(std::move(added_pt));
   }
@@ -215,18 +234,18 @@ void LidarProcess::HesaiHandler(
 
   new_pc->reserve(msg_pc.size());
 
-  mean_range = 0.0;
+  mean_range_ = 0.0;
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
                    msg_pc.points[i].y * msg_pc.points[i].y +
                    msg_pc.points[i].z * msg_pc.points[i].z;
 
-    mean_range += sqrt(range);
+    mean_range_ += sqrt(range);
   }
-  mean_range /= msg_pc.points.size();
+  mean_range_ /= msg_pc.points.size();
 
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range);
-  double dyn_range_max = fmin(100, 10 * mean_range);
+  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
+  double dyn_range_max = fmin(100, 10 * mean_range_);
 
   for (int i = 0; i < msg_pc.points.size(); i++) {
     double range = msg_pc.points[i].x * msg_pc.points[i].x +
@@ -246,7 +265,7 @@ void LidarProcess::HesaiHandler(
     added_pt.z = msg_pc.points[i].z;
     added_pt.intensity = msg_pc.points[i].intensity;
     added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nsec;
+    added_pt.time_nsecs = msg_time.nanosec;
 
     new_pc->push_back(std::move(added_pt));
   }
