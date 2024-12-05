@@ -111,12 +111,19 @@ void LaserMappingNode::RGBpointLidarToIMU(FastLioPoint const *const pi,
 
 bool LaserMappingNode::sync_packages() {
   if (imu_process->imu_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+    std::cerr << "IMU data is not ready!" << std::endl;
+    return false;
+  }
+  if (lid_process->lidar_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+    std::cerr << "Lidar data is not ready!" << std::endl;
     return false;
   }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
+    std::cerr << "IMU data behind lidar" << std::endl;
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
+    std::cerr << "IMU data ahead of lidar" << std::endl;
     lid_process->ClearPointCloud();
     return false;
   }
@@ -368,11 +375,14 @@ void LaserMappingNode::map_incremental(bool init_map) {
     }
   }
 
+  std::cerr << "Feats undistort: " << feats_undistort->size() << std::endl;
+
   double st_time = omp_get_wtime();
   int old_map_size = map_cloud->size();
 
   ioctree.set_bucket_size(map_bucket_size);
   ioctree.update(*feats_down_world, added_idxs, new_idxs);
+  std::cerr << "Added idxs: " << added_idxs.size() << std::endl;
   *map_cloud += FastLioPointCloud(*feats_down_world, added_idxs);
 
   update_cnt.resize(map_cloud->size(), 0);
@@ -709,11 +719,6 @@ LaserMappingNode::LaserMappingNode(
   ioctree.set_min_extent(filter_size_map_min);
   ioctree.set_bucket_size(1);
 
-  imu_process =
-      std::make_shared<ImuProcess>(kf_, 100, imu_topic, shared_from_this());
-  lid_process = std::make_shared<LidarProcess>(lidar_type, blind, 100,
-                                               lid_topic, shared_from_this());
-
   mean_sali = Eigen::Vector3f::Zero();
 
   new_neighbours_map_idx = std::vector<int>(100000);
@@ -741,12 +746,6 @@ LaserMappingNode::LaserMappingNode(
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
 
-  imu_process->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-  imu_process->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-  imu_process->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-  imu_process->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-  imu_process->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-
   fill(epsi, epsi + 23, 0.001);
   kf_->init_dyn_share(get_f, df_dx, df_dw,
                       std::bind(&LaserMappingNode::tensor_registration, this,
@@ -771,9 +770,10 @@ LaserMappingNode::LaserMappingNode(
       this, this->get_clock(), std::chrono::milliseconds(1000 / scan_rate),
       std::bind(&LaserMappingNode::publish_frame_world, this),
       pub_callback_group_);
-  pub_map_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
-      std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
+  // pub_map_timer_ = rclcpp::create_timer(
+  //     this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs *
+  //     1000), std::bind(&LaserMappingNode::publish_map, this),
+  //     pub_callback_group_);
   pub_marker_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&LaserMappingNode::publish_markers, this), pub_callback_group_);
@@ -834,9 +834,24 @@ LaserMappingNode::~LaserMappingNode() {}
 
 void LaserMappingNode::timer_callback() {
   //  init_cam_process();
+
+  if (!initialized) {
+    initialized = true;
+    imu_process =
+        std::make_shared<ImuProcess>(kf_, 100, imu_topic, shared_from_this());
+    lid_process = std::make_shared<LidarProcess>(lidar_type, blind, 100,
+                                                 lid_topic, shared_from_this());
+    imu_process->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+    imu_process->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+    imu_process->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+    imu_process->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+    imu_process->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+  }
+
   if (sync_packages()) {
+    std::cerr << "Synced packages" << std::endl;
     double t0, t1, t2, t3, t4, t5, t6, t7, match_start, solve_start, svd_time;
-    rclcpp::Time lidar_end_time;
+    rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
     match_time = 0;
     kdtree_search_time = 0.0;
@@ -867,6 +882,7 @@ void LaserMappingNode::timer_callback() {
     std::cerr << "Min extent: " << lid_process->scan_min_extent_ << std::endl;
     std::cerr << "Bucket size: " << map_bucket_size << std::endl;
     std::cerr << "Search radius: " << map_search_radius << std::endl;
+    std::cerr << "Feats undistort: " << feats_undistort->size() << std::endl;
 
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");

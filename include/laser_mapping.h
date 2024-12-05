@@ -115,7 +115,7 @@ class LaserMappingNode : public rclcpp::Node {
          state_update_time = 0, kdtree_update_time = 0, total_time = 0;
   int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0,
       kdtree_delete_counter = 0, pub_map_n_secs = 0;
-  bool runtime_pos_log = false, pcd_save_en = false, time_sync_en = false,
+  bool runtime_pos_log = true, pcd_save_en = false, time_sync_en = false,
        extrinsic_est_en = true, path_en = true;
 
   string lid_topic, imu_topic;
@@ -148,6 +148,8 @@ class LaserMappingNode : public rclcpp::Node {
   int frame_num = 0;
   int lidar_type = 0, scan_rate = 10;
   double blind = 0.01;
+
+  bool initialized = false;
 
   Eigen::Vector3f mean_sali;
 

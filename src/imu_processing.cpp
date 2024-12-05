@@ -5,6 +5,7 @@ ImuProcess::~ImuProcess() {}
 ImuProcess::ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
                        rclcpp::Node::SharedPtr node)
     : b_first_frame_(true),
+      imu_need_init_(true),
       imu_freq_(imu_freq),
       kf_(kf),
       node_(node),
@@ -19,6 +20,20 @@ ImuProcess::ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
       imu_topic, rclcpp::SensorDataQoS(),
       std::bind(&ImuProcess::ImuCallback, this, std::placeholders::_1),
       imu_opt);
+
+  imu_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  imu_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
+  Q = process_noise_cov();
+  cov_acc = V3D(0.1, 0.1, 0.1);
+  cov_gyr = V3D(0.1, 0.1, 0.1);
+  cov_bias_gyr = V3D(0.0001, 0.0001, 0.0001);
+  cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
+  mean_acc = V3D(0, 0, -1.0);
+  mean_gyr = V3D(0, 0, 0);
+  Lidar_T_wrt_IMU = Zero3d;
+  Lidar_R_wrt_IMU = Eye3d;
 }
 
 void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
@@ -38,6 +53,7 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   input_ikfom in;
   ImuState imu_state;
   V3D gyr_avr, acc_avr;
+  rclcpp::Time msg_time;
 
   if (imu_need_init_) {
     InitImu(msg);
@@ -58,7 +74,8 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
     acc_avr *= 0.5 * G_m_s2 / mean_acc.norm();
   }
 
-  dt = (rclcpp::Time(msg->header.stamp) - kf_state_.time).seconds();
+  msg_time = msg->header.stamp;
+  dt = (msg_time - kf_state_.time).seconds();
 
   in.acc = acc_avr;
   in.gyro = gyr_avr;
@@ -66,7 +83,7 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
 
   kf_state_.state = kf_->get_x();
   kf_state_.cov = kf_->get_P();
-  kf_state_.time = rclcpp::Time(msg->header.stamp);
+  kf_state_.time = msg_time;
 
   imu_state.state = kf_state_;
   imu_state.acc << msg->linear_acceleration.x, msg->linear_acceleration.y,
@@ -78,8 +95,8 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   imu_state.gyr_avr = gyr_avr - kf_state_.state.bg;
 
   imu_states_.push_back(imu_state);
-  imu_start_time_ = rclcpp::Time(imu_states_.front().state.time);
-  imu_end_time_ = rclcpp::Time(imu_states_.back().state.time);
+  imu_start_time_ = imu_states_.front().state.time;
+  imu_end_time_ = imu_states_.back().state.time;
 }
 
 void ImuProcess::Reset() {
@@ -154,23 +171,25 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
   }
 }
 
-void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time match_time) {
+void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
+                              boost::circular_buffer<ImuState> &imu_states) {
   double time_diff;
   bool match_flag = false;
 
-  time_diff = (match_time - imu_start_time_).seconds();
+  time_diff = (match_time - imu_states.front().state.time).seconds();
   match_idx = std::floor(time_diff * imu_freq_);
+  match_idx = std::min(match_idx, (int)imu_states.size() - 1);
 
   while (!match_flag) {
-    if (imu_states_[match_idx].state.time > match_time) {
+    if (imu_states[match_idx].state.time > match_time) {
       if (match_idx == 0) {
         match_flag = true;
-      } else if (imu_states_[match_idx - 1].state.time > match_time) {
+      } else if (imu_states[match_idx - 1].state.time > match_time) {
         match_idx--;
       } else {
         match_flag = true;
       }
-    } else if (match_idx == imu_states_.size() - 1) {
+    } else if (match_idx == imu_states.size() - 1) {
       match_flag = true;
     } else {
       match_idx++;
@@ -181,21 +200,24 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time match_time) {
 void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
                                      rclcpp::Time lidar_end_time) {
   int match_idx;
+  boost::circular_buffer<ImuState> imu_states;
   Eigen::Isometry3d T_imu_lidar, T_world_imu_e;
 
   imu_mutex_.lock();
+  imu_states = imu_states_;
+  imu_mutex_.unlock();
 
   lidar_last_time_ = lidar_end_time;
-  GetTimeMatch(match_idx, lidar_end_time);
+  GetTimeMatch(match_idx, lidar_end_time, imu_states);
 
-  kf_state = imu_states_[match_idx].state;
+  kf_state = imu_states[match_idx].state;
 
   T_imu_lidar.linear() =
-      imu_states_[match_idx].state.state.offset_R_L_I.toRotationMatrix();
-  T_imu_lidar.translation() = imu_states_[match_idx].state.state.offset_T_L_I;
+      imu_states[match_idx].state.state.offset_R_L_I.toRotationMatrix();
+  T_imu_lidar.translation() = imu_states[match_idx].state.state.offset_T_L_I;
   T_world_imu_e.linear() =
-      imu_states_[match_idx].state.state.rot.toRotationMatrix();
-  T_world_imu_e.translation() = imu_states_[match_idx].state.state.pos;
+      imu_states[match_idx].state.state.rot.toRotationMatrix();
+  T_world_imu_e.translation() = imu_states[match_idx].state.state.pos;
 
   for (size_t i = 0; i < pc->points.size(); i++) {
     int head_idx, tail_idx;
@@ -204,16 +226,16 @@ void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
     rclcpp::Time pt_time = rclcpp::Time(pc->points[i].time_secs,
                                         pc->points[i].time_nsecs, RCL_ROS_TIME);
 
-    GetTimeMatch(tail_idx, pt_time);
+    GetTimeMatch(tail_idx, pt_time, imu_states);
     head_idx = max(tail_idx - 1, 0);
 
-    M3D R_imu = imu_states_[head_idx].state.state.rot.toRotationMatrix();
-    V3D vel_imu = imu_states_[head_idx].state.state.vel;
-    V3D pos_imu = imu_states_[head_idx].state.state.pos;
-    V3D acc_avr = imu_states_[tail_idx].acc_avr;
-    V3D gyr_avr = imu_states_[tail_idx].gyr_avr;
+    M3D R_imu = imu_states[head_idx].state.state.rot.toRotationMatrix();
+    V3D vel_imu = imu_states[head_idx].state.state.vel;
+    V3D pos_imu = imu_states[head_idx].state.state.pos;
+    V3D acc_avr = imu_states[tail_idx].acc_avr;
+    V3D gyr_avr = imu_states[tail_idx].gyr_avr;
 
-    double dt = (pt_time - imu_states_[head_idx].state.time).seconds();
+    double dt = (pt_time - imu_states[head_idx].state.time).seconds();
 
     T_world_imu_p.linear() = R_imu * Exp(gyr_avr, dt);
     T_world_imu_p.translation() =
@@ -224,8 +246,6 @@ void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
          pc->points[i].getVector3fMap().cast<double>())
             .cast<float>();
   }
-
-  imu_mutex_.unlock();
 }
 
 void ImuProcess::UpdateStatesWithLidar(double &solve_H_time,
@@ -233,7 +253,7 @@ void ImuProcess::UpdateStatesWithLidar(double &solve_H_time,
   int match_idx;
 
   imu_mutex_.lock();
-  GetTimeMatch(match_idx, lidar_last_time_);
+  GetTimeMatch(match_idx, lidar_last_time_, imu_states_);
 
   kf_->change_x(imu_states_[match_idx].state.state);
   kf_->change_P(imu_states_[match_idx].state.cov);

@@ -52,7 +52,8 @@ class ImuProcess {
   void Process(const sensor_msgs::msg::Imu::SharedPtr msg);
   void InitImu(const sensor_msgs::msg::Imu::SharedPtr msg);
   void ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in);
-  void GetTimeMatch(int &match_idx, rclcpp::Time match_time);
+  void GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
+                    boost::circular_buffer<ImuState> &imu_states);
 
   KfFastlioSPtr kf_;
   KfState kf_state_;

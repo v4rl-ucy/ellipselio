@@ -158,7 +158,7 @@ T deg2rad(T degrees) {
 }
 
 struct KfState {
-  rclcpp::Time time;
+  rclcpp::Time time = rclcpp::Time(0, 0, RCL_ROS_TIME);
   state_ikfom state;
   KfFastlio::cov cov;
 };

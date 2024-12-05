@@ -27,8 +27,8 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
     struct {
       PCL_ADD_UNION_RGB
       float intensity;
-      float time_secs;
-      float time_nsecs;
+      uint32_t time_secs;
+      uint32_t time_nsecs;
     };
     float data_c[4];
   };
@@ -40,11 +40,10 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZNRGBIT,
     (float, x, x)(float, y, y)(float, z, z)(float, normal_x, normal_x)(
-        float, normal_y, normal_y)(float, normal_z, normal_z)(float, curvature,
-                                                              curvature)(
-        float, rgb, rgb)(float, intensity,
-                         intensity)(float, time_secs,
-                                    time_secs)(float, time_nsecs, time_nsecs))
+        float, normal_y, normal_y)(float, normal_z, normal_z)(
+        float, curvature, curvature)(float, rgb, rgb)(float, intensity,
+                                                      intensity)(
+        uint32_t, time_secs, time_secs)(uint32_t, time_nsecs, time_nsecs))
 
 typedef PointXYZNRGBIT FastLioPoint;
 typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;

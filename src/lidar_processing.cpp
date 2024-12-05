@@ -20,6 +20,11 @@ LidarProcess::LidarProcess(int lidar_type, float min_range, float max_range,
       lidar_topic, rclcpp::SensorDataQoS(),
       std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
       lidar_opt);
+
+  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  new_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
 void LidarProcess::LidarCallback(
@@ -62,13 +67,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_mutex_.lock();
   *fastlio_pc_ += FastLioPointCloud(*new_pc, added_idxs);
 
-  int start_secs = fastlio_pc_->points.front().time_secs;
-  int start_nsecs = fastlio_pc_->points.front().time_nsecs;
-  int end_secs = fastlio_pc_->points.back().time_secs;
-  int end_nsecs = fastlio_pc_->points.back().time_nsecs;
-
-  lidar_start_time_ = rclcpp::Time(start_secs, start_nsecs, RCL_ROS_TIME);
-  lidar_end_time_ = rclcpp::Time(end_secs, end_nsecs, RCL_ROS_TIME);
+  lidar_start_time_ = new_lidar_start_time_;
+  lidar_end_time_ = new_lidar_end_time_;
   lidar_mutex_.unlock();
 }
 
@@ -77,15 +77,34 @@ void LidarProcess::ClearPointCloud() {
   fastlio_pc_->clear();
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  new_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_mutex_.unlock();
 }
 
 void LidarProcess::GetPointCloud(FastLioPointCloudPtr pc,
                                  rclcpp::Time &end_time) {
   lidar_mutex_.lock();
-  pc = std::make_shared<FastLioPointCloud>(*fastlio_pc_);
+  *pc = *fastlio_pc_;
   end_time = lidar_end_time_;
+  fastlio_pc_->clear();
+  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  new_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_mutex_.unlock();
+}
+
+void LidarProcess::SetMinMaxTime(rclcpp::Time &point_time) {
+  if (new_lidar_start_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+    new_lidar_start_time_ = point_time;
+  }
+  if (new_lidar_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+    new_lidar_end_time_ = point_time;
+  }
+
+  new_lidar_start_time_ = std::min(new_lidar_start_time_, point_time);
+  new_lidar_end_time_ = std::max(new_lidar_end_time_, point_time);
 }
 
 void LidarProcess::OusterHandler(
@@ -121,6 +140,7 @@ void LidarProcess::OusterHandler(
     rclcpp::Time point_time = timestamp;
     point_time += rclcpp::Duration(0, msg_pc.points[i].t);
     builtin_interfaces::msg::Time msg_time = point_time;
+    SetMinMaxTime(point_time);
 
     FastLioPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
@@ -167,6 +187,7 @@ void LidarProcess::VelodyneHandler(
     rclcpp::Time point_time = timestamp;
     point_time += rclcpp::Duration(0, msg_pc.points[i].time * 1e3);
     builtin_interfaces::msg::Time msg_time = point_time;
+    SetMinMaxTime(point_time);
 
     FastLioPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
@@ -213,6 +234,7 @@ void LidarProcess::LivoxHandler(
     rclcpp::Time point_time = timestamp;
     point_time += rclcpp::Duration(0, msg_pc.points[i].offset_time);
     builtin_interfaces::msg::Time msg_time = point_time;
+    SetMinMaxTime(point_time);
 
     FastLioPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
@@ -258,6 +280,7 @@ void LidarProcess::HesaiHandler(
     int64_t time_nsecs = msg_pc.points[i].timestamp * 1e9;
     rclcpp::Time point_time = rclcpp::Time(time_nsecs, RCL_ROS_TIME);
     builtin_interfaces::msg::Time msg_time = point_time;
+    SetMinMaxTime(point_time);
 
     FastLioPoint added_pt;
     added_pt.x = msg_pc.points[i].x;

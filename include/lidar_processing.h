@@ -84,6 +84,7 @@ class LidarProcess {
  private:
   void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
   void Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  void SetMinMaxTime(rclcpp::Time &point_time);
   void LivoxHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
                     FastLioPointCloudPtr new_pc);
   void VelodyneHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
@@ -98,6 +99,7 @@ class LidarProcess {
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
   FastLioPointCloudPtr fastlio_pc_;
+  rclcpp::Time new_lidar_start_time_, new_lidar_end_time_;
 
   iOctree::Octree ioctree_;
 
