@@ -2,44 +2,6 @@
 
 namespace fastlio {
 
-void LaserMappingNode::pointLidarToWorld(FastLioPoint const *const pi,
-                                         FastLioPoint *const po) {
-  V3D p_lidar(pi->x, pi->y, pi->z);
-  V3D p_global(kf_state_.state.rot * (kf_state_.state.offset_R_L_I * p_lidar +
-                                      kf_state_.state.offset_T_L_I) +
-               kf_state_.state.pos);
-  po->x = p_global(0);
-  po->y = p_global(1);
-  po->z = p_global(2);
-  po->r = pi->r;
-  po->g = pi->g;
-  po->b = pi->b;
-  po->a = pi->a;
-
-  po->intensity = pi->intensity;
-  po->time_secs = pi->time_secs;
-  po->time_nsecs = pi->time_nsecs;
-}
-
-void LaserMappingNode::RGBpointLidarToWorld(FastLioPoint const *const pi,
-                                            FastLioPoint *const po) {
-  V3D p_lidar(pi->x, pi->y, pi->z);
-  V3D p_global(kf_state_.state.rot * (kf_state_.state.offset_R_L_I * p_lidar +
-                                      kf_state_.state.offset_T_L_I) +
-               kf_state_.state.pos);
-  po->x = p_global(0);
-  po->y = p_global(1);
-  po->z = p_global(2);
-  po->r = pi->r;
-  po->g = pi->g;
-  po->b = pi->b;
-  po->a = pi->a;
-
-  po->intensity = pi->intensity;
-  po->time_secs = pi->time_secs;
-  po->time_nsecs = pi->time_nsecs;
-}
-
 bool LaserMappingNode::sync_packages() {
   if (imu_process->imu_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
     return false;
@@ -268,31 +230,23 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 void LaserMappingNode::map_incremental(bool init_map) {
   std::vector<int> added_idxs, new_idxs, updated_idxs;
 
-  if (init_map) {
-    feats_down_world->resize(feats_undistort->size());
 #pragma omp parallel for
-    for (int i = 0; i < feats_undistort->size(); i++) {
-      pointLidarToWorld(&(feats_undistort->points[i]),
-                        &(feats_down_world->points[i]));
-    }
-  } else {
-    feats_down_world->resize(feats_down_body->size());
-#pragma omp parallel for
-    for (int i = 0; i < feats_down_body->size(); i++) {
-      pointLidarToWorld(&(feats_down_body->points[i]),
-                        &(feats_down_world->points[i]));
-    }
+  for (int i = 0; i < scan_cloud->size(); i++) {
+    scan_cloud->points[i].getVector3fMap() =
+        (kf_state_.state.rot *
+             (kf_state_.state.offset_R_L_I *
+                  scan_cloud->points[i].getVector3fMap().cast<double>() +
+              kf_state_.state.offset_T_L_I) +
+         kf_state_.state.pos)
+            .cast<float>();
   }
-
-  std::cerr << "Feats undistort: " << feats_undistort->size() << std::endl;
 
   double st_time = omp_get_wtime();
   int old_map_size = map_cloud->size();
 
   ioctree.set_bucket_size(map_bucket_size);
-  ioctree.update(*feats_down_world, added_idxs, new_idxs);
-  std::cerr << "Added idxs: " << added_idxs.size() << std::endl;
-  *map_cloud += FastLioPointCloud(*feats_down_world, added_idxs);
+  ioctree.update(*scan_cloud, added_idxs, new_idxs);
+  *map_cloud += FastLioPointCloud(*scan_cloud, added_idxs);
 
   update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
@@ -309,8 +263,8 @@ void LaserMappingNode::map_incremental(bool init_map) {
 
   std::cerr << "Map size: " << map_cloud->size() << std::endl;
   std::cerr << "ioctree size: " << ioctree.size() << std::endl;
+  std::cerr << "Added idxs size: " << added_idxs.size() << std::endl;
 
-  std::cerr << "Added idxs size: " << new_idxs.size() << std::endl;
   if (added_idxs.size() > 0) {
     double pass_1_start = omp_get_wtime();
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
@@ -334,19 +288,9 @@ void LaserMappingNode::publish_map() {
   pubLaserCloudMap_->publish(laserCloudmsg);
 }
 
-void LaserMappingNode::publish_frame_world() {
-  FastLioPointCloud::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort
-                                                        : feats_down_body);
-  int size = laserCloudFullRes->points.size();
-  FastLioPointCloud::Ptr laserCloudWorld(new FastLioPointCloud(size, 1));
-
-  for (int i = 0; i < size; i++) {
-    RGBpointLidarToWorld(&laserCloudFullRes->points[i],
-                         &laserCloudWorld->points[i]);
-  }
-
+void LaserMappingNode::publish_scan() {
   sensor_msgs::msg::PointCloud2 laserCloudmsg;
-  pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
+  pcl::toROSMsg(*scan_cloud, laserCloudmsg);
   laserCloudmsg.header.stamp = kf_state_.time;
   laserCloudmsg.header.frame_id = "odom_fastlio";
   pubLaserCloudFull_->publish(laserCloudmsg);
@@ -443,8 +387,8 @@ void LaserMappingNode::publish_odometry() {
 
 void LaserMappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  Eigen::MatrixXd h(feats_down_size, 1);
-  Eigen::MatrixXd h_x(feats_down_size, 12);
+  Eigen::MatrixXd h(scan_size, 1);
+  Eigen::MatrixXd h_x(scan_size, 12);
   std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
 
   total_residual = 0.0;
@@ -453,7 +397,7 @@ void LaserMappingNode::tensor_registration(
   double solve_start_ = omp_get_wtime();
 
 #pragma omp parallel for
-  for (int i = 0; i < feats_down_size; i++) {
+  for (int i = 0; i < scan_size; i++) {
     int sali_idx, map_i;
     float residual;
     V3F c, a;
@@ -463,7 +407,7 @@ void LaserMappingNode::tensor_registration(
     V3F p_lidar, p_imu, p_world;
     V3F sali, n_world, p_dash, q, q_dash, norm_vec, eig_vals;
 
-    FastLioPoint pt = feats_down_body->points[i];
+    FastLioPoint pt = scan_cloud->points[i];
 
     p_lidar = pt.getVector3fMap();
     p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I)
@@ -549,9 +493,7 @@ LaserMappingNode::LaserMappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
     : Node("laser_mapping", options),
       map_cloud(new FastLioPointCloud()),
-      feats_undistort(new FastLioPointCloud()),
-      feats_down_body(new FastLioPointCloud()),
-      feats_down_world(new FastLioPointCloud()),
+      scan_cloud(new FastLioPointCloud()),
       extrinT(3, 0.0),
       extrinR(9, 0.0),
       Lidar_T_wrt_IMU(Zero3d),
@@ -663,10 +605,6 @@ LaserMappingNode::LaserMappingNode(
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
       std::bind(&LaserMappingNode::timer_callback, this), loop_callback_group_);
-  pub_scan_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(1000 / scan_rate),
-      std::bind(&LaserMappingNode::publish_frame_world, this),
-      pub_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
@@ -757,14 +695,13 @@ void LaserMappingNode::timer_callback() {
 
     t0 = omp_get_wtime();
 
-    lid_process->GetPointCloud(feats_undistort, lidar_end_time);
-    imu_process->UndistortPointCloud(feats_undistort, kf_state_,
-                                     lidar_end_time);
+    lid_process->GetPointCloud(scan_cloud, lidar_end_time);
+    imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_end_time);
 
     t1 = omp_get_wtime();
     imu_time = t1 - t0;
 
-    if (feats_undistort->empty() || (feats_undistort == NULL)) {
+    if (scan_cloud->empty() || (scan_cloud == NULL)) {
       RCLCPP_WARN(this->get_logger(), "No point, skip this scan!\n");
       return;
     }
@@ -778,19 +715,17 @@ void LaserMappingNode::timer_callback() {
     std::cerr << "Min extent: " << lid_process->scan_min_extent_ << std::endl;
     std::cerr << "Bucket size: " << map_bucket_size << std::endl;
     std::cerr << "Search radius: " << map_search_radius << std::endl;
-    std::cerr << "Feats undistort: " << feats_undistort->size() << std::endl;
 
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
-      if (feats_undistort->points.size() < NUM_MATCH_POINTS) return;
+      if (scan_cloud->points.size() < NUM_MATCH_POINTS) return;
       map_incremental(true);
       return;
     }
 
-    std::cerr << "Scan size: " << feats_undistort->size() << std::endl;
+    std::cerr << "Scan size: " << scan_cloud->size() << std::endl;
 
-    *feats_down_body = *feats_undistort;
-    feats_down_size = feats_down_body->points.size();
+    scan_size = scan_cloud->points.size();
 
     t2 = omp_get_wtime();
     downsample_time = t2 - t1;
@@ -801,14 +736,11 @@ void LaserMappingNode::timer_callback() {
     t3 = omp_get_wtime();
     init_kdtree_time = t3 - t2;
 
-    feats_down_world->resize(feats_down_size);
-
     /*** iterated state estimation ***/
     t4 = omp_get_wtime();
     double t_update_start = omp_get_wtime();
     double solve_H_time = 0;
     imu_process->UpdateStatesWithLidar(solve_H_time, kf_state_, lidar_end_time);
-    publish_odometry();
 
     double t_update_end = omp_get_wtime();
     t5 = omp_get_wtime();
@@ -822,6 +754,9 @@ void LaserMappingNode::timer_callback() {
     total_time = t7 - t0;
 
     double eigen_time = t7 - t6;
+
+    publish_odometry();
+    publish_scan();
 
     /*** Debug variables ***/
     if (runtime_pos_log) {

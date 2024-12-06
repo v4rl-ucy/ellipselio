@@ -43,10 +43,6 @@ class LaserMappingNode : public rclcpp::Node {
   ~LaserMappingNode();
 
  private:
-  void pointLidarToWorld(FastLioPoint const *const pi, FastLioPoint *const po);
-  void RGBpointLidarToWorld(FastLioPoint const *const pi,
-                            FastLioPoint *const po);
-
   bool sync_packages();
 
   void compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass);
@@ -59,9 +55,9 @@ class LaserMappingNode : public rclcpp::Node {
                                    V3F &norm_vec);
 
   void publish_map();
+  void publish_scan();
   void publish_markers();
   void publish_odometry();
-  void publish_frame_world();
 
   void tensor_registration(state_ikfom &s,
                            esekfom::dyn_share_datastruct<double> &ekfom_data);
@@ -120,7 +116,7 @@ class LaserMappingNode : public rclcpp::Node {
          last_publish_time = 0.0;
   int effct_feat_num = 0, color_feat_num = 0, time_log_counter = 0,
       scan_count = 0;
-  int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0,
+  int iterCount = 0, scan_size = 0, NUM_MAX_ITERATIONS = 0,
       laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
   int cam_frame_rate = 20;
 
@@ -168,9 +164,7 @@ class LaserMappingNode : public rclcpp::Node {
   std::vector<double> extrinR;
 
   FastLioPointCloudPtr map_cloud;
-  FastLioPointCloudPtr feats_undistort;
-  FastLioPointCloudPtr feats_down_body;
-  FastLioPointCloudPtr feats_down_world;
+  FastLioPointCloudPtr scan_cloud;
 
   iOctree::Octree ioctree;
 
