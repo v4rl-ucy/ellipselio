@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define G_m_s2 (9.81)  // Gravaty const in GuangDong/China
+#define G_m_s2 (9.80665)
 #define NUM_MATCH_POINTS (5)
 #define MAX_NEIGHBOURS (25)
 
