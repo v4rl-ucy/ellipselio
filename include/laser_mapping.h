@@ -1,3 +1,4 @@
+#include <common_lib.h>
 #include <common_pcl.h>
 #include <imu_processing.h>
 #include <ioctree.h>
@@ -6,7 +7,6 @@
 #include <omp.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <project_ellipse.h>
-#include <so3_math.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <unistd.h>
 
@@ -43,29 +43,20 @@ class LaserMappingNode : public rclcpp::Node {
   ~LaserMappingNode();
 
  private:
-  void pointLidarToWorld_ikfom(FastLioPoint const *const pi,
-                               FastLioPoint *const po, state_ikfom &s);
-  void pointLidarToIMU_ikfom(FastLioPoint const *const pi,
-                             FastLioPoint *const po, state_ikfom &s);
   void pointLidarToWorld(FastLioPoint const *const pi, FastLioPoint *const po);
-  template <typename T>
-  void pointLidarToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po);
   void RGBpointLidarToWorld(FastLioPoint const *const pi,
                             FastLioPoint *const po);
-  void RGBpointLidarToIMU(FastLioPoint const *const pi, FastLioPoint *const po);
 
   bool sync_packages();
 
-  bool tensor_density_expection(Eigen::Vector3f &eig_val);
-  void compute_tensor_vote(int i, int j, Eigen::Matrix3f &A_j, bool first_pass);
-  void compute_tensor_eigen(int i, Eigen::Matrix3f &tensor, bool first_pass);
+  void compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass);
+  void compute_tensor_eigen(int i, M3F &tensor, bool first_pass);
   void tensor_vote_pass_1(int old_map_size, std::vector<int> &added_idxs,
                           std::vector<int> &updated_idxs);
   void tensor_vote_pass_2(std::vector<int> &added_idxs,
                           std::vector<int> &updated_idxs);
-  void compute_geometric_primitive(int map_i, int sali_idx,
-                                   Eigen::Vector3f &p_world,
-                                   Eigen::Vector3f &norm_vec);
+  void compute_geometric_primitive(int map_i, int sali_idx, V3F &p_world,
+                                   V3F &norm_vec);
 
   void publish_map();
   void publish_markers();
@@ -125,8 +116,8 @@ class LaserMappingNode : public rclcpp::Node {
   double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
   double filter_size_corner_min = 0, filter_size_surf_min = 0,
          filter_size_map_min = 0, fov_deg = 0;
-  double cube_len = 0, HALF_FOV_COS = 0, FOV_DEG = 0, total_distance = 0,
-         lidar_end_time = 0, first_lidar_time = 0.0, last_publish_time = 0.0;
+  double total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0,
+         last_publish_time = 0.0;
   int effct_feat_num = 0, color_feat_num = 0, time_log_counter = 0,
       scan_count = 0;
   int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0,
@@ -139,8 +130,6 @@ class LaserMappingNode : public rclcpp::Node {
   bool is_first_lidar = true;
 
   int map_counter = 0, marker_start_idx = 0;
-  float tensor_sigma = 0, tensor_radius = 0, tensor_d1 = 0, tensor_d2 = 0,
-        tensor_d3 = 0;
 
   int map_bucket_size;
   double map_search_radius;
@@ -151,32 +140,32 @@ class LaserMappingNode : public rclcpp::Node {
 
   bool initialized = false;
 
-  Eigen::Vector3f mean_sali;
+  V3F mean_sali;
 
-  vector<Eigen::Matrix3f> tensors_p1;
-  vector<Eigen::Matrix3f> tensors_p2;
-  vector<Eigen::Matrix3f> eigenvectors;
-  vector<Eigen::Vector3f> eigenvalues;
-  vector<Eigen::Vector3f> salivalues;
+  std::vector<M3F> tensors_p1;
+  std::vector<M3F> tensors_p2;
+  std::vector<M3F> eigenvectors;
+  std::vector<V3F> eigenvalues;
+  std::vector<V3F> salivalues;
 
   std::vector<int> new_neighbours_map_idx;
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
-  vector<int> update_cnt;
-  vector<int> update_idx;
-  vector<int> updated_pt;
-  vector<int> saliency_idxs;
-  vector<vector<bool>> filters;
-  vector<vector<int>> neighbours;
+  std::vector<int> update_cnt;
+  std::vector<int> update_idx;
+  std::vector<int> updated_pt;
+  std::vector<int> saliency_idxs;
+  std::vector<vector<bool>> filters;
+  std::vector<vector<int>> neighbours;
 
-  vector<string> cam_topics;
-  vector<double> cam_intrinsics;
-  vector<double> T_cam_lidars;
-  vector<double> R_cam_lidars;
+  std::vector<string> cam_topics;
+  std::vector<double> cam_intrinsics;
+  std::vector<double> T_cam_lidars;
+  std::vector<double> R_cam_lidars;
 
-  vector<double> extrinT;
-  vector<double> extrinR;
+  std::vector<double> extrinT;
+  std::vector<double> extrinR;
 
   FastLioPointCloudPtr map_cloud;
   FastLioPointCloudPtr feats_undistort;

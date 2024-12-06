@@ -2,44 +2,6 @@
 
 namespace fastlio {
 
-void LaserMappingNode::pointLidarToWorld_ikfom(FastLioPoint const *const pi,
-                                               FastLioPoint *const po,
-                                               state_ikfom &s) {
-  V3D p_lidar(pi->x, pi->y, pi->z);
-  V3D p_global(s.rot * (s.offset_R_L_I * p_lidar + s.offset_T_L_I) + s.pos);
-
-  po->x = p_global(0);
-  po->y = p_global(1);
-  po->z = p_global(2);
-  po->r = pi->r;
-  po->g = pi->g;
-  po->b = pi->b;
-  po->a = pi->a;
-
-  po->intensity = pi->intensity;
-  po->time_secs = pi->time_secs;
-  po->time_nsecs = pi->time_nsecs;
-}
-
-void LaserMappingNode::pointLidarToIMU_ikfom(FastLioPoint const *const pi,
-                                             FastLioPoint *const po,
-                                             state_ikfom &s) {
-  V3D p_lidar(pi->x, pi->y, pi->z);
-  V3D p_imu(s.offset_R_L_I * p_lidar + s.offset_T_L_I);
-
-  po->x = p_imu(0);
-  po->y = p_imu(1);
-  po->z = p_imu(2);
-  po->r = pi->r;
-  po->g = pi->g;
-  po->b = pi->b;
-  po->a = pi->a;
-
-  po->intensity = pi->intensity;
-  po->time_secs = pi->time_secs;
-  po->time_nsecs = pi->time_nsecs;
-}
-
 void LaserMappingNode::pointLidarToWorld(FastLioPoint const *const pi,
                                          FastLioPoint *const po) {
   V3D p_lidar(pi->x, pi->y, pi->z);
@@ -59,18 +21,6 @@ void LaserMappingNode::pointLidarToWorld(FastLioPoint const *const pi,
   po->time_nsecs = pi->time_nsecs;
 }
 
-template <typename T>
-void LaserMappingNode::pointLidarToWorld(const Matrix<T, 3, 1> &pi,
-                                         Matrix<T, 3, 1> &po) {
-  V3D p_lidar(pi[0], pi[1], pi[2]);
-  V3D p_global(kf_state_.state.rot * (kf_state_.state.offset_R_L_I * p_lidar +
-                                      kf_state_.state.offset_T_L_I) +
-               kf_state_.state.pos);
-  po[0] = p_global(0);
-  po[1] = p_global(1);
-  po[2] = p_global(2);
-}
-
 void LaserMappingNode::RGBpointLidarToWorld(FastLioPoint const *const pi,
                                             FastLioPoint *const po) {
   V3D p_lidar(pi->x, pi->y, pi->z);
@@ -80,25 +30,6 @@ void LaserMappingNode::RGBpointLidarToWorld(FastLioPoint const *const pi,
   po->x = p_global(0);
   po->y = p_global(1);
   po->z = p_global(2);
-  po->r = pi->r;
-  po->g = pi->g;
-  po->b = pi->b;
-  po->a = pi->a;
-
-  po->intensity = pi->intensity;
-  po->time_secs = pi->time_secs;
-  po->time_nsecs = pi->time_nsecs;
-}
-
-void LaserMappingNode::RGBpointLidarToIMU(FastLioPoint const *const pi,
-                                          FastLioPoint *const po) {
-  V3D p_body_lidar(pi->x, pi->y, pi->z);
-  V3D p_body_imu(kf_state_.state.offset_R_L_I * p_body_lidar +
-                 kf_state_.state.offset_T_L_I);
-
-  po->x = p_body_imu(0);
-  po->y = p_body_imu(1);
-  po->z = p_body_imu(2);
   po->r = pi->r;
   po->g = pi->g;
   po->b = pi->b;
@@ -127,44 +58,26 @@ bool LaserMappingNode::sync_packages() {
   return true;
 }
 
-bool LaserMappingNode::tensor_density_expection(Eigen::Vector3f &eig_val) {
-  bool k1, k2, k3;
-
-  k1 = eig_val(2) < tensor_d1;
-  k1 |= eig_val(1) < tensor_d1;
-  k1 |= eig_val(0) < 0.5 * tensor_d1;
-
-  k2 = eig_val(2) < tensor_d2;
-  k2 |= eig_val(1) < 0.75 * tensor_d2;
-  k2 |= eig_val(0) < 0.75 * tensor_d2;
-
-  k3 = eig_val(2) < (5.0 / 6.0) * tensor_d3;
-  k3 |= eig_val(1) < (5.0 / 6.0) * tensor_d3;
-  k3 |= eig_val(0) < (5.0 / 6.0) * tensor_d3;
-
-  return k1 && k2 && k3;
-}
-
-void LaserMappingNode::compute_tensor_vote(int i, int j, Eigen::Matrix3f &A_j,
+void LaserMappingNode::compute_tensor_vote(int i, int j, M3F &A_j,
                                            bool first_pass) {
-  Eigen::Vector3f p_i = map_cloud->points[i].getVector3fMap();
-  Eigen::Vector3f p_j = map_cloud->points[j].getVector3fMap();
+  V3F p_i = map_cloud->points[i].getVector3fMap();
+  V3F p_j = map_cloud->points[j].getVector3fMap();
   float d_ij = (p_i - p_j).norm();
   float c_ij = std::exp(-std::pow(d_ij, 2) / filter_size_corner_min);
-  Eigen::Vector3f r_ij = (p_i - p_j).normalized();
-  Eigen::Matrix3f rrt = r_ij * r_ij.transpose();
-  Eigen::Matrix3f R_ij = Eigen::Matrix3f::Identity() - 2.0 * rrt;
-  Eigen::Matrix3f Rp_ij = (Eigen::Matrix3f::Identity() - 0.5 * rrt) * R_ij;
-  Eigen::Matrix3f K_j = Eigen::Matrix3f::Identity();
+  V3F r_ij = (p_i - p_j).normalized();
+  M3F rrt = r_ij * r_ij.transpose();
+  M3F R_ij = Eye3f - 2.0 * rrt;
+  M3F Rp_ij = (Eye3f - 0.5 * rrt) * R_ij;
+  M3F K_j = Eye3f;
   if (!first_pass) K_j = tensors_p2[j];
   A_j = c_ij * R_ij * K_j * Rp_ij;
 }
 
-void LaserMappingNode::compute_tensor_eigen(int i, Eigen::Matrix3f &tensor,
+void LaserMappingNode::compute_tensor_eigen(int i, M3F &tensor,
                                             bool first_pass) {
-  Eigen::Vector3f eig_val, sali_val;
-  Eigen::Matrix3f eig_vec, tensor_i2;
-  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig_solver;
+  V3F eig_val, sali_val;
+  M3F eig_vec, tensor_i2;
+  Eigen::SelfAdjointEigenSolver<M3F> eig_solver;
 
   eig_solver.computeDirect(tensor);
   eig_vec = eig_solver.eigenvectors();
@@ -214,12 +127,12 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
     int map_i, loop_cnt;
     Eigen::MatrixXf K;
     std::vector<int> N_idxs;
-    Eigen::Matrix3f tensor_i1;
+    M3F tensor_i1;
 
     map_i = added_idxs[i];
     map_cloud->points[map_i].intensity = 0;
     map_cloud->points[map_i].curvature = 0;
-    map_cloud->points[map_i].getNormalVector3fMap() = Eigen::Vector3f::Zero();
+    map_cloud->points[map_i].getNormalVector3fMap() = V3F::Zero();
 
     ioctree.radiusNeighbors(map_cloud->points[map_i], map_search_radius,
                             N_idxs);
@@ -230,7 +143,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
 
 #pragma omp parallel for
     for (int j = 0; j < loop_cnt; j++) {
-      Eigen::Matrix3f A_j;
+      M3F A_j;
       int map_j = neighbours[map_i][j];
       compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
@@ -259,7 +172,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
 #pragma omp parallel for
   for (int i = 0; i < new_neighbours_idx; i++) {
     Eigen::MatrixXf K;
-    Eigen::Matrix3f tensor_i1;
+    M3F tensor_i1;
     int map_i, loop_cnt, max_loop, old_size;
 
     map_i = new_neighbours_map_idx[i];
@@ -280,7 +193,7 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
 
 #pragma omp parallel for
     for (int j = 0; j < loop_cnt; j++) {
-      Eigen::Matrix3f A_j;
+      M3F A_j;
       int map_j = new_neighbours[i][j];
       neighbours[map_i][old_size + j] = map_j;
       compute_tensor_vote(map_i, map_j, A_j, false);
@@ -302,7 +215,7 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                           std::vector<int> &updated_idxs) {
   Eigen::MatrixXf sali_vals;
   Eigen::VectorXi sali_filter;
-  Eigen::Vector3f cur_mean_sali;
+  V3F cur_mean_sali;
 
   int total_size = added_idxs.size() + updated_idxs.size();
 
@@ -313,7 +226,7 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
   for (int i = 0; i < total_size; i++) {
     Eigen::MatrixXf K;
     Eigen::VectorXi K_filter;
-    Eigen::Matrix3f tensor_i2;
+    M3F tensor_i2;
     int map_i, loop_cnt, filter_cnt;
 
     map_i = i < added_idxs.size() ? added_idxs[i]
@@ -330,7 +243,7 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
       int map_j = neighbours[map_i][j];
       if (!filters[map_j][0]) continue;
 
-      Eigen::Matrix3f A_j;
+      M3F A_j;
       compute_tensor_vote(map_i, map_j, A_j, false);
       K.row(j) = A_j.reshaped(1, 9);
       K_filter(j) = 1;
@@ -388,11 +301,11 @@ void LaserMappingNode::map_incremental(bool init_map) {
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(3, false));
 
-  tensors_p1.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
-  tensors_p2.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
-  salivalues.resize(map_cloud->size(), Eigen::Vector3f::Zero());
-  eigenvalues.resize(map_cloud->size(), Eigen::Vector3f::Zero());
-  eigenvectors.resize(map_cloud->size(), Eigen::Matrix3f::Zero());
+  tensors_p1.resize(map_cloud->size(), M3F::Zero());
+  tensors_p2.resize(map_cloud->size(), M3F::Zero());
+  salivalues.resize(map_cloud->size(), V3F::Zero());
+  eigenvalues.resize(map_cloud->size(), V3F::Zero());
+  eigenvectors.resize(map_cloud->size(), M3F::Zero());
 
   std::cerr << "Map size: " << map_cloud->size() << std::endl;
   std::cerr << "ioctree size: " << ioctree.size() << std::endl;
@@ -543,28 +456,31 @@ void LaserMappingNode::tensor_registration(
   for (int i = 0; i < feats_down_size; i++) {
     int sali_idx, map_i;
     float residual;
-    Eigen::Vector3f c, a;
-    Eigen::Matrix3f P_skew;
+    V3F c, a;
+    M3F P_skew;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    Eigen::Vector3f sali, p_world, n_world, p_dash, q, q_dash, norm_vec,
-        eig_vals;
+    V3F p_lidar, p_imu, p_world;
+    V3F sali, n_world, p_dash, q, q_dash, norm_vec, eig_vals;
 
-    FastLioPoint point_imu, point_proj;
-    FastLioPoint &point_lidar = feats_down_body->points[i];
-    FastLioPoint &point_world = feats_down_world->points[i];
+    FastLioPoint pt = feats_down_body->points[i];
 
-    pointLidarToIMU_ikfom(&point_lidar, &point_imu, s);
-    pointLidarToWorld_ikfom(&point_lidar, &point_world, s);
+    p_lidar = pt.getVector3fMap();
+    p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I)
+                .cast<float>();
+    p_world =
+        (s.rot * (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I) +
+         s.pos)
+            .cast<float>();
 
-    ioctree.knnNeighbors(point_world, 1, N_idxs, N_dst);
+    pt.getVector3fMap() = p_world;
+    ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
     if (sqrt(N_dst[0]) > map_search_radius || !filters[map_i][2]) continue;
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
 
-    p_world = point_world.getVector3fMap();
     n_world = map_cloud->points[map_i].getVector3fMap();
 
     eig_vals = eigenvalues[map_i];
@@ -598,7 +514,7 @@ void LaserMappingNode::tensor_registration(
     residual = norm_vec.norm();
     norm_vec.normalize();
 
-    P_skew << SKEW_SYM_MATRX(point_imu.getVector3fMap());
+    P_skew << SKEW_SYM_MATRX(p_imu);
 
     c = s.rot.conjugate().cast<float>() * norm_vec;
     a = P_skew * c;
@@ -715,29 +631,12 @@ LaserMappingNode::LaserMappingNode(
   ioctree.set_min_extent(filter_size_map_min);
   ioctree.set_bucket_size(1);
 
-  mean_sali = Eigen::Vector3f::Zero();
+  mean_sali = V3F::Zero();
 
   new_neighbours_map_idx = std::vector<int>(100000);
   new_neighbours_size = std::vector<std::atomic<int>>(100000);
   new_neighbours =
       std::vector<std::vector<int>>(100000, std::vector<int>(1000));
-
-  tensor_sigma = filter_size_map_min;
-  tensor_radius = filter_size_corner_min;
-
-  tensor_d1 = (std::sqrt(M_PI * tensor_sigma) *
-               std::erf(tensor_radius / std::sqrt(tensor_sigma))) /
-              (2. * tensor_radius);
-  tensor_d2 =
-      (tensor_sigma -
-       tensor_sigma * std::exp(-tensor_radius * tensor_radius / tensor_sigma)) /
-      (tensor_radius * tensor_radius);
-  tensor_d3 = 3. * tensor_sigma *
-              (std::sqrt(M_PI * tensor_sigma) *
-                   std::erf(tensor_radius / std::sqrt(tensor_sigma)) -
-               2. * tensor_radius *
-                   std::exp(-tensor_radius * tensor_radius / tensor_sigma)) /
-              (4. * tensor_radius * tensor_radius * tensor_radius);
 
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);

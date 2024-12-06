@@ -96,7 +96,7 @@ void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
                             double pcl_beg_time) {
   cv::Point2d uv;
   cv::Vec3b color;
-  Eigen::Vector3d pt_cap, pt_img;
+  V3D pt_cap, pt_img;
   Eigen::Isometry3d T_world_img, T_world_pt, T_img_pt;
   double img_time, matched_img_time, pt_time = pt.offset_time * 1e-3,
                                      diff_time = DBL_MAX;
