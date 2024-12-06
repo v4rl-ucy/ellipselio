@@ -23,7 +23,6 @@ ImuProcess::ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
 
   imu_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   imu_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  lidar_last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   Q = process_noise_cov();
   cov_acc = V3D(0.1, 0.1, 0.1);
@@ -198,7 +197,7 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 }
 
 void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
-                                     rclcpp::Time lidar_end_time) {
+                                     rclcpp::Time &lidar_end_time) {
   int match_idx;
   boost::circular_buffer<ImuState> imu_states;
   Eigen::Isometry3d T_imu_lidar, T_world_imu_e;
@@ -207,7 +206,6 @@ void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
   imu_states = imu_states_;
   imu_mutex_.unlock();
 
-  lidar_last_time_ = lidar_end_time;
   GetTimeMatch(match_idx, lidar_end_time, imu_states);
 
   kf_state = imu_states[match_idx].state;
@@ -248,17 +246,23 @@ void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
   }
 }
 
-void ImuProcess::UpdateStatesWithLidar(double &solve_H_time,
-                                       KfState &kf_state) {
+void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
+                                       rclcpp::Time &lidar_end_time) {
   int match_idx;
+  KfFastlioSPtr kf(new KfFastlio());
 
   imu_mutex_.lock();
-  GetTimeMatch(match_idx, lidar_last_time_, imu_states_);
+  *kf = *kf_;
+  imu_mutex_.unlock();
 
-  kf_->change_x(imu_states_[match_idx].state.state);
-  kf_->change_P(imu_states_[match_idx].state.cov);
-  kf_->update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+  kf->change_x(kf_state.state);
+  kf->change_P(kf_state.cov);
+  kf->update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
 
+  imu_mutex_.lock();
+
+  *kf_ = *kf;
+  GetTimeMatch(match_idx, lidar_end_time, imu_states_);
   imu_states_[match_idx].state.state = kf_->get_x();
   imu_states_[match_idx].state.cov = kf_->get_P();
 

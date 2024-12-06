@@ -34,8 +34,9 @@ class ImuProcess {
              rclcpp::Node::SharedPtr node);
 
   void UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
-                           rclcpp::Time lidar_end_time);
-  void UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state);
+                           rclcpp::Time &lidar_end_time);
+  void UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
+                             rclcpp::Time &lidar_end_time);
   void GetKfState(KfState &kf_state);
 
   void set_gyr_cov(const V3D &gyr_cov);
@@ -45,7 +46,7 @@ class ImuProcess {
   void set_extrinsic(const V3D &transl, const M3D &rot);
 
   bool imu_need_init_;
-  rclcpp::Time imu_start_time_, imu_end_time_, lidar_last_time_;
+  rclcpp::Time imu_start_time_, imu_end_time_;
 
  private:
   void Reset();

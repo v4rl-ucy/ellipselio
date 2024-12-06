@@ -111,19 +111,15 @@ void LaserMappingNode::RGBpointLidarToIMU(FastLioPoint const *const pi,
 
 bool LaserMappingNode::sync_packages() {
   if (imu_process->imu_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
-    std::cerr << "IMU data is not ready!" << std::endl;
     return false;
   }
   if (lid_process->lidar_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
-    std::cerr << "Lidar data is not ready!" << std::endl;
     return false;
   }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
-    std::cerr << "IMU data behind lidar" << std::endl;
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
-    std::cerr << "IMU data ahead of lidar" << std::endl;
     lid_process->ClearPointCloud();
     return false;
   }
@@ -757,6 +753,8 @@ LaserMappingNode::LaserMappingNode(
   pub_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
+  pubLaserCloudMap_ =
+      this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_map", 1);
   pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_registered", 1);
   pubMarker_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -770,10 +768,9 @@ LaserMappingNode::LaserMappingNode(
       this, this->get_clock(), std::chrono::milliseconds(1000 / scan_rate),
       std::bind(&LaserMappingNode::publish_frame_world, this),
       pub_callback_group_);
-  // pub_map_timer_ = rclcpp::create_timer(
-  //     this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs *
-  //     1000), std::bind(&LaserMappingNode::publish_map, this),
-  //     pub_callback_group_);
+  pub_map_timer_ = rclcpp::create_timer(
+      this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
+      std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
   pub_marker_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&LaserMappingNode::publish_markers, this), pub_callback_group_);
@@ -911,7 +908,7 @@ void LaserMappingNode::timer_callback() {
     t4 = omp_get_wtime();
     double t_update_start = omp_get_wtime();
     double solve_H_time = 0;
-    imu_process->UpdateStatesWithLidar(solve_H_time, kf_state_);
+    imu_process->UpdateStatesWithLidar(solve_H_time, kf_state_, lidar_end_time);
     publish_odometry();
 
     double t_update_end = omp_get_wtime();
