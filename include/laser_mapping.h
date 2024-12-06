@@ -12,8 +12,6 @@
 
 #include <Eigen/Core>
 #include <chrono>
-#include <csignal>
-#include <fstream>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
@@ -28,12 +26,6 @@
 #include <thread>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-
-#define INIT_TIME (0.1)
-#define MAXN (720000)
-#define PUBFRAME_PERIOD (20)
-#define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
-#define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
 
 namespace fastlio {
 
@@ -94,9 +86,6 @@ class LaserMappingNode : public rclcpp::Node {
   /*** Time Log Variables ***/
   double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0,
          kdtree_delete_time = 0.0;
-  double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN],
-      s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN],
-      s_plot10[MAXN], s_plot11[MAXN];
   double match_time = 0, solve_time = 0, solve_const_H_time = 0;
   double imu_time = 0, downsample_time = 0, init_kdtree_time = 0,
          state_update_time = 0, kdtree_update_time = 0, total_time = 0;
