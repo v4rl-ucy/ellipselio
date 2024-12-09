@@ -29,14 +29,14 @@
 <!-- [![Watch the video](doc/real_exp_2.png)](https://youtu.be/2OvjGnxszf8) -->
 <div align="left">
 <img src="doc/real_experiment2.gif" width=49.6% />
-<img src="doc/ulhkwh_fastlio.gif" width = 49.6% >
+<img src="doc/ulhkwh_ellipselivo.gif" width = 49.6% >
 </div>
 
 **Related video:**  [FAST-LIO2](https://youtu.be/2OvjGnxszf8),  [FAST-LIO1](https://youtu.be/iYCY6T79oNU)
 
 **Pipeline:**
 <div align="center">
-<img src="doc/overview_fastlio2.svg" width=99% />
+<img src="doc/overview_ellipselivo2.svg" width=99% />
 </div>
 
 **New Features:**
@@ -112,7 +112,7 @@ Connect to your PC to Livox LiDAR by following  [Livox-ros-driver2 installation]
 ```bash
 cd <ros2_ws>
 . install/setup.bash # use setup.zsh if use zsh
-ros2 launch fast_lio mapping.launch.py config_file:=avia.yaml
+ros2 launch ellipse_livo mapping.launch.py config_file:=avia.yaml
 ```
 
 Change `config_file` parameter to other yaml file under config directory as you need.
@@ -163,7 +163,7 @@ Files: Can be downloaded from [google drive](https://drive.google.com/drive/fold
 
 Run:
 ```bash
-ros2 launch fast_lio mapping.launch.py config_path:=<path_to_your_config_file>
+ros2 launch ellipse_livo mapping.launch.py config_path:=<path_to_your_config_file>
 ros2 bag play <your_bag_dir>
 
 ```
@@ -172,11 +172,11 @@ ros2 bag play <your_bag_dir>
 
 **NCLT Dataset**: Original bin file can be found [here](http://robots.engin.umich.edu/nclt/).
 
-We produce [Rosbag Files](https://drive.google.com/drive/folders/1VBK5idI1oyW0GC_I_Hxh63aqam3nocNK?usp=sharing) and [a python script](https://drive.google.com/file/d/1leh7DxbHx29DyS1NJkvEfeNJoccxH7XM/view) to generate Rosbag files: ```python3 sensordata_to_rosbag_fastlio.py bin_file_dir bag_name.bag```**!!!This ros1 bag should be convert to ros2!!!** To convert ros1 bag to ros2 bag, please follow the documentation [Convert rosbag versions](https://ternaris.gitlab.io/rosbags/topics/convert.html)
+We produce [Rosbag Files](https://drive.google.com/drive/folders/1VBK5idI1oyW0GC_I_Hxh63aqam3nocNK?usp=sharing) and [a python script](https://drive.google.com/file/d/1leh7DxbHx29DyS1NJkvEfeNJoccxH7XM/view) to generate Rosbag files: ```python3 sensordata_to_rosbag_ellipselivo.py bin_file_dir bag_name.bag```**!!!This ros1 bag should be convert to ros2!!!** To convert ros1 bag to ros2 bag, please follow the documentation [Convert rosbag versions](https://ternaris.gitlab.io/rosbags/topics/convert.html)
     
 Run:
 ```
-roslaunch fast_lio mapping_velodyne.launch
+roslaunch ellipse_livo mapping_velodyne.launch
 rosbag play YOUR_DOWNLOADED.bag
 ```
 

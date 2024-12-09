@@ -76,7 +76,7 @@ class LidarProcess {
   LidarProcess(int lidar_type, float min_range, float max_range,
                std::string lidar_topic, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  void GetPointCloud(FastLioPointCloudPtr pc, rclcpp::Time &end_time);
+  void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &end_time);
 
   rclcpp::Time lidar_start_time_, lidar_end_time_;
   float min_range_, max_range_, mean_range_, time_unit_scale_, scan_min_extent_;
@@ -86,19 +86,19 @@ class LidarProcess {
   void Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void SetMinMaxTime(rclcpp::Time &point_time);
   void LivoxHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                    FastLioPointCloudPtr new_pc);
+                    EllipseLivoPointCloudPtr new_pc);
   void VelodyneHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                       FastLioPointCloudPtr new_pc);
+                       EllipseLivoPointCloudPtr new_pc);
   void OusterHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                     FastLioPointCloudPtr new_pc);
+                     EllipseLivoPointCloudPtr new_pc);
   void HesaiHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                    FastLioPointCloudPtr new_pc);
+                    EllipseLivoPointCloudPtr new_pc);
 
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
-  FastLioPointCloudPtr fastlio_pc_;
+  EllipseLivoPointCloudPtr ellipselivo_pc_;
   rclcpp::Time new_lidar_start_time_, new_lidar_end_time_;
 
   iOctree::Octree ioctree_;

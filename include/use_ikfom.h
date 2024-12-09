@@ -83,8 +83,7 @@ inline Eigen::Matrix<double, 24, 12> df_dw(state_ikfom &s,
 inline vect3 SO3ToEuler(const SO3 &orient) {
   Eigen::Matrix<double, 3, 1> _ang;
   Eigen::Vector4d q_data = orient.coeffs().transpose();
-  // scalar w=orient.coeffs[3], x=orient.coeffs[0], y=orient.coeffs[1],
-  // z=orient.coeffs[2];
+
   double sqw = q_data[3] * q_data[3];
   double sqx = q_data[0] * q_data[0];
   double sqy = q_data[1] * q_data[1];
@@ -114,7 +113,7 @@ inline vect3 SO3ToEuler(const SO3 &orient) {
                  sqx - sqy - sqz + sqw);
   double temp[3] = {_ang[0] * 57.3, _ang[1] * 57.3, _ang[2] * 57.3};
   vect3 euler_ang(temp, 3);
-  // euler_ang[0] = roll, euler_ang[1] = pitch, euler_ang[2] = yaw
+
   return euler_ang;
 }
 

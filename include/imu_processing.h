@@ -33,7 +33,7 @@ class ImuProcess {
   ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
              rclcpp::Node::SharedPtr node);
 
-  void UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
+  void UndistortPointCloud(EllipseLivoPointCloudPtr pc, KfState &kf_state,
                            rclcpp::Time &lidar_end_time);
   void UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
                              rclcpp::Time &lidar_end_time);

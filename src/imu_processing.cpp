@@ -196,7 +196,8 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
   }
 }
 
-void ImuProcess::UndistortPointCloud(FastLioPointCloudPtr pc, KfState &kf_state,
+void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
+                                     KfState &kf_state,
                                      rclcpp::Time &lidar_end_time) {
   int match_idx;
   boost::circular_buffer<ImuState> imu_states;

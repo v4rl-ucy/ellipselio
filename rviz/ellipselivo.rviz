@@ -36,11 +36,11 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
-        base_fastlio:
+        base_ellipselivo:
           Value: true
-        imu_fastlio:
+        imu_ellipselivo:
           Value: false
-        odom_fastlio:
+        odom_ellipselivo:
           Value: true
         odom_vilens:
           Value: true
@@ -51,9 +51,9 @@ Visualization Manager:
       Show Names: true
       Tree:
         odom_vilens:
-          odom_fastlio:
-            imu_fastlio:
-              base_fastlio:
+          odom_ellipselivo:
+            imu_ellipselivo:
+              base_ellipselivo:
                 {}
       Update Interval: 0
       Value: true
@@ -243,7 +243,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
-    Fixed Frame: odom_fastlio
+    Fixed Frame: odom_ellipselivo
     Frame Rate: 30
   Name: root
   Tools:

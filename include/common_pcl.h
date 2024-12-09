@@ -45,8 +45,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
                                                       intensity)(
         uint32_t, time_secs, time_secs)(uint32_t, time_nsecs, time_nsecs))
 
-typedef PointXYZNRGBIT FastLioPoint;
-typedef pcl::PointCloud<FastLioPoint> FastLioPointCloud;
-typedef pcl::PointCloud<FastLioPoint>::Ptr FastLioPointCloudPtr;
+typedef PointXYZNRGBIT EllipseLivoPoint;
+typedef pcl::PointCloud<EllipseLivoPoint> EllipseLivoPointCloud;
+typedef pcl::PointCloud<EllipseLivoPoint>::Ptr EllipseLivoPointCloudPtr;
 
 #endif  // COMMON_PCL_H

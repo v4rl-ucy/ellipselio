@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(fast_lio)
+project(ellipse_livo)
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
@@ -22,7 +22,6 @@ find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(livox_ros_driver2 REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(image_transport REQUIRED)
 
@@ -38,23 +37,22 @@ set(dependencies
   visualization_msgs
   pcl_ros
   pcl_conversions
-  livox_ros_driver2
   image_transport
 )
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common io)
+find_package(PCL REQUIRED)
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 message(STATUS "PCL: ${PCL_INCLUDE_DIRS}")
 
 
-ament_auto_add_library(fastlio_mapping SHARED src/laser_mapping.cpp src/lidar_processing.cpp src/imu_processing.cpp) # src/cam_processing.cpp)
-target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+ament_auto_add_library(ellipselivo_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp) # src/cam_processing.cpp)
+target_include_directories(ellipselivo_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
-target_include_directories(fastlio_mapping PUBLIC
+target_include_directories(ellipselivo_mapping PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${EIGEN3_INCLUDE_DIR}
@@ -62,13 +60,13 @@ target_include_directories(fastlio_mapping PUBLIC
   ${OpenCV_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
 )
-target_link_libraries(fastlio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES})
+target_link_libraries(ellipselivo_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES})
 
-ament_target_dependencies(fastlio_mapping ${dependencies})
+ament_target_dependencies(ellipselivo_mapping ${dependencies})
 
-rclcpp_components_register_node(fastlio_mapping
-PLUGIN "fastlio::LaserMappingNode"
-EXECUTABLE fastlio_mapping_node
+rclcpp_components_register_node(ellipselivo_mapping
+PLUGIN "ellipselivo::MappingNode"
+EXECUTABLE ellipselivo_mapping_node
 )
 
 ament_auto_package(INSTALL_TO_SHARE

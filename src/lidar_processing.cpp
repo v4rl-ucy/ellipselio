@@ -5,7 +5,7 @@ LidarProcess::~LidarProcess() {}
 LidarProcess::LidarProcess(int lidar_type, float min_range, float max_range,
                            std::string lidar_topic,
                            rclcpp::Node::SharedPtr node)
-    : node_(node), fastlio_pc_(new FastLioPointCloud()) {
+    : node_(node), ellipselivo_pc_(new EllipseLivoPointCloud()) {
   min_range_ = min_range;
   max_range_ = max_range;
   lidar_type_ = lidar_type;
@@ -40,7 +40,7 @@ void LidarProcess::LidarCallback(
 }
 
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  FastLioPointCloudPtr new_pc(new FastLioPointCloud());
+  EllipseLivoPointCloudPtr new_pc(new EllipseLivoPointCloud());
 
   switch (lidar_type_) {
     case LIVOX:
@@ -65,7 +65,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   ioctree_.initialize(*new_pc, added_idxs, new_idxs);
 
   lidar_mutex_.lock();
-  *fastlio_pc_ += FastLioPointCloud(*new_pc, added_idxs);
+  *ellipselivo_pc_ += EllipseLivoPointCloud(*new_pc, added_idxs);
 
   lidar_start_time_ = new_lidar_start_time_;
   lidar_end_time_ = new_lidar_end_time_;
@@ -74,7 +74,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
 void LidarProcess::ClearPointCloud() {
   lidar_mutex_.lock();
-  fastlio_pc_->clear();
+  ellipselivo_pc_->clear();
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -82,12 +82,12 @@ void LidarProcess::ClearPointCloud() {
   lidar_mutex_.unlock();
 }
 
-void LidarProcess::GetPointCloud(FastLioPointCloudPtr pc,
+void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
                                  rclcpp::Time &end_time) {
   lidar_mutex_.lock();
-  *pc = *fastlio_pc_;
+  *pc = *ellipselivo_pc_;
   end_time = lidar_end_time_;
-  fastlio_pc_->clear();
+  ellipselivo_pc_->clear();
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -109,7 +109,7 @@ void LidarProcess::SetMinMaxTime(rclcpp::Time &point_time) {
 
 void LidarProcess::OusterHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    FastLioPointCloudPtr new_pc) {
+    EllipseLivoPointCloudPtr new_pc) {
   pcl::PointCloud<ouster_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
 
@@ -142,7 +142,7 @@ void LidarProcess::OusterHandler(
     builtin_interfaces::msg::Time msg_time = point_time;
     SetMinMaxTime(point_time);
 
-    FastLioPoint added_pt;
+    EllipseLivoPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
     added_pt.y = msg_pc.points[i].y;
     added_pt.z = msg_pc.points[i].z;
@@ -156,7 +156,7 @@ void LidarProcess::OusterHandler(
 
 void LidarProcess::VelodyneHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    FastLioPointCloudPtr new_pc) {
+    EllipseLivoPointCloudPtr new_pc) {
   pcl::PointCloud<velodyne_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
 
@@ -189,7 +189,7 @@ void LidarProcess::VelodyneHandler(
     builtin_interfaces::msg::Time msg_time = point_time;
     SetMinMaxTime(point_time);
 
-    FastLioPoint added_pt;
+    EllipseLivoPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
     added_pt.y = msg_pc.points[i].y;
     added_pt.z = msg_pc.points[i].z;
@@ -203,7 +203,7 @@ void LidarProcess::VelodyneHandler(
 
 void LidarProcess::LivoxHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    FastLioPointCloudPtr new_pc) {
+    EllipseLivoPointCloudPtr new_pc) {
   pcl::PointCloud<livox_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
 
@@ -236,7 +236,7 @@ void LidarProcess::LivoxHandler(
     builtin_interfaces::msg::Time msg_time = point_time;
     SetMinMaxTime(point_time);
 
-    FastLioPoint added_pt;
+    EllipseLivoPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
     added_pt.y = msg_pc.points[i].y;
     added_pt.z = msg_pc.points[i].z;
@@ -250,7 +250,7 @@ void LidarProcess::LivoxHandler(
 
 void LidarProcess::HesaiHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    FastLioPointCloudPtr new_pc) {
+    EllipseLivoPointCloudPtr new_pc) {
   pcl::PointCloud<hesai_point> msg_pc;
   pcl::fromROSMsg(*msg, msg_pc);
 
@@ -282,7 +282,7 @@ void LidarProcess::HesaiHandler(
     builtin_interfaces::msg::Time msg_time = point_time;
     SetMinMaxTime(point_time);
 
-    FastLioPoint added_pt;
+    EllipseLivoPoint added_pt;
     added_pt.x = msg_pc.points[i].x;
     added_pt.y = msg_pc.points[i].y;
     added_pt.z = msg_pc.points[i].z;

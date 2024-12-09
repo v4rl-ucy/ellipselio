@@ -1,8 +1,8 @@
-#include <laser_mapping.h>
+#include <map_processing.h>
 
-namespace fastlio {
+namespace ellipselivo {
 
-bool LaserMappingNode::sync_packages() {
+bool MappingNode::sync_packages() {
   if (imu_process->imu_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
     return false;
   }
@@ -20,8 +20,7 @@ bool LaserMappingNode::sync_packages() {
   return true;
 }
 
-void LaserMappingNode::compute_tensor_vote(int i, int j, M3F &A_j,
-                                           bool first_pass) {
+void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
   float d_ij = (p_i - p_j).norm();
@@ -35,8 +34,7 @@ void LaserMappingNode::compute_tensor_vote(int i, int j, M3F &A_j,
   A_j = c_ij * R_ij * K_j * Rp_ij;
 }
 
-void LaserMappingNode::compute_tensor_eigen(int i, M3F &tensor,
-                                            bool first_pass) {
+void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   V3F eig_val, sali_val;
   M3F eig_vec, tensor_i2;
   Eigen::SelfAdjointEigenSolver<M3F> eig_solver;
@@ -78,9 +76,9 @@ void LaserMappingNode::compute_tensor_eigen(int i, M3F &tensor,
   }
 }
 
-void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
-                                          std::vector<int> &added_idxs,
-                                          std::vector<int> &updated_idxs) {
+void MappingNode::tensor_vote_pass_1(int old_map_size,
+                                     std::vector<int> &added_idxs,
+                                     std::vector<int> &updated_idxs) {
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
 
 #pragma omp parallel for
@@ -172,8 +170,8 @@ void LaserMappingNode::tensor_vote_pass_1(int old_map_size,
   updated_idxs.resize(upd_idx);
 }
 
-void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
-                                          std::vector<int> &updated_idxs) {
+void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
+                                     std::vector<int> &updated_idxs) {
   Eigen::MatrixXf sali_vals;
   Eigen::VectorXi sali_filter;
   V3F cur_mean_sali;
@@ -226,7 +224,7 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
               (float(map_counter) + 1);
 }
 
-void LaserMappingNode::map_incremental(bool init_map) {
+void MappingNode::map_incremental(bool init_map) {
   std::vector<int> added_idxs, new_idxs, updated_idxs;
 
 #pragma omp parallel for
@@ -244,7 +242,7 @@ void LaserMappingNode::map_incremental(bool init_map) {
 
   ioctree.set_bucket_size(map_bucket_size);
   ioctree.update(*scan_cloud, added_idxs, new_idxs);
-  *map_cloud += FastLioPointCloud(*scan_cloud, added_idxs);
+  *map_cloud += EllipseLivoPointCloud(*scan_cloud, added_idxs);
 
   update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
@@ -277,23 +275,23 @@ void LaserMappingNode::map_incremental(bool init_map) {
   map_counter++;
 }
 
-void LaserMappingNode::publish_map() {
+void MappingNode::publish_map() {
   sensor_msgs::msg::PointCloud2 map_msg;
   pcl::toROSMsg(*map_cloud, map_msg);
   map_msg.header.stamp = kf_state_.time;
-  map_msg.header.frame_id = "odom_fastlio";
+  map_msg.header.frame_id = "odom_ellipselivo";
   pub_map_->publish(map_msg);
 }
 
-void LaserMappingNode::publish_scan() {
+void MappingNode::publish_scan() {
   sensor_msgs::msg::PointCloud2 scan_msg;
   pcl::toROSMsg(*scan_cloud, scan_msg);
   scan_msg.header.stamp = kf_state_.time;
-  scan_msg.header.frame_id = "odom_fastlio";
+  scan_msg.header.frame_id = "odom_ellipselivo";
   pub_scan_->publish(scan_msg);
 }
 
-void LaserMappingNode::publish_markers() {
+void MappingNode::publish_markers() {
   std::atomic<int> marker_idx = 0;
   int start_idx, end_idx, step_idx, count_idx;
   visualization_msgs::msg::MarkerArray marker_array;
@@ -316,7 +314,7 @@ void LaserMappingNode::publish_markers() {
     marker.frame_locked = true;
     marker.ns = "map_primitives";
     marker.lifetime = rclcpp::Duration(0, 0);
-    marker.header.frame_id = "odom_fastlio";
+    marker.header.frame_id = "odom_ellipselivo";
     marker.header.stamp = kf_state_.time;
     marker.action = visualization_msgs::msg::Marker::ADD;
 
@@ -365,12 +363,12 @@ void LaserMappingNode::publish_markers() {
   pub_mark_->publish(marker_array);
 }
 
-void LaserMappingNode::publish_odometry() {
+void MappingNode::publish_odometry() {
   // pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
   geometry_msgs::msg::TransformStamped trans;
-  trans.header.frame_id = "odom_fastlio";
-  trans.child_frame_id = "imu_fastlio";
+  trans.header.frame_id = "odom_ellipselivo";
+  trans.child_frame_id = "imu_ellipselivo";
   trans.header.stamp = kf_state_.time;
   trans.transform.translation.x = kf_state_.state.pos(0);
   trans.transform.translation.y = kf_state_.state.pos(1);
@@ -382,7 +380,7 @@ void LaserMappingNode::publish_odometry() {
   tf_br_->sendTransform(trans);
 }
 
-void LaserMappingNode::tensor_registration(
+void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   Eigen::MatrixXd h(scan_cloud->size(), 1);
   Eigen::MatrixXd h_x(scan_cloud->size(), 12);
@@ -402,7 +400,7 @@ void LaserMappingNode::tensor_registration(
     V3F p_lidar, p_imu, p_world;
     V3F sali, n_world, p_dash, q, q_dash, norm_vec, eig_vals;
 
-    FastLioPoint pt = scan_cloud->points[i];
+    EllipseLivoPoint pt = scan_cloud->points[i];
 
     p_lidar = pt.getVector3fMap();
     p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I)
@@ -483,11 +481,11 @@ void LaserMappingNode::tensor_registration(
   match_time += omp_get_wtime() - match_start;
 }
 
-LaserMappingNode::LaserMappingNode(
+MappingNode::MappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
     : Node("laser_mapping", options),
-      map_cloud(new FastLioPointCloud()),
-      scan_cloud(new FastLioPointCloud()),
+      map_cloud(new EllipseLivoPointCloud()),
+      scan_cloud(new EllipseLivoPointCloud()),
       extrinT(3, 0.0),
       extrinR(9, 0.0),
       Lidar_T_wrt_IMU(Zero3d),
@@ -567,7 +565,7 @@ LaserMappingNode::LaserMappingNode(
 
   double epsi[23] = {0.001};
   kf_->init_dyn_share(get_f, df_dx, df_dw,
-                      std::bind(&LaserMappingNode::tensor_registration, this,
+                      std::bind(&MappingNode::tensor_registration, this,
                                 std::placeholders::_1, std::placeholders::_2),
                       NUM_MAX_ITERATIONS, epsi);
 
@@ -586,20 +584,20 @@ LaserMappingNode::LaserMappingNode(
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
-      std::bind(&LaserMappingNode::timer_callback, this), loop_callback_group_);
+      std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
-      std::bind(&LaserMappingNode::publish_map, this), pub_callback_group_);
+      std::bind(&MappingNode::publish_map, this), pub_callback_group_);
   pub_marker_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
-      std::bind(&LaserMappingNode::publish_markers, this), pub_callback_group_);
+      std::bind(&MappingNode::publish_markers, this), pub_callback_group_);
 
   RCLCPP_INFO(this->get_logger(), "Node init finished.");
 }
 
-LaserMappingNode::~LaserMappingNode() {}
+MappingNode::~MappingNode() {}
 
-// void LaserMappingNode::init_cam_process() {
+// void MappingNode::init_cam_process() {
 //   if (cam_init) {
 //     return;
 //   }
@@ -648,7 +646,7 @@ LaserMappingNode::~LaserMappingNode() {}
 //   }
 // }
 
-void LaserMappingNode::timer_callback() {
+void MappingNode::timer_callback() {
   //  init_cam_process();
 
   if (!initialized) {
@@ -739,8 +737,8 @@ void LaserMappingNode::timer_callback() {
   }
 }
 
-}  // namespace fastlio
+}  // namespace ellipselivo
 
 #include "rclcpp_components/register_node_macro.hpp"
 
-RCLCPP_COMPONENTS_REGISTER_NODE(fastlio::LaserMappingNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(ellipselivo::MappingNode)

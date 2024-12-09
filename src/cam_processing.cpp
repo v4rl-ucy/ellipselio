@@ -92,8 +92,8 @@ void CamProcess::MatchImageswithIMU(std::vector<Pose6D> &imu_poses,
   }
 }
 
-void CamProcess::ColorPoint(FastLioPoint &pt, Pose6D &pt_head, Pose6D &pt_tail,
-                            double pcl_beg_time) {
+void CamProcess::ColorPoint(EllipseLivoPoint &pt, Pose6D &pt_head,
+                            Pose6D &pt_tail, double pcl_beg_time) {
   cv::Point2d uv;
   cv::Vec3b color;
   V3D pt_cap, pt_img;

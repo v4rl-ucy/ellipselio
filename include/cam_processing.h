@@ -22,7 +22,7 @@ class CamProcess {
   CamProcess(int queue_size, std::string cam_topic,
              rclcpp::Node::SharedPtr node);
   void MatchImageswithIMU(std::vector<Pose6D> &imu_poses, double pcl_beg_time);
-  void ColorPoint(FastLioPoint &pt, Pose6D &imu_head, Pose6D &imu_tail,
+  void ColorPoint(EllipseLivoPoint &pt, Pose6D &imu_head, Pose6D &imu_tail,
                   double pcl_beg_time);
   void SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
                                 V3D &t_imu_lidar, M3D &R_imu_lidar,

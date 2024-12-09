@@ -13,7 +13,6 @@
 #include <chrono>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
-#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <random>
@@ -24,12 +23,12 @@
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-namespace fastlio {
+namespace ellipselivo {
 
-class LaserMappingNode : public rclcpp::Node {
+class MappingNode : public rclcpp::Node {
  public:
-  LaserMappingNode(const rclcpp::NodeOptions &options);
-  ~LaserMappingNode();
+  MappingNode(const rclcpp::NodeOptions &options);
+  ~MappingNode();
 
  private:
   bool sync_packages();
@@ -120,8 +119,8 @@ class LaserMappingNode : public rclcpp::Node {
   std::vector<double> extrinT;
   std::vector<double> extrinR;
 
-  FastLioPointCloudPtr map_cloud;
-  FastLioPointCloudPtr scan_cloud;
+  EllipseLivoPointCloudPtr map_cloud;
+  EllipseLivoPointCloudPtr scan_cloud;
 
   iOctree::Octree ioctree;
 
@@ -135,4 +134,4 @@ class LaserMappingNode : public rclcpp::Node {
   std::shared_ptr<LidarProcess> lid_process;
   //  CamProcessVec p_cams;
 };
-}  // namespace fastlio
+}  // namespace ellipselivo
