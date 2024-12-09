@@ -52,14 +52,13 @@ void LaserMappingNode::compute_tensor_eigen(int i, M3F &tensor,
                  (eig_vec.col(2) * eig_vec.col(2).transpose() +
                   eig_vec.col(1) * eig_vec.col(1).transpose());
     tensors_p2[i] = tensor_i2;
-    // filters[i][1] = tensor_density_expection(eig_val);
   } else {
     sali_val(0) = eig_val(2) - eig_val(1);
     sali_val(1) = eig_val(1) - eig_val(0);
     sali_val(2) = eig_val(0);
     sali_val.maxCoeff(&saliency_idxs[i]);
 
-    filters[i][2] = true;
+    filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-3)).matrix().normalized();
     eigenvalues[i] *= filter_size_corner_min;
@@ -218,7 +217,7 @@ void LaserMappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
 
-    sali_filter(i) = filters[map_i][2];
+    sali_filter(i) = filters[map_i][1];
     sali_vals.row(i) = salivalues[map_i];
   }
 
@@ -241,7 +240,6 @@ void LaserMappingNode::map_incremental(bool init_map) {
             .cast<float>();
   }
 
-  double st_time = omp_get_wtime();
   int old_map_size = map_cloud->size();
 
   ioctree.set_bucket_size(map_bucket_size);
@@ -253,7 +251,7 @@ void LaserMappingNode::map_incremental(bool init_map) {
   updated_pt.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
   neighbours.resize(map_cloud->size(), std::vector<int>());
-  filters.resize(map_cloud->size(), std::vector<bool>(3, false));
+  filters.resize(map_cloud->size(), std::vector<bool>(2, false));
 
   tensors_p1.resize(map_cloud->size(), M3F::Zero());
   tensors_p2.resize(map_cloud->size(), M3F::Zero());
@@ -277,23 +275,22 @@ void LaserMappingNode::map_incremental(bool init_map) {
   }
 
   map_counter++;
-  kdtree_incremental_time = omp_get_wtime() - st_time;
 }
 
 void LaserMappingNode::publish_map() {
-  sensor_msgs::msg::PointCloud2 laserCloudmsg;
-  pcl::toROSMsg(*map_cloud, laserCloudmsg);
-  laserCloudmsg.header.stamp = kf_state_.time;
-  laserCloudmsg.header.frame_id = "odom_fastlio";
-  pubLaserCloudMap_->publish(laserCloudmsg);
+  sensor_msgs::msg::PointCloud2 map_msg;
+  pcl::toROSMsg(*map_cloud, map_msg);
+  map_msg.header.stamp = kf_state_.time;
+  map_msg.header.frame_id = "odom_fastlio";
+  pub_map_->publish(map_msg);
 }
 
 void LaserMappingNode::publish_scan() {
-  sensor_msgs::msg::PointCloud2 laserCloudmsg;
-  pcl::toROSMsg(*scan_cloud, laserCloudmsg);
-  laserCloudmsg.header.stamp = kf_state_.time;
-  laserCloudmsg.header.frame_id = "odom_fastlio";
-  pubLaserCloudFull_->publish(laserCloudmsg);
+  sensor_msgs::msg::PointCloud2 scan_msg;
+  pcl::toROSMsg(*scan_cloud, scan_msg);
+  scan_msg.header.stamp = kf_state_.time;
+  scan_msg.header.frame_id = "odom_fastlio";
+  pub_scan_->publish(scan_msg);
 }
 
 void LaserMappingNode::publish_markers() {
@@ -301,7 +298,7 @@ void LaserMappingNode::publish_markers() {
   int start_idx, end_idx, step_idx, count_idx;
   visualization_msgs::msg::MarkerArray marker_array;
 
-  start_idx = marker_start_idx;
+  start_idx = 0;
   end_idx = map_cloud->points.size();
   step_idx = ceil(1e-2 * (end_idx - start_idx));
   count_idx = (end_idx - start_idx) / step_idx;
@@ -313,7 +310,7 @@ void LaserMappingNode::publish_markers() {
     visualization_msgs::msg::Marker marker;
 
     int map_idx = start_idx + (i * step_idx);
-    if (!filters[map_idx][2]) continue;
+    if (!filters[map_idx][1]) continue;
 
     marker.id = map_idx;
     marker.frame_locked = true;
@@ -365,7 +362,7 @@ void LaserMappingNode::publish_markers() {
     marker_array.markers[marker_idx++] = marker;
   }
   marker_array.markers.resize(marker_idx);
-  pubMarker_->publish(marker_array);
+  pub_mark_->publish(marker_array);
 }
 
 void LaserMappingNode::publish_odometry() {
@@ -387,17 +384,15 @@ void LaserMappingNode::publish_odometry() {
 
 void LaserMappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  Eigen::MatrixXd h(scan_size, 1);
-  Eigen::MatrixXd h_x(scan_size, 12);
+  Eigen::MatrixXd h(scan_cloud->size(), 1);
+  Eigen::MatrixXd h_x(scan_cloud->size(), 12);
   std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
 
-  total_residual = 0.0;
-
+  double res_mean_last = 0.0, total_residual = 0.0;
   double match_start = omp_get_wtime();
-  double solve_start_ = omp_get_wtime();
 
 #pragma omp parallel for
-  for (int i = 0; i < scan_size; i++) {
+  for (int i = 0; i < scan_cloud->size(); i++) {
     int sali_idx, map_i;
     float residual;
     V3F c, a;
@@ -420,7 +415,7 @@ void LaserMappingNode::tensor_registration(
     pt.getVector3fMap() = p_world;
     ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
-    if (sqrt(N_dst[0]) > map_search_radius || !filters[map_i][2]) continue;
+    if (sqrt(N_dst[0]) > map_search_radius || !filters[map_i][1]) continue;
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
@@ -486,7 +481,6 @@ void LaserMappingNode::tensor_registration(
   std::cerr << "Num junctions: " << junct_cnt << std::endl;
 
   match_time += omp_get_wtime() - match_start;
-  solve_time += omp_get_wtime() - solve_start_;
 }
 
 LaserMappingNode::LaserMappingNode(
@@ -500,17 +494,9 @@ LaserMappingNode::LaserMappingNode(
       Lidar_R_wrt_IMU(Eye3d),
       kf_(new KfFastlio()) {
   this->declare_parameter<int>("publish.pub_map_n_secs", 1);
-  this->declare_parameter<bool>("publish.path_en", true);
-  this->declare_parameter<bool>("publish.effect_map_en", false);
-  this->declare_parameter<bool>("publish.map_en", false);
-  this->declare_parameter<bool>("publish.scan_publish_en", true);
-  this->declare_parameter<bool>("publish.dense_publish_en", true);
-  this->declare_parameter<bool>("publish.scan_bodyframe_pub_en", true);
   this->declare_parameter<int>("max_iteration", 4);
   this->declare_parameter<string>("common.lid_topic", "/livox/lidar");
   this->declare_parameter<string>("common.imu_topic", "/livox/imu");
-  this->declare_parameter<bool>("common.time_sync_en", false);
-  this->declare_parameter<double>("common.time_offset_lidar_to_imu", 0.0);
   this->declare_parameter<double>("filter_size_corner", 0.5);
   this->declare_parameter<double>("filter_size_surf", 0.5);
   this->declare_parameter<double>("filter_size_map", 0.5);
@@ -537,10 +523,6 @@ LaserMappingNode::LaserMappingNode(
                                           vector<double>());
 
   this->get_parameter_or<int>("publish.pub_map_n_secs", pub_map_n_secs, 1);
-  this->get_parameter_or<bool>("publish.scan_publish_en", scan_pub_en, true);
-  this->get_parameter_or<bool>("publish.dense_publish_en", dense_pub_en, true);
-  this->get_parameter_or<bool>("publish.scan_bodyframe_pub_en",
-                               scan_body_pub_en, true);
   this->get_parameter_or<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
   this->get_parameter_or<string>("common.lid_topic", lid_topic, "/livox/lidar");
   this->get_parameter_or<string>("common.imu_topic", imu_topic, "/livox/imu");
@@ -583,7 +565,7 @@ LaserMappingNode::LaserMappingNode(
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
 
-  fill(epsi, epsi + 23, 0.001);
+  double epsi[23] = {0.001};
   kf_->init_dyn_share(get_f, df_dx, df_dw,
                       std::bind(&LaserMappingNode::tensor_registration, this,
                                 std::placeholders::_1, std::placeholders::_2),
@@ -594,13 +576,13 @@ LaserMappingNode::LaserMappingNode(
   pub_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
-  pubLaserCloudMap_ =
+  tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+  pub_map_ =
       this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_map", 1);
-  pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/cloud_registered", 1);
-  pubMarker_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+  pub_scan_ =
+      this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_scan", 1);
+  pub_mark_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "/visualization_marker", 1);
-  tf_br_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
@@ -684,14 +666,8 @@ void LaserMappingNode::timer_callback() {
 
   if (sync_packages()) {
     std::cerr << "Synced packages" << std::endl;
-    double t0, t1, t2, t3, t4, t5, t6, t7, match_start, solve_start, svd_time;
+    double t0, t1, t2, t3, t4, t5, t6, t7, solve_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
-
-    match_time = 0;
-    kdtree_search_time = 0.0;
-    solve_time = 0;
-    solve_const_H_time = 0;
-    svd_time = 0;
 
     t0 = omp_get_wtime();
 
@@ -725,81 +701,41 @@ void LaserMappingNode::timer_callback() {
 
     std::cerr << "Scan size: " << scan_cloud->size() << std::endl;
 
-    scan_size = scan_cloud->points.size();
-
     t2 = omp_get_wtime();
     downsample_time = t2 - t1;
 
-    int featsFromMapNum = ioctree.size();
-    kdtree_size_st = ioctree.size();
-
-    t3 = omp_get_wtime();
-    init_kdtree_time = t3 - t2;
-
-    /*** iterated state estimation ***/
     t4 = omp_get_wtime();
-    double t_update_start = omp_get_wtime();
-    double solve_H_time = 0;
-    imu_process->UpdateStatesWithLidar(solve_H_time, kf_state_, lidar_end_time);
-
-    double t_update_end = omp_get_wtime();
+    imu_process->UpdateStatesWithLidar(solve_time, kf_state_, lidar_end_time);
     t5 = omp_get_wtime();
-    state_update_time = t5 - t4;
 
-    /*** add the feature points to map kdtree ***/
+    state_update_time = t5 - t4;
     map_incremental(false);
     t6 = omp_get_wtime();
-    kdtree_update_time = t6 - t5;
-    t7 = omp_get_wtime();
-    total_time = t7 - t0;
-
-    double eigen_time = t7 - t6;
+    map_update_time = t6 - t5;
+    total_time = t6 - t0;
 
     publish_odometry();
     publish_scan();
 
-    /*** Debug variables ***/
-    if (runtime_pos_log) {
-      frame_num++;
-      kdtree_size_end = ioctree.size();
-      aver_time_consu =
-          aver_time_consu * (frame_num - 1) / frame_num + (t5 - t0) / frame_num;
-      aver_time_icp = aver_time_icp * (frame_num - 1) / frame_num +
-                      (t_update_end - t_update_start) / frame_num;
-      aver_time_match = aver_time_match * (frame_num - 1) / frame_num +
-                        (match_time) / frame_num;
-      aver_time_incre = aver_time_incre * (frame_num - 1) / frame_num +
-                        (kdtree_incremental_time) / frame_num;
-      aver_time_solve = aver_time_solve * (frame_num - 1) / frame_num +
-                        (solve_time + solve_H_time) / frame_num;
-      aver_time_const_H_time =
-          aver_time_const_H_time * (frame_num - 1) / frame_num +
-          solve_time / frame_num;
-      max_time_consu = fmax(max_time_consu, t5 - t0);
-      max_time_icp = fmax(max_time_icp, t_update_end - t_update_start);
-      max_time_match = fmax(max_time_match, match_time);
-      max_time_incre = fmax(max_time_incre, kdtree_incremental_time);
-      max_time_solve = fmax(max_time_solve, solve_time + solve_H_time);
-      max_time_const_H_time = fmax(max_time_const_H_time, solve_time);
-      max_imu_time = fmax(max_imu_time, imu_time);
-      max_init_kdtree_time = fmax(max_init_kdtree_time, init_kdtree_time);
-      max_state_update_time = fmax(max_state_update_time, state_update_time);
-      max_kdtree_update_time = fmax(max_kdtree_update_time, kdtree_update_time);
-      max_downsample_time = fmax(max_downsample_time, downsample_time);
-      max_total_time = fmax(max_total_time, total_time);
-      printf(
-          "IMU: %0.6f Downsample: %0.6f Init kdtree: %0.6f "
-          "State update: %0.6f Kdtree update: %0.6f "
-          "Total: %0.6f\n",
-          imu_time, downsample_time, init_kdtree_time, state_update_time,
-          kdtree_update_time, total_time);
-      printf(
-          "Max IMU: %0.6f Max downsample: %0.6f Max init kdtree: %0.6f "
-          "Max state update: %0.6f Max kdtree update: "
-          "%0.6f Max total time: %0.6f\n",
-          max_imu_time, max_downsample_time, max_init_kdtree_time,
-          max_state_update_time, max_kdtree_update_time, max_total_time);
-    }
+    max_time_match = fmax(max_time_match, match_time);
+    max_time_solve = fmax(max_time_solve, solve_time);
+    max_imu_time = fmax(max_imu_time, imu_time);
+    max_state_update_time = fmax(max_state_update_time, state_update_time);
+    max_map_update_time = fmax(max_map_update_time, map_update_time);
+    max_downsample_time = fmax(max_downsample_time, downsample_time);
+    max_total_time = fmax(max_total_time, total_time);
+    printf(
+        "IMU: %0.6f Downsample: %0.6f Match time: %0.6f "
+        "State update: %0.6f Map update: %0.6f "
+        "Total: %0.6f\n",
+        imu_time, downsample_time, match_time, state_update_time,
+        map_update_time, total_time);
+    printf(
+        "Max IMU: %0.6f Max downsample: %0.6f Max match time: %0.6f "
+        "Max state update: %0.6f Max map update: "
+        "%0.6f Max total time: %0.6f\n",
+        max_imu_time, max_downsample_time, max_time_match,
+        max_state_update_time, max_map_update_time, max_total_time);
   }
 }
 

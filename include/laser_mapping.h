@@ -8,14 +8,12 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <project_ellipse.h>
 #include <tf2_ros/transform_broadcaster.h>
-#include <unistd.h>
 
 #include <Eigen/Core>
 #include <chrono>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
-#include <mutex>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <random>
@@ -23,7 +21,6 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_srvs/srv/trigger.hpp>
-#include <thread>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -58,68 +55,39 @@ class LaserMappingNode : public rclcpp::Node {
   void init_cam_process();
   void map_incremental(bool init_map);
 
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
-      pubLaserCloudFull_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubMarker_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
 
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_br_;
   rclcpp::TimerBase::SharedPtr loop_timer_;
-  rclcpp::TimerBase::SharedPtr pub_odom_timer_;
-  rclcpp::TimerBase::SharedPtr pub_path_timer_;
-  rclcpp::TimerBase::SharedPtr pub_scan_timer_;
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
   rclcpp::TimerBase::SharedPtr pub_marker_timer_;
-  rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
 
-  double deltaT, deltaR,
-      aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0,
-      aver_time_incre = 0, aver_time_solve = 0, aver_time_const_H_time = 0,
-      max_time_consu = 0, max_time_icp = 0, max_time_match = 0,
-      max_time_incre = 0, max_time_solve = 0, max_time_const_H_time = 0;
-  double max_imu_time = 0, max_downsample_time = 0, max_init_kdtree_time = 0,
-         max_state_update_time = 0, max_kdtree_update_time = 0,
-         max_total_time = 0;
-  double epsi[23] = {0.001};
-
-  /*** Time Log Variables ***/
-  double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0,
-         kdtree_delete_time = 0.0;
-  double match_time = 0, solve_time = 0, solve_const_H_time = 0;
-  double imu_time = 0, downsample_time = 0, init_kdtree_time = 0,
-         state_update_time = 0, kdtree_update_time = 0, total_time = 0;
-  int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0,
-      kdtree_delete_counter = 0, pub_map_n_secs = 0;
-  bool runtime_pos_log = true, pcd_save_en = false, time_sync_en = false,
-       extrinsic_est_en = true, path_en = true;
+  double max_time_match = 0, max_time_solve = 0, max_imu_time = 0,
+         max_downsample_time = 0, max_state_update_time = 0,
+         max_map_update_time = 0, max_total_time = 0;
+  double match_time = 0, solve_time = 0, imu_time = 0, downsample_time = 0,
+         init_kdtree_time = 0, state_update_time = 0, map_update_time = 0,
+         total_time = 0;
+  int pub_map_n_secs = 0;
 
   string lid_topic, imu_topic;
 
-  double res_mean_last = 0.05, total_residual = 0.0;
-  double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
   double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
   double filter_size_corner_min = 0, filter_size_surf_min = 0,
-         filter_size_map_min = 0, fov_deg = 0;
-  double total_distance = 0, lidar_end_time = 0, first_lidar_time = 0.0,
-         last_publish_time = 0.0;
-  int effct_feat_num = 0, color_feat_num = 0, time_log_counter = 0,
-      scan_count = 0;
-  int iterCount = 0, scan_size = 0, NUM_MAX_ITERATIONS = 0,
-      laserCloudValidNum = 0, pcd_save_interval = -1, pcd_index = 0;
+         filter_size_map_min = 0;
+
+  int NUM_MAX_ITERATIONS = 0;
   int cam_frame_rate = 20;
 
-  bool lidar_pushed, flg_first_scan = true, cam_init = false, flg_exit = false,
-                     flg_EKF_inited;
-  bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
-  bool is_first_lidar = true;
-
-  int map_counter = 0, marker_start_idx = 0;
+  int map_counter = 0;
 
   int map_bucket_size;
   double map_search_radius;
 
-  int frame_num = 0;
   int lidar_type = 0, scan_rate = 10;
   double blind = 0.01;
 
