@@ -14,7 +14,6 @@
 
 using namespace std;
 
-#define G_m_s2 (9.80665)
 #define NUM_MATCH_POINTS (5)
 #define MAX_NEIGHBOURS (25)
 
@@ -34,7 +33,7 @@ static V3F Zero3f(0, 0, 0);
 struct KfState {
   rclcpp::Time time = rclcpp::Time(0, 0, RCL_ROS_TIME);
   state_ikfom state;
-  KfFastlio::cov cov;
+  Ikfom::cov cov;
 };
 
 typedef std::shared_ptr<KfState> KfStateSPtr;

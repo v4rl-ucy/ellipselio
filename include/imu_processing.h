@@ -24,14 +24,23 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <thread>
 
-#define MAX_INI_COUNT (100)
-#define LASER_POINT_COV (0.001)
+#define G_m_s2 (9.80665)
+
+struct ImuParams {
+  int rate;
+  double gyr_noise;
+  double acc_noise;
+  double gyr_bias;
+  double acc_bias;
+  std::string topic;
+  V3D t_imu_lidar;
+  M3D r_imu_lidar;
+};
 
 class ImuProcess {
  public:
   ~ImuProcess();
-  ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
-             rclcpp::Node::SharedPtr node);
+  ImuProcess(IkfomSPtr kf, ImuParams params, rclcpp::Node::SharedPtr node);
 
   void UndistortPointCloud(EllipseLivoPointCloudPtr pc, KfState &kf_state,
                            rclcpp::Time &lidar_end_time);
@@ -56,7 +65,7 @@ class ImuProcess {
   void GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
                     boost::circular_buffer<ImuState> &imu_states);
 
-  KfFastlioSPtr kf_;
+  IkfomSPtr kf_;
   KfState kf_state_;
 
   std::mutex imu_mutex_;
@@ -67,18 +76,15 @@ class ImuProcess {
 
   boost::circular_buffer<ImuState> imu_states_;
 
-  M3D Lidar_R_wrt_IMU;
-  V3D Lidar_T_wrt_IMU;
   V3D mean_acc;
   V3D mean_gyr;
-  V3D cov_acc;
-  V3D cov_gyr;
-  V3D cov_bias_gyr;
-  V3D cov_bias_acc;
+  V3D acc_noise;
+  V3D gyr_noise;
+  V3D acc_bias;
+  V3D gyr_bias;
 
   Eigen::Matrix<double, 12, 12> Q;
 
-  int imu_freq_;
   int init_iter_num;
   bool b_first_frame_;
 };

@@ -20,23 +20,43 @@ MTK_BUILD_MANIFOLD(input_ikfom, ((vect3, acc))((vect3, gyro)));
 MTK_BUILD_MANIFOLD(process_noise_ikfom,
                    ((vect3, ng))((vect3, na))((vect3, nbg))((vect3, nba)));
 
+typedef esekfom::esekf<state_ikfom, 12, input_ikfom> Ikfom;
+typedef std::shared_ptr<Ikfom> IkfomSPtr;
+
+inline Ikfom::cov P_cov() {
+  Ikfom::cov cov;
+  cov.setIdentity();
+  cov(6, 6) = 0.00001;
+  cov(7, 7) = 0.00001;
+  cov(8, 8) = 0.00001;
+  cov(9, 9) = 0.00001;
+  cov(10, 10) = 0.00001;
+  cov(11, 11) = 0.00001;
+  cov(15, 15) = 0.0001;
+  cov(16, 16) = 0.0001;
+  cov(17, 17) = 0.0001;
+  cov(18, 18) = 0.001;
+  cov(19, 19) = 0.001;
+  cov(20, 20) = 0.001;
+  cov(21, 21) = 0.00001;
+  cov(22, 22) = 0.00001;
+  return cov;
+}
+
 inline MTK::get_cov<process_noise_ikfom>::type process_noise_cov() {
   MTK::get_cov<process_noise_ikfom>::type cov =
       MTK::get_cov<process_noise_ikfom>::type::Zero();
   MTK::setDiagonal<process_noise_ikfom, vect3, 0>(cov, &process_noise_ikfom::ng,
-                                                  0.0001);  // 0.03
-  MTK::setDiagonal<process_noise_ikfom, vect3, 3>(
-      cov, &process_noise_ikfom::na, 0.0001);  // *dt 0.01 0.01 * dt * dt 0.05
+                                                  0.0001);
+  MTK::setDiagonal<process_noise_ikfom, vect3, 3>(cov, &process_noise_ikfom::na,
+                                                  0.0001);
   MTK::setDiagonal<process_noise_ikfom, vect3, 6>(
-      cov, &process_noise_ikfom::nbg,
-      0.00001);  // *dt 0.00001 0.00001 * dt *dt 0.3 //0.001 0.0001 0.01
+      cov, &process_noise_ikfom::nbg, 0.00001);
   MTK::setDiagonal<process_noise_ikfom, vect3, 9>(
-      cov, &process_noise_ikfom::nba, 0.00001);  // 0.001 0.05 0.0001/out 0.01
+      cov, &process_noise_ikfom::nba, 0.00001);
   return cov;
 }
 
-// double L_offset_to_I[3] = {0.04165, 0.02326, -0.0284}; // Avia
-// vect3 Lidar_offset_to_IMU(L_offset_to_I, 3);
 inline Eigen::Matrix<double, 24, 1> get_f(state_ikfom &s,
                                           const input_ikfom &in) {
   Eigen::Matrix<double, 24, 1> res = Eigen::Matrix<double, 24, 1>::Zero();
@@ -88,18 +108,16 @@ inline vect3 SO3ToEuler(const SO3 &orient) {
   double sqx = q_data[0] * q_data[0];
   double sqy = q_data[1] * q_data[1];
   double sqz = q_data[2] * q_data[2];
-  double unit = sqx + sqy + sqz +
-                sqw;  // if normalized is one, otherwise is correction factor
+  double unit = sqx + sqy + sqz + sqw;
   double test = q_data[3] * q_data[1] - q_data[2] * q_data[0];
 
-  if (test > 0.49999 * unit) {  // singularity at north pole
-
+  if (test > 0.49999 * unit) {
     _ang << 2 * std::atan2(q_data[0], q_data[3]), M_PI / 2, 0;
     double temp[3] = {_ang[0] * 57.3, _ang[1] * 57.3, _ang[2] * 57.3};
     vect3 euler_ang(temp, 3);
     return euler_ang;
   }
-  if (test < -0.49999 * unit) {  // singularity at south pole
+  if (test < -0.49999 * unit) {
     _ang << -2 * std::atan2(q_data[0], q_data[3]), -M_PI / 2, 0;
     double temp[3] = {_ang[0] * 57.3, _ang[1] * 57.3, _ang[2] * 57.3};
     vect3 euler_ang(temp, 3);
@@ -116,8 +134,5 @@ inline vect3 SO3ToEuler(const SO3 &orient) {
 
   return euler_ang;
 }
-
-typedef esekfom::esekf<state_ikfom, 12, input_ikfom> KfFastlio;
-typedef std::shared_ptr<KfFastlio> KfFastlioSPtr;
 
 #endif

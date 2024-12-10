@@ -71,29 +71,13 @@ class MappingNode : public rclcpp::Node {
   double match_time = 0, solve_time = 0, imu_time = 0, downsample_time = 0,
          init_kdtree_time = 0, state_update_time = 0, map_update_time = 0,
          total_time = 0;
-  int pub_map_n_secs = 0;
 
-  string lid_topic, imu_topic;
-
-  double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
-  double filter_size_corner_min = 0, filter_size_surf_min = 0,
-         filter_size_map_min = 0;
-
-  int NUM_MAX_ITERATIONS = 0;
-  int cam_frame_rate = 20;
-
-  int map_counter = 0;
-
-  int map_bucket_size;
-  double map_search_radius;
-
-  int lidar_type = 0, scan_rate = 10;
-  double blind = 0.01;
+  int kf_iterations, map_bucket_size, map_counter;
+  double map_resolution, map_search_radius, search_radius;
 
   bool initialized = false;
 
   V3F mean_sali;
-
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
   std::vector<M3F> eigenvectors;
@@ -111,23 +95,24 @@ class MappingNode : public rclcpp::Node {
   std::vector<vector<bool>> filters;
   std::vector<vector<int>> neighbours;
 
+  int cam_frame_rate = 20;
   std::vector<string> cam_topics;
   std::vector<double> cam_intrinsics;
   std::vector<double> T_cam_lidars;
   std::vector<double> R_cam_lidars;
 
-  std::vector<double> extrinT;
-  std::vector<double> extrinR;
+  std::vector<double> t_imu_lidar;
+  std::vector<double> r_imu_lidar;
 
   EllipseLivoPointCloudPtr map_cloud;
   EllipseLivoPointCloudPtr scan_cloud;
 
   iOctree::Octree ioctree;
 
-  V3D Lidar_T_wrt_IMU;
-  M3D Lidar_R_wrt_IMU;
+  ImuParams imu_params;
+  LidarParams lidar_params;
 
-  KfFastlioSPtr kf_;
+  IkfomSPtr kf_;
   KfState kf_state_;
 
   std::shared_ptr<ImuProcess> imu_process;

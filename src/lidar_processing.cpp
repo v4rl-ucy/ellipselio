@@ -2,14 +2,10 @@
 
 LidarProcess::~LidarProcess() {}
 
-LidarProcess::LidarProcess(int lidar_type, float min_range, float max_range,
-                           std::string lidar_topic,
-                           rclcpp::Node::SharedPtr node)
-    : node_(node), ellipselivo_pc_(new EllipseLivoPointCloud()) {
-  min_range_ = min_range;
-  max_range_ = max_range;
-  lidar_type_ = lidar_type;
-
+LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
+    : params_(params),
+      node_(node),
+      ellipselivo_pc_(new EllipseLivoPointCloud()) {
   lidar_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -17,7 +13,7 @@ LidarProcess::LidarProcess(int lidar_type, float min_range, float max_range,
   lidar_opt.callback_group = lidar_callback_group_;
 
   sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-      lidar_topic, rclcpp::SensorDataQoS(),
+      params.topic, rclcpp::SensorDataQoS(),
       std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
       lidar_opt);
 
@@ -42,7 +38,7 @@ void LidarProcess::LidarCallback(
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   EllipseLivoPointCloudPtr new_pc(new EllipseLivoPointCloud());
 
-  switch (lidar_type_) {
+  switch (params_.type) {
     case LIVOX:
       LivoxHandler(msg, new_pc);
       break;

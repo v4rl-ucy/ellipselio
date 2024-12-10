@@ -2,14 +2,14 @@
 
 ImuProcess::~ImuProcess() {}
 
-ImuProcess::ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
+ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
                        rclcpp::Node::SharedPtr node)
     : b_first_frame_(true),
       imu_need_init_(true),
-      imu_freq_(imu_freq),
+      params_(params),
       kf_(kf),
       node_(node),
-      imu_states_(2 * imu_freq) {
+      imu_states_(params.rate) {
   imu_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -17,22 +17,17 @@ ImuProcess::ImuProcess(KfFastlioSPtr kf, int imu_freq, std::string imu_topic,
   imu_opt.callback_group = imu_callback_group_;
 
   sub_imu_ = node_->create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic, rclcpp::SensorDataQoS(),
+      params.topic, rclcpp::SensorDataQoS(),
       std::bind(&ImuProcess::ImuCallback, this, std::placeholders::_1),
       imu_opt);
 
   imu_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   imu_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  Q = process_noise_cov();
-  cov_acc = V3D(0.1, 0.1, 0.1);
-  cov_gyr = V3D(0.1, 0.1, 0.1);
-  cov_bias_gyr = V3D(0.0001, 0.0001, 0.0001);
-  cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
-  mean_acc = V3D(0, 0, -1.0);
-  mean_gyr = V3D(0, 0, 0);
-  Lidar_T_wrt_IMU = Zero3d;
-  Lidar_R_wrt_IMU = Eye3d;
+  acc_noise << params.acc_noise, params.acc_noise, params.acc_noise;
+  gyr_noise << params.gyr_noise, params.gyr_noise, params.gyr_noise;
+  acc_bias << params.acc_bias, params.acc_bias, params.acc_bias;
+  gyr_bias << params.gyr_bias, params.gyr_bias, params.gyr_bias;
 }
 
 void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
@@ -101,29 +96,14 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
 void ImuProcess::Reset() {
   init_iter_num = 1;
   imu_need_init_ = true;
-  Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
-  Q.block<3, 3>(3, 3).diagonal() = cov_acc;
-  Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
-  Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
+  Q = process_noise_cov();
+  Q.block<3, 3>(0, 0).diagonal() = gyr_noise;
+  Q.block<3, 3>(3, 3).diagonal() = acc_noise;
+  Q.block<3, 3>(6, 6).diagonal() = gyr_bias;
+  Q.block<3, 3>(9, 9).diagonal() = acc_bias;
 }
-
-void ImuProcess::set_extrinsic(const V3D &transl, const M3D &rot) {
-  Lidar_T_wrt_IMU = transl;
-  Lidar_R_wrt_IMU = rot;
-}
-
-void ImuProcess::set_gyr_cov(const V3D &gyr_cov) { cov_gyr = gyr_cov; }
-
-void ImuProcess::set_acc_cov(const V3D &acc_cov) { cov_acc = acc_cov; }
-
-void ImuProcess::set_gyr_bias_cov(const V3D &b_g) { cov_bias_gyr = b_g; }
-
-void ImuProcess::set_acc_bias_cov(const V3D &b_a) { cov_bias_acc = b_a; }
 
 void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
-  /** 1. initializing the gravity, gyro bias, acc and gyro covariance
-   ** 2. normalize the acceleration measurenments to unit gravity **/
-
   if (b_first_frame_) {
     Reset();
     b_first_frame_ = false;
@@ -144,7 +124,7 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
     init_iter_num++;
   }
 
-  if (init_iter_num > MAX_INI_COUNT) {
+  if (init_iter_num > params_.rate) {
     imu_need_init_ = false;
 
     kf_state_.time = rclcpp::Time(msg->header.stamp);
@@ -152,20 +132,11 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
     kf_state_.state = kf_->get_x();
     kf_state_.state.grav = S2(-mean_acc / mean_acc.norm() * G_m_s2);
     kf_state_.state.bg = mean_gyr;
-    kf_state_.state.offset_T_L_I = Lidar_T_wrt_IMU;
-    kf_state_.state.offset_R_L_I = Lidar_R_wrt_IMU;
+    kf_state_.state.offset_T_L_I = params_.t_imu_lidar;
+    kf_state_.state.offset_R_L_I = params_.r_imu_lidar;
     kf_->change_x(kf_state_.state);
 
-    kf_state_.cov = kf_->get_P();
-    kf_state_.cov.setIdentity();
-    kf_state_.cov(6, 6) = kf_state_.cov(7, 7) = kf_state_.cov(8, 8) = 0.00001;
-    kf_state_.cov(9, 9) = kf_state_.cov(10, 10) = kf_state_.cov(11, 11) =
-        0.00001;
-    kf_state_.cov(15, 15) = kf_state_.cov(16, 16) = kf_state_.cov(17, 17) =
-        0.0001;
-    kf_state_.cov(18, 18) = kf_state_.cov(19, 19) = kf_state_.cov(20, 20) =
-        0.001;
-    kf_state_.cov(21, 21) = kf_state_.cov(22, 22) = 0.00001;
+    kf_state_.cov = P_cov();
     kf_->change_P(kf_state_.cov);
   }
 }
@@ -176,7 +147,7 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
   bool match_flag = false;
 
   time_diff = (match_time - imu_states.front().state.time).seconds();
-  match_idx = std::floor(time_diff * imu_freq_);
+  match_idx = std::floor(time_diff * params_.rate);
   match_idx = std::min(match_idx, (int)imu_states.size() - 1);
 
   while (!match_flag) {
@@ -250,7 +221,7 @@ void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
 void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
                                        rclcpp::Time &lidar_end_time) {
   int match_idx;
-  KfFastlioSPtr kf(new KfFastlio());
+  IkfomSPtr kf(new Ikfom());
 
   imu_mutex_.lock();
   *kf = *kf_;
@@ -258,7 +229,7 @@ void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
 
   kf->change_x(kf_state.state);
   kf->change_P(kf_state.cov);
-  kf->update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+  kf->update_iterated_dyn_share_modified(0.001, solve_H_time);
 
   imu_mutex_.lock();
 

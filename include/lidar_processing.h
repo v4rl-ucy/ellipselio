@@ -11,6 +11,15 @@
 
 enum LID_TYPE { LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4 };
 
+struct LidarParams {
+  int type;
+  int rate;
+  double min_range;
+  double max_range;
+  double downsample_factor;
+  std::string topic;
+};
+
 struct EIGEN_ALIGN16 livox_point {
   float x;
   float y;
@@ -73,13 +82,11 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
 class LidarProcess {
  public:
   ~LidarProcess();
-  LidarProcess(int lidar_type, float min_range, float max_range,
-               std::string lidar_topic, rclcpp::Node::SharedPtr node);
+  LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
   void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &end_time);
 
   rclcpp::Time lidar_start_time_, lidar_end_time_;
-  float min_range_, max_range_, mean_range_, time_unit_scale_, scan_min_extent_;
 
  private:
   void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
@@ -104,8 +111,7 @@ class LidarProcess {
   iOctree::Octree ioctree_;
 
   std::mutex lidar_mutex_;
-
-  int lidar_type_;
+  LidarParams params_;
 };
 
 #endif  // LIDARPROCESS_H
