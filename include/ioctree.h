@@ -429,10 +429,79 @@ class Octree {
   void set_down_size(bool down_size) { m_downSize = down_size; }
 
   template <typename ContainerT>
+  void initialize(ContainerT &pts_, int filter_size,
+                  std::vector<int> &filter_idxs, std::vector<int> &added_idxs,
+                  std::vector<int> &new_idxs, bool down_size = true) {
+    added_idxs.clear();
+    new_idxs.clear();
+    added_idxs.reserve(filter_size);
+    new_idxs.reserve(filter_size);
+    m_downSize = down_size;
+    clear();
+    const size_t pts_num = filter_size;
+    std::vector<float *> points;
+    int dim_ = 3;
+    points.resize(pts_num, 0);
+    size_t cloud_index = 0;
+    float min[3], max[3];
+
+    for (size_t i = 0; i < pts_num; ++i) {
+      const float &x = pts_[filter_idxs[i]].x;
+      const float &y = pts_[filter_idxs[i]].y;
+      const float &z = pts_[filter_idxs[i]].z;
+      if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
+      float *cloud_ptr = new float[dim];
+      cloud_ptr[0] = x;
+      cloud_ptr[1] = y;
+      cloud_ptr[2] = z;
+      cloud_ptr[3] = -(filter_idxs[i] + 1);  // 保存在**原始**数据中的索引
+      points[cloud_index] = cloud_ptr;
+      if (cloud_index == 0) {
+        min[0] = max[0] = x;
+        min[1] = max[1] = y;
+        min[2] = max[2] = z;
+      } else {
+        min[0] = x < min[0] ? x : min[0];
+        min[1] = y < min[1] ? y : min[1];
+        min[2] = z < min[2] ? z : min[2];
+        max[0] = x > max[0] ? x : max[0];
+        max[1] = y > max[1] ? y : max[1];
+        max[2] = z > max[2] ? z : max[2];
+      }
+      cloud_index++;
+    }
+    points.resize(cloud_index);  // 删除多余元素
+    float ctr[3] = {min[0], min[1], min[2]};
+    float maxextent = 0.5f * (max[0] - min[0]);
+    maxextent = std::max(maxextent, 0.01f);
+    ctr[0] += maxextent;
+
+    for (size_t i = 1; i < 3; ++i) {
+      float extent = 0.5f * (max[i] - min[i]);
+      ctr[i] += extent;
+      if (extent > maxextent) maxextent = extent;
+    }
+    // std::cout<<"maxextent: "<<maxextent<<", "
+    // 		<<"min: "<<min[0]<<", "<<min[1]<<", "<<min[2]<<", "
+    // 		<<"max: "<<max[0]<<", "<<max[1]<<", "<<max[2]<<", "
+    // 		<<std::endl;
+    // m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, 0, N - 1, N);
+    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points,
+                           added_idxs, new_idxs);
+    // std::cout<<"createOctant success!"<<std::endl;
+
+    for (size_t i = 0; i < points.size(); ++i) {
+      delete[] points[i];
+    }
+  }
+
+  template <typename ContainerT>
   void initialize(ContainerT &pts_, std::vector<int> &added_idxs,
                   std::vector<int> &new_idxs, bool down_size = true) {
     added_idxs.clear();
     new_idxs.clear();
+    added_idxs.reserve(pts_.size());
+    new_idxs.reserve(pts_.size());
     m_downSize = down_size;
     clear();
     const size_t pts_num = pts_.size();
@@ -501,6 +570,8 @@ class Octree {
     }
     added_idxs.clear();
     new_idxs.clear();
+    added_idxs.reserve(pts_.size());
+    new_idxs.reserve(pts_.size());
     // std::cout<<"update start\n";
     m_downSize = down_size;
     size_t pts_num = pts_.size();

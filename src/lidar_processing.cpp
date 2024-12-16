@@ -17,10 +17,19 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
       std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
       lidar_opt);
 
+  lidar_has_data_ = false;
+  upd_lidar_has_data_ = false;
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  new_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  upd_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  upd_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
+  int num_bins = ceil((params.max_range - params.min_range) / params.bin_size);
+
+  bin_size_ = std::vector<std::atomic<int>>(num_bins);
+  bin_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>(100000));
+  new_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>());
+  added_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>());
 }
 
 void LidarProcess::LidarCallback(
@@ -36,45 +45,53 @@ void LidarProcess::LidarCallback(
 }
 
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  EllipseLivoPointCloudPtr new_pc(new EllipseLivoPointCloud());
+  EllipseLivoPointCloudPtr out_pc(new EllipseLivoPointCloud());
 
   switch (params_.type) {
     case LIVOX:
-      LivoxHandler(msg, new_pc);
+      PointCloudHandler<LivoxPoint>(msg, out_pc);
       break;
     case VELODYNE:
-      VelodyneHandler(msg, new_pc);
+      PointCloudHandler<VelodynePoint>(msg, out_pc);
       break;
     case OUSTER:
-      OusterHandler(msg, new_pc);
+      PointCloudHandler<OusterPoint>(msg, out_pc);
       break;
     case HESAI:
-      HesaiHandler(msg, new_pc);
+      PointCloudHandler<HesaiPoint>(msg, out_pc);
       break;
   }
 
-  std::vector<int> added_idxs, new_idxs;
-  scan_min_extent_ = 0.02 * mean_range_;
+  upd_lidar_has_data_ = lidar_has_data_;
 
-  ioctree_.set_bucket_size(1);
-  ioctree_.set_min_extent(scan_min_extent_);
-  ioctree_.initialize(*new_pc, added_idxs, new_idxs);
+#pragma omp parallel for
+  for (size_t i = 0; i < bin_size_.size(); i++) {
+    float oct_res = (i + 1) * params_.bin_size * params_.downsample_factor;
+
+    bin_octrees_[i].set_bucket_size(1);
+    bin_octrees_[i].set_min_extent(oct_res);
+    bin_octrees_[i].initialize(*out_pc, bin_size_[i], bin_idxs_[i],
+                               added_idxs_[i], new_idxs_[i]);
+  }
 
   lidar_mutex_.lock();
-  *ellipselivo_pc_ += EllipseLivoPointCloud(*new_pc, added_idxs);
+  for (size_t i = 0; i < bin_size_.size(); i++) {
+    *ellipselivo_pc_ += EllipseLivoPointCloud(*out_pc, added_idxs_[i]);
+    for (size_t j = 0; j < added_idxs_[i].size(); j++) {
+      SetMinMaxTime(out_pc->points[added_idxs_[i][j]]);
+    }
+  }
 
-  lidar_start_time_ = new_lidar_start_time_;
-  lidar_end_time_ = new_lidar_end_time_;
+  lidar_start_time_ = upd_lidar_start_time_;
+  lidar_end_time_ = upd_lidar_end_time_;
+  lidar_has_data_ = upd_lidar_has_data_;
   lidar_mutex_.unlock();
 }
 
 void LidarProcess::ClearPointCloud() {
   lidar_mutex_.lock();
   ellipselivo_pc_->clear();
-  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  new_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_has_data_ = false;
   lidar_mutex_.unlock();
 }
 
@@ -84,208 +101,83 @@ void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
   *pc = *ellipselivo_pc_;
   end_time = lidar_end_time_;
   ellipselivo_pc_->clear();
-  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  new_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  new_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lidar_has_data_ = false;
   lidar_mutex_.unlock();
 }
 
-void LidarProcess::SetMinMaxTime(rclcpp::Time &point_time) {
-  if (new_lidar_start_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
-    new_lidar_start_time_ = point_time;
-  }
-  if (new_lidar_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
-    new_lidar_end_time_ = point_time;
-  }
+void LidarProcess::SetMinMaxTime(EllipseLivoPoint &pt) {
+  rclcpp::Time pt_time;
+  pt_time = rclcpp::Time(pt.time_secs, pt.time_nsecs, RCL_ROS_TIME);
 
-  new_lidar_start_time_ = std::min(new_lidar_start_time_, point_time);
-  new_lidar_end_time_ = std::max(new_lidar_end_time_, point_time);
-}
-
-void LidarProcess::OusterHandler(
-    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    EllipseLivoPointCloudPtr new_pc) {
-  pcl::PointCloud<ouster_point> msg_pc;
-  pcl::fromROSMsg(*msg, msg_pc);
-
-  new_pc->reserve(msg_pc.size());
-
-  mean_range_ = 0.0;
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    mean_range_ += sqrt(range);
-  }
-  mean_range_ /= msg_pc.points.size();
-
-  rclcpp::Time timestamp = msg->header.stamp;
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
-  double dyn_range_max = fmin(100, 10 * mean_range_);
-
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    if (sqrt(range) < dyn_range_min) continue;
-    if (sqrt(range) > dyn_range_max) continue;
-
-    rclcpp::Time point_time = timestamp;
-    point_time += rclcpp::Duration(0, msg_pc.points[i].t);
-    builtin_interfaces::msg::Time msg_time = point_time;
-    SetMinMaxTime(point_time);
-
-    EllipseLivoPoint added_pt;
-    added_pt.x = msg_pc.points[i].x;
-    added_pt.y = msg_pc.points[i].y;
-    added_pt.z = msg_pc.points[i].z;
-    added_pt.intensity = msg_pc.points[i].intensity;
-    added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nanosec;
-
-    new_pc->push_back(std::move(added_pt));
+  if (upd_lidar_has_data_) {
+    upd_lidar_start_time_ = std::min(upd_lidar_start_time_, pt_time);
+    upd_lidar_end_time_ = std::max(upd_lidar_end_time_, pt_time);
+  } else {
+    upd_lidar_start_time_ = pt_time;
+    upd_lidar_end_time_ = pt_time;
+    upd_lidar_has_data_ = true;
   }
 }
 
-void LidarProcess::VelodyneHandler(
-    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    EllipseLivoPointCloudPtr new_pc) {
-  pcl::PointCloud<velodyne_point> msg_pc;
-  pcl::fromROSMsg(*msg, msg_pc);
-
-  new_pc->reserve(msg_pc.size());
-
-  mean_range_ = 0.0;
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    mean_range_ += sqrt(range);
-  }
-  mean_range_ /= msg_pc.points.size();
-
-  rclcpp::Time timestamp = msg->header.stamp;
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
-  double dyn_range_max = fmin(100, 10 * mean_range_);
-
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    if (sqrt(range) < dyn_range_min) continue;
-    if (sqrt(range) > dyn_range_max) continue;
-
-    rclcpp::Time point_time = timestamp;
-    point_time += rclcpp::Duration(0, msg_pc.points[i].time * 1e3);
-    builtin_interfaces::msg::Time msg_time = point_time;
-    SetMinMaxTime(point_time);
-
-    EllipseLivoPoint added_pt;
-    added_pt.x = msg_pc.points[i].x;
-    added_pt.y = msg_pc.points[i].y;
-    added_pt.z = msg_pc.points[i].z;
-    added_pt.intensity = msg_pc.points[i].intensity;
-    added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nanosec;
-
-    new_pc->push_back(std::move(added_pt));
-  }
+void LidarProcess::SetPoint(LivoxPoint &in_pt, EllipseLivoPoint &out_pt,
+                            rclcpp::Time &point_time) {
+  out_pt.intensity = in_pt.reflectivity;
+  point_time += rclcpp::Duration(0, in_pt.offset_time);
 }
 
-void LidarProcess::LivoxHandler(
-    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    EllipseLivoPointCloudPtr new_pc) {
-  pcl::PointCloud<livox_point> msg_pc;
-  pcl::fromROSMsg(*msg, msg_pc);
-
-  new_pc->reserve(msg_pc.size());
-
-  mean_range_ = 0.0;
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    mean_range_ += sqrt(range);
-  }
-  mean_range_ /= msg_pc.points.size();
-
-  rclcpp::Time timestamp = msg->header.stamp;
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
-  double dyn_range_max = fmin(100, 10 * mean_range_);
-
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    if (sqrt(range) < dyn_range_min) continue;
-    if (sqrt(range) > dyn_range_max) continue;
-
-    rclcpp::Time point_time = timestamp;
-    point_time += rclcpp::Duration(0, msg_pc.points[i].offset_time);
-    builtin_interfaces::msg::Time msg_time = point_time;
-    SetMinMaxTime(point_time);
-
-    EllipseLivoPoint added_pt;
-    added_pt.x = msg_pc.points[i].x;
-    added_pt.y = msg_pc.points[i].y;
-    added_pt.z = msg_pc.points[i].z;
-    added_pt.intensity = msg_pc.points[i].reflectivity;
-    added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nanosec;
-
-    new_pc->push_back(std::move(added_pt));
-  }
+void LidarProcess::SetPoint(VelodynePoint &in_pt, EllipseLivoPoint &out_pt,
+                            rclcpp::Time &point_time) {
+  out_pt.intensity = in_pt.intensity;
+  point_time += rclcpp::Duration(0, in_pt.time * 1e3);
 }
 
-void LidarProcess::HesaiHandler(
+void LidarProcess::SetPoint(OusterPoint &in_pt, EllipseLivoPoint &out_pt,
+                            rclcpp::Time &point_time) {
+  out_pt.intensity = in_pt.intensity;
+  point_time += rclcpp::Duration(0, in_pt.t);
+}
+
+void LidarProcess::SetPoint(HesaiPoint &in_pt, EllipseLivoPoint &out_pt,
+                            rclcpp::Time &point_time) {
+  out_pt.intensity = in_pt.intensity;
+  point_time = rclcpp::Time(in_pt.timestamp * 1e9, RCL_ROS_TIME);
+}
+
+template <typename InPtType>
+void LidarProcess::ConvertPoint(InPtType &in_pt, EllipseLivoPoint &out_pt,
+                                rclcpp::Time &point_time) {
+  out_pt.x = in_pt.x;
+  out_pt.y = in_pt.y;
+  out_pt.z = in_pt.z;
+
+  SetPoint(in_pt, out_pt, point_time);
+
+  builtin_interfaces::msg::Time msg_time = point_time;
+  out_pt.time_secs = msg_time.sec;
+  out_pt.time_nsecs = msg_time.nanosec;
+}
+
+template <typename InPtType>
+void LidarProcess::PointCloudHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    EllipseLivoPointCloudPtr new_pc) {
-  pcl::PointCloud<hesai_point> msg_pc;
-  pcl::fromROSMsg(*msg, msg_pc);
+    EllipseLivoPointCloudPtr out_pc) {
+  pcl::PointCloud<InPtType> in_pc;
+  pcl::fromROSMsg(*msg, in_pc);
 
-  new_pc->reserve(msg_pc.size());
+  out_pc->resize(in_pc.size());
+  std::fill(bin_size_.begin(), bin_size_.end(), 0);
 
-  mean_range_ = 0.0;
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    mean_range_ += sqrt(range);
-  }
-  mean_range_ /= msg_pc.points.size();
-
-  double dyn_range_min = fmin(min_range_, 0.1 * mean_range_);
-  double dyn_range_max = fmin(100, 10 * mean_range_);
-
-  for (int i = 0; i < msg_pc.points.size(); i++) {
-    double range = msg_pc.points[i].x * msg_pc.points[i].x +
-                   msg_pc.points[i].y * msg_pc.points[i].y +
-                   msg_pc.points[i].z * msg_pc.points[i].z;
-
-    if (sqrt(range) < dyn_range_min) continue;
-    if (sqrt(range) > dyn_range_max) continue;
-
-    int64_t time_nsecs = msg_pc.points[i].timestamp * 1e9;
-    rclcpp::Time point_time = rclcpp::Time(time_nsecs, RCL_ROS_TIME);
-    builtin_interfaces::msg::Time msg_time = point_time;
-    SetMinMaxTime(point_time);
-
-    EllipseLivoPoint added_pt;
-    added_pt.x = msg_pc.points[i].x;
-    added_pt.y = msg_pc.points[i].y;
-    added_pt.z = msg_pc.points[i].z;
-    added_pt.intensity = msg_pc.points[i].intensity;
-    added_pt.time_secs = msg_time.sec;
-    added_pt.time_nsecs = msg_time.nanosec;
-
-    new_pc->push_back(std::move(added_pt));
+#pragma omp parallel for
+  for (size_t i = 0; i < in_pc.size(); i++) {
+    rclcpp::Time point_time = msg->header.stamp;
+    ConvertPoint<InPtType>(in_pc.points[i], out_pc->points[i], point_time);
+    double range = sqrt(out_pc->points[i].x * out_pc->points[i].x +
+                        out_pc->points[i].y * out_pc->points[i].y +
+                        out_pc->points[i].z * out_pc->points[i].z);
+    if (range < params_.min_range || range > params_.max_range) {
+      continue;
+    }
+    int bin_idx = floor((range - params_.min_range) / params_.bin_size);
+    bin_idxs_[bin_idx][bin_size_[bin_idx]++] = i;
   }
 }

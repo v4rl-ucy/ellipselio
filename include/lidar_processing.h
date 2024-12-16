@@ -16,68 +16,10 @@ struct LidarParams {
   int rate;
   double min_range;
   double max_range;
+  double bin_size;
   double downsample_factor;
   std::string topic;
 };
-
-struct EIGEN_ALIGN16 livox_point {
-  float x;
-  float y;
-  float z;
-  uint8_t reflectivity;
-  uint8_t tag;
-  uint8_t line;
-  uint32_t offset_time;
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-};
-
-struct EIGEN_ALIGN16 velodyne_point {
-  PCL_ADD_POINT4D;
-  float intensity;
-  float time;
-  uint16_t ring;
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-};
-
-struct EIGEN_ALIGN16 ouster_point {
-  PCL_ADD_POINT4D;
-  float intensity;
-  uint32_t t;
-  uint16_t reflectivity;
-  uint8_t ring;
-  uint16_t ambient;
-  uint32_t range;
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-};
-
-struct EIGEN_ALIGN16 hesai_point {
-  PCL_ADD_POINT4D;
-  float intensity;
-  double timestamp;
-  uint16_t ring;
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-};
-
-POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_point,
-                                  (float, x, x)(float, y, y)(float, z, z)(
-                                      float, intensity,
-                                      intensity)(float, time, time)(uint16_t,
-                                                                    ring, ring))
-POINT_CLOUD_REGISTER_POINT_STRUCT(
-    ouster_point,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
-        std::uint32_t, t, t)(std::uint16_t, reflectivity,
-                             reflectivity)(std::uint8_t, ring,
-                                           ring)(std::uint32_t, range, range))
-POINT_CLOUD_REGISTER_POINT_STRUCT(
-    hesai_point,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
-        double, timestamp, timestamp)(uint16_t, ring, ring))
-POINT_CLOUD_REGISTER_POINT_STRUCT(
-    livox_point,
-    (float, x, x)(float, y, y)(float, z, z)(uint8_t, reflectivity,
-                                            reflectivity)(uint8_t, tag, tag)(
-        uint8_t, line, line)(uint32_t, offset_time, offset_time))
 
 class LidarProcess {
  public:
@@ -86,29 +28,42 @@ class LidarProcess {
   void ClearPointCloud();
   void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &end_time);
 
+  bool lidar_has_data_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
 
  private:
   void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
   void Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
-  void SetMinMaxTime(rclcpp::Time &point_time);
-  void LivoxHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                    EllipseLivoPointCloudPtr new_pc);
-  void VelodyneHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                       EllipseLivoPointCloudPtr new_pc);
-  void OusterHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                     EllipseLivoPointCloudPtr new_pc);
-  void HesaiHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                    EllipseLivoPointCloudPtr new_pc);
+  void SetMinMaxTime(EllipseLivoPoint &pt);
+
+  void SetPoint(LivoxPoint &in_pt, EllipseLivoPoint &out_pt,
+                rclcpp::Time &point_time);
+  void SetPoint(VelodynePoint &in_pt, EllipseLivoPoint &out_pt,
+                rclcpp::Time &point_time);
+  void SetPoint(OusterPoint &in_pt, EllipseLivoPoint &out_pt,
+                rclcpp::Time &point_time);
+  void SetPoint(HesaiPoint &in_pt, EllipseLivoPoint &out_pt,
+                rclcpp::Time &point_time);
+
+  template <typename InPtType>
+  void ConvertPoint(InPtType &in_pt, EllipseLivoPoint &out_pt,
+                    rclcpp::Time &point_time);
+  template <typename InPtType>
+  void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
+                         EllipseLivoPointCloudPtr new_pc);
 
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
-  EllipseLivoPointCloudPtr ellipselivo_pc_;
-  rclcpp::Time new_lidar_start_time_, new_lidar_end_time_;
+  std::vector<std::atomic<int>> bin_size_;
+  std::vector<iOctree::Octree> bin_octrees_;
+  std::vector<std::vector<int>> bin_idxs_, new_idxs_, added_idxs_;
 
-  iOctree::Octree ioctree_;
+  EllipseLivoPointCloudPtr ellipselivo_pc_;
+
+  bool upd_lidar_has_data_;
+  rclcpp::Time upd_lidar_start_time_, upd_lidar_end_time_;
 
   std::mutex lidar_mutex_;
   LidarParams params_;

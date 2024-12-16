@@ -3,10 +3,10 @@
 namespace ellipselivo {
 
 bool MappingNode::sync_packages() {
-  if (imu_process->imu_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+  if (!imu_process->imu_has_data_) {
     return false;
   }
-  if (lid_process->lidar_end_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+  if (!lid_process->lidar_has_data_) {
     return false;
   }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
@@ -504,6 +504,7 @@ MappingNode::MappingNode(
   this->declare_parameter<int>("lidar.rate", 10);
   this->declare_parameter<double>("lidar.min_range", 1.0);
   this->declare_parameter<double>("lidar.max_range", 100.0);
+  this->declare_parameter<double>("lidar.bin_size", 1.0);
   this->declare_parameter<double>("lidar.downsample_factor", 0.01);
   this->declare_parameter<string>("lidar.topic", "/livox/lidar");
   this->declare_parameter<vector<double>>("lidar.t_imu_lidar",
@@ -528,7 +529,7 @@ MappingNode::MappingNode(
   this->get_parameter_or<double>("mapping.map_search_radius", search_radius,
                                  1.0);
 
-  this->get_parameter_or<string>("imu.rate", imu_params.rate, 100);
+  this->get_parameter_or<int>("imu.rate", imu_params.rate, 100);
   this->get_parameter_or<double>("imu.gyr_noise", imu_params.gyr_noise, 0.1);
   this->get_parameter_or<double>("imu.acc_noise", imu_params.acc_noise, 0.1);
   this->get_parameter_or<double>("imu.gyr_bias", imu_params.gyr_bias, 0.0001);
@@ -543,6 +544,7 @@ MappingNode::MappingNode(
                                  1.0);
   this->get_parameter_or<double>("lidar.max_range", lidar_params.max_range,
                                  100.0);
+  this->get_parameter_or<double>("lidar.bin_size", lidar_params.bin_size, 1.0);
   this->get_parameter_or<double>("lidar.downsample_factor",
                                  lidar_params.downsample_factor, 0.01);
   this->get_parameter_or<vector<double>>("lidar.t_imu_lidar", t_imu_lidar,
@@ -665,11 +667,6 @@ void MappingNode::timer_callback() {
         std::make_shared<ImuProcess>(kf_, imu_params, shared_from_this());
     lid_process =
         std::make_shared<LidarProcess>(lidar_params, shared_from_this());
-    imu_process->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-    imu_process->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-    imu_process->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-    imu_process->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-    imu_process->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
   }
 
   if (sync_packages()) {
@@ -690,12 +687,9 @@ void MappingNode::timer_callback() {
       return;
     }
 
-    map_bucket_size = 1 + floor((1.0 - fmin(1.0, lid_process->scan_min_extent_ /
-                                                     map_resolution)) *
-                                NUM_MATCH_POINTS);
-    map_search_radius = fmin(search_radius, 10 * lid_process->scan_min_extent_);
+    map_bucket_size = 1;
+    map_search_radius = search_radius;
 
-    std::cerr << "Min extent: " << lid_process->scan_min_extent_ << std::endl;
     std::cerr << "Bucket size: " << map_bucket_size << std::endl;
     std::cerr << "Search radius: " << map_search_radius << std::endl;
 

@@ -72,7 +72,7 @@ class MappingNode : public rclcpp::Node {
          init_kdtree_time = 0, state_update_time = 0, map_update_time = 0,
          total_time = 0;
 
-  int kf_iterations, map_bucket_size, map_counter;
+  int kf_iterations, map_bucket_size, map_counter, pub_map_n_secs;
   double map_resolution, map_search_radius, search_radius;
 
   bool initialized = false;

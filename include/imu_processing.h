@@ -54,7 +54,7 @@ class ImuProcess {
   void set_acc_bias_cov(const V3D &b_a);
   void set_extrinsic(const V3D &transl, const M3D &rot);
 
-  bool imu_need_init_;
+  bool imu_has_data_;
   rclcpp::Time imu_start_time_, imu_end_time_;
 
  private:
@@ -67,6 +67,8 @@ class ImuProcess {
 
   IkfomSPtr kf_;
   KfState kf_state_;
+
+  ImuParams params_;
 
   std::mutex imu_mutex_;
 
@@ -86,7 +88,7 @@ class ImuProcess {
   Eigen::Matrix<double, 12, 12> Q;
 
   int init_iter_num;
-  bool b_first_frame_;
+  bool b_first_frame_, imu_need_init_;
 };
 
 #endif  // IMU_PROCESSING_H

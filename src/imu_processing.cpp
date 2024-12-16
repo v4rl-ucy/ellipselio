@@ -6,6 +6,7 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
                        rclcpp::Node::SharedPtr node)
     : b_first_frame_(true),
       imu_need_init_(true),
+      imu_has_data_(false),
       params_(params),
       kf_(kf),
       node_(node),
@@ -91,6 +92,7 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   imu_states_.push_back(imu_state);
   imu_start_time_ = imu_states_.front().state.time;
   imu_end_time_ = imu_states_.back().state.time;
+  imu_has_data_ = true;
 }
 
 void ImuProcess::Reset() {
