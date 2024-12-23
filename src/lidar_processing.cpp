@@ -27,9 +27,12 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   int num_bins = ceil((params.max_range - params.min_range) / params.bin_size);
 
   bin_size_ = std::vector<std::atomic<int>>(num_bins);
-  bin_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>(100000));
+  bin_octrees_ = std::vector<iOctree::Octree>(num_bins);
+  bin_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>(200000));
   new_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>());
   added_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>());
+
+  std::fill(bin_size_.begin(), bin_size_.end(), 0);
 }
 
 void LidarProcess::LidarCallback(
@@ -37,10 +40,7 @@ void LidarProcess::LidarCallback(
   sensor_msgs::msg::PointCloud2::SharedPtr msg(
       new sensor_msgs::msg::PointCloud2(*msg_in));
 
-  if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
-    return;
-  }
-
+  if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) return;
   Process(msg);
 }
 
@@ -67,15 +67,23 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 #pragma omp parallel for
   for (size_t i = 0; i < bin_size_.size(); i++) {
     float oct_res = (i + 1) * params_.bin_size * params_.downsample_factor;
+    if (bin_size_[i] == 0) {
+      added_idxs_[i].clear();
+      new_idxs_[i].clear();
+      continue;
+    }
 
     bin_octrees_[i].set_bucket_size(1);
     bin_octrees_[i].set_min_extent(oct_res);
     bin_octrees_[i].initialize(*out_pc, bin_size_[i], bin_idxs_[i],
                                added_idxs_[i], new_idxs_[i]);
+    bin_size_[i] = 0;
   }
 
   lidar_mutex_.lock();
   for (size_t i = 0; i < bin_size_.size(); i++) {
+    if (!added_idxs_[i].size()) continue;
+
     *ellipselivo_pc_ += EllipseLivoPointCloud(*out_pc, added_idxs_[i]);
     for (size_t j = 0; j < added_idxs_[i].size(); j++) {
       SetMinMaxTime(out_pc->points[added_idxs_[i][j]]);
@@ -165,7 +173,6 @@ void LidarProcess::PointCloudHandler(
   pcl::fromROSMsg(*msg, in_pc);
 
   out_pc->resize(in_pc.size());
-  std::fill(bin_size_.begin(), bin_size_.end(), 0);
 
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc.size(); i++) {

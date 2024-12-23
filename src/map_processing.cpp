@@ -478,18 +478,17 @@ void MappingNode::tensor_registration(
   std::cerr << "Num curves: " << curve_cnt << std::endl;
   std::cerr << "Num junctions: " << junct_cnt << std::endl;
 
-  match_time += omp_get_wtime() - match_start;
+  match_time = omp_get_wtime() - match_start;
 }
 
 MappingNode::MappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
-    : Node("laser_mapping", options),
+    : Node("mapping_node", options),
       map_cloud(new EllipseLivoPointCloud()),
       scan_cloud(new EllipseLivoPointCloud()),
       kf_(new Ikfom()) {
-  this->declare_parameter<int>("publish.pub_map_n_secs", 10);
-
   this->declare_parameter<int>("mapping.kf_iterations", 1);
+  this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
   this->declare_parameter<double>("mapping.map_resolution", 0.1);
   this->declare_parameter<double>("mapping.map_search_radius", 1.0);
 
@@ -522,9 +521,8 @@ MappingNode::MappingNode(
   this->declare_parameter<vector<double>>("cameras.R_cam_lidars",
                                           vector<double>());
 
-  this->get_parameter_or<int>("publish.pub_map_n_secs", pub_map_n_secs, 1);
-
   this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);
+  this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs, 1);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution, 0.1);
   this->get_parameter_or<double>("mapping.map_search_radius", search_radius,
                                  1.0);
