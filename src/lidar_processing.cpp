@@ -26,6 +26,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
   int num_bins = ceil((params.max_range - params.min_range) / params.bin_size);
 
+  num_bin_pts_ = std::vector<int>(num_bins, 0);
   bin_size_ = std::vector<std::atomic<int>>(num_bins);
   bin_octrees_ = std::vector<iOctree::Octree>(num_bins);
   bin_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>(200000));
@@ -41,7 +42,10 @@ void LidarProcess::LidarCallback(
       new sensor_msgs::msg::PointCloud2(*msg_in));
 
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) return;
+  double t1 = omp_get_wtime();
   Process(msg);
+  double t2 = omp_get_wtime();
+  std::cerr << "Lidar processing time: " << t2 - t1 << std::endl;
 }
 
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -66,24 +70,21 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
 #pragma omp parallel for
   for (size_t i = 0; i < bin_size_.size(); i++) {
+    if (!bin_size_[i]) continue;
+
     float oct_res = (i + 1) * params_.bin_size * params_.downsample_factor;
-    if (bin_size_[i] == 0) {
-      added_idxs_[i].clear();
-      new_idxs_[i].clear();
-      continue;
-    }
 
     bin_octrees_[i].set_bucket_size(1);
     bin_octrees_[i].set_min_extent(oct_res);
     bin_octrees_[i].initialize(*out_pc, bin_size_[i], bin_idxs_[i],
                                added_idxs_[i], new_idxs_[i]);
-    bin_size_[i] = 0;
   }
 
   lidar_mutex_.lock();
-  for (size_t i = 0; i < bin_size_.size(); i++) {
-    if (!added_idxs_[i].size()) continue;
 
+  for (size_t i = 0; i < bin_size_.size(); i++) {
+    if (!bin_size_[i] || !added_idxs_[i].size()) continue;
+    num_bin_pts_[i] = added_idxs_[i].size();
     *ellipselivo_pc_ += EllipseLivoPointCloud(*out_pc, added_idxs_[i]);
     for (size_t j = 0; j < added_idxs_[i].size(); j++) {
       SetMinMaxTime(out_pc->points[added_idxs_[i][j]]);
@@ -93,22 +94,34 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_start_time_ = upd_lidar_start_time_;
   lidar_end_time_ = upd_lidar_end_time_;
   lidar_has_data_ = upd_lidar_has_data_;
+
+  if ((lidar_end_time_ - lidar_start_time_).seconds() >= 0.11) {
+    std::cerr << "Lidar longer than 100ms" << std::endl;
+  }
+  if ((lidar_end_time_ - lidar_start_time_).seconds() <= 0.09) {
+    std::cerr << "Lidar shorter than 100ms" << std::endl;
+  }
+
   lidar_mutex_.unlock();
 }
 
 void LidarProcess::ClearPointCloud() {
   lidar_mutex_.lock();
   ellipselivo_pc_->clear();
+  std::fill(num_bin_pts_.begin(), num_bin_pts_.end(), 0);
   lidar_has_data_ = false;
   lidar_mutex_.unlock();
 }
 
 void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
-                                 rclcpp::Time &end_time) {
+                                 rclcpp::Time &end_time,
+                                 std::vector<int> &num_bin_pts) {
   lidar_mutex_.lock();
   *pc = *ellipselivo_pc_;
   end_time = lidar_end_time_;
   ellipselivo_pc_->clear();
+  num_bin_pts = num_bin_pts_;
+  std::fill(num_bin_pts_.begin(), num_bin_pts_.end(), 0);
   lidar_has_data_ = false;
   lidar_mutex_.unlock();
 }
@@ -174,17 +187,26 @@ void LidarProcess::PointCloudHandler(
 
   out_pc->resize(in_pc.size());
 
+  Eigen::VectorXf ranges(in_pc.size());
+  std::fill(bin_size_.begin(), bin_size_.end(), 0);
+
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc.size(); i++) {
     rclcpp::Time point_time = msg->header.stamp;
     ConvertPoint<InPtType>(in_pc.points[i], out_pc->points[i], point_time);
-    double range = sqrt(out_pc->points[i].x * out_pc->points[i].x +
-                        out_pc->points[i].y * out_pc->points[i].y +
-                        out_pc->points[i].z * out_pc->points[i].z);
+    float range = sqrt(out_pc->points[i].x * out_pc->points[i].x +
+                       out_pc->points[i].y * out_pc->points[i].y +
+                       out_pc->points[i].z * out_pc->points[i].z);
+    ranges[i] = range;
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
     int bin_idx = floor((range - params_.min_range) / params_.bin_size);
     bin_idxs_[bin_idx][bin_size_[bin_idx]++] = i;
+    float oct_res =
+        (bin_idx + 1) * params_.bin_size * params_.downsample_factor;
+    out_pc->points[i].curvature = 10.0 * oct_res;
   }
+
+  mean_range_ = ranges.mean();
 }

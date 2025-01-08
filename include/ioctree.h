@@ -497,21 +497,25 @@ class Octree {
 
   template <typename ContainerT>
   void initialize(ContainerT &pts_, std::vector<int> &added_idxs,
-                  std::vector<int> &new_idxs, bool down_size = true) {
+                  std::vector<int> &new_idxs, bool down_size = true,
+                  int start_idx = 0, int end_idx = 0) {
     added_idxs.clear();
     new_idxs.clear();
-    added_idxs.reserve(pts_.size());
-    new_idxs.reserve(pts_.size());
+
+    if (end_idx == 0) end_idx = pts_.size();
+    const size_t pts_num = end_idx - start_idx;
+
+    added_idxs.reserve(pts_num);
+    new_idxs.reserve(pts_num);
     m_downSize = down_size;
     clear();
-    const size_t pts_num = pts_.size();
     std::vector<float *> points;
     int dim_ = 3;
     points.resize(pts_num, 0);
     size_t cloud_index = 0;
     float min[3], max[3];
 
-    for (size_t i = 0; i < pts_num; ++i) {
+    for (size_t i = start_idx; i < end_idx; ++i) {
       const float &x = pts_[i].x;
       const float &y = pts_[i].y;
       const float &z = pts_[i].z;
@@ -520,7 +524,7 @@ class Octree {
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
-      cloud_ptr[3] = -((int)cloud_index + 1);  // 保存在**原始**数据中的索引
+      cloud_ptr[3] = -((int)i + 1);  // 保存在**原始**数据中的索引
       points[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
@@ -563,26 +567,28 @@ class Octree {
 
   template <typename ContainerT>
   void update(ContainerT &pts_, std::vector<int> &added_idxs,
-              std::vector<int> &new_idxs, bool down_size = true) {
+              std::vector<int> &new_idxs, bool down_size = true,
+              int start_idx = 0, int end_idx = 0) {
     if (m_root_ == 0) {
-      initialize(pts_, added_idxs, new_idxs, down_size);
+      initialize(pts_, added_idxs, new_idxs, down_size, start_idx, end_idx);
       return;
     }
     added_idxs.clear();
     new_idxs.clear();
-    added_idxs.reserve(pts_.size());
-    new_idxs.reserve(pts_.size());
-    // std::cout<<"update start\n";
+
+    if (end_idx == 0) end_idx = pts_.size();
+    const size_t pts_num = end_idx - start_idx;
+
+    added_idxs.reserve(pts_num);
+    new_idxs.reserve(pts_num);
     m_downSize = down_size;
-    size_t pts_num = pts_.size();
-    // std::cout<<"updateOctant init: "<<pts_num<<std::endl;
     std::vector<float *> points_tmp;
     int dim_ = 3;
     points_tmp.resize(pts_num, 0);
     size_t cloud_index = 0;
     float min[3], max[3];
 
-    for (size_t i = 0; i < pts_num; ++i) {
+    for (size_t i = start_idx; i < end_idx; ++i) {
       const float &x = pts_[i].x;
       const float &y = pts_[i].y;
       const float &z = pts_[i].z;
@@ -591,7 +597,7 @@ class Octree {
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
-      cloud_ptr[3] = -((int)cloud_index + 1);
+      cloud_ptr[3] = -((int)i + 1);
       points_tmp[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;

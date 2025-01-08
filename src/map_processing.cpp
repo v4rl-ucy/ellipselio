@@ -24,7 +24,8 @@ void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
   float d_ij = (p_i - p_j).norm();
-  float c_ij = std::exp(-std::pow(d_ij, 2) / search_radius);
+  float c_ij = std::exp(-std::pow(d_ij, 2) /
+                        fmin(map_cloud->points[i].curvature, search_radius));
   V3F r_ij = (p_i - p_j).normalized();
   M3F rrt = r_ij * r_ij.transpose();
   M3F R_ij = Eye3f - 2.0 * rrt;
@@ -59,20 +60,9 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-3)).matrix().normalized();
-    eigenvalues[i] *= search_radius;
+    eigenvalues[i] *= fmin(map_cloud->points[i].curvature, search_radius);
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].intensity = (saliency_idxs[i] + 1) * 85;
-
-    if (saliency_idxs[i] == 0) {
-      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(2);
-      map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
-    } else if (saliency_idxs[i] == 1) {
-      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(0);
-      map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
-    } else if (saliency_idxs[i] == 2) {
-      map_cloud->points[i].getNormalVector3fMap() = eig_vec.col(1);
-      map_cloud->points[i].curvature = (saliency_idxs[i] + 1) * 85;
-    }
   }
 }
 
@@ -90,11 +80,11 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     map_cloud->points[map_i].intensity = 0;
-    map_cloud->points[map_i].curvature = 0;
     map_cloud->points[map_i].getNormalVector3fMap() = V3F::Zero();
 
-    ioctree.radiusNeighbors(map_cloud->points[map_i], map_search_radius,
-                            N_idxs);
+    ioctree.radiusNeighbors(
+        map_cloud->points[map_i],
+        fmin(map_cloud->points[map_i].curvature, search_radius), N_idxs);
     neighbours[map_i] = N_idxs;
 
     loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
@@ -225,7 +215,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 }
 
 void MappingNode::map_incremental(bool init_map) {
-  std::vector<int> added_idxs, new_idxs, updated_idxs;
+  std::vector<int> new_idxs, updated_idxs;
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -240,9 +230,23 @@ void MappingNode::map_incremental(bool init_map) {
 
   int old_map_size = map_cloud->size();
 
-  ioctree.set_bucket_size(map_bucket_size);
-  ioctree.update(*scan_cloud, added_idxs, new_idxs);
-  *map_cloud += EllipseLivoPointCloud(*scan_cloud, added_idxs);
+  int start_idx = 0;
+  int end_idx = 0;
+  for (int i = 0; i < scan_cloud_bins.size(); i++) {
+    if (!scan_cloud_bins[i]) continue;
+    std::vector<int> added_idxs_i, new_idxs_i;
+    end_idx += scan_cloud_bins[i];
+    int bin_bucket_size = fmin(
+        NUM_MATCH_POINTS,
+        (map_resolution /
+         (0.1 * fmin(scan_cloud->points[start_idx].curvature, search_radius))));
+    ioctree.set_bucket_size(bin_bucket_size);
+    ioctree.update(*scan_cloud, added_idxs_i, new_idxs_i, true, start_idx,
+                   end_idx);
+    *map_cloud += EllipseLivoPointCloud(*scan_cloud, added_idxs_i);
+    new_idxs.insert(new_idxs.end(), new_idxs_i.begin(), new_idxs_i.end());
+    start_idx = end_idx;
+  }
 
   update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
@@ -259,9 +263,9 @@ void MappingNode::map_incremental(bool init_map) {
 
   std::cerr << "Map size: " << map_cloud->size() << std::endl;
   std::cerr << "ioctree size: " << ioctree.size() << std::endl;
-  std::cerr << "Added idxs size: " << added_idxs.size() << std::endl;
+  std::cerr << "New idxs size: " << new_idxs.size() << std::endl;
 
-  if (added_idxs.size() > 0) {
+  if (new_idxs.size() > 0) {
     double pass_1_start = omp_get_wtime();
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
     double pass_1_end = omp_get_wtime();
@@ -413,10 +417,12 @@ void MappingNode::tensor_registration(
     pt.getVector3fMap() = p_world;
     ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
-    if (sqrt(N_dst[0]) > map_search_radius || !filters[map_i][1]) continue;
+    if (sqrt(N_dst[0]) > fmin(scan_cloud->points[i].curvature, search_radius) ||
+        !filters[map_i][1])
+      continue;
 
     sali_idx = saliency_idxs[map_i];
-    if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
+    // if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
 
@@ -674,7 +680,7 @@ void MappingNode::timer_callback() {
 
     t0 = omp_get_wtime();
 
-    lid_process->GetPointCloud(scan_cloud, lidar_end_time);
+    lid_process->GetPointCloud(scan_cloud, lidar_end_time, scan_cloud_bins);
     imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_end_time);
 
     t1 = omp_get_wtime();
@@ -685,11 +691,15 @@ void MappingNode::timer_callback() {
       return;
     }
 
-    map_bucket_size = 1;
-    map_search_radius = search_radius;
+    // map_bucket_size = 1 + floor((1.0 - fmin(1.0,
+    // lid_process->scan_min_extent_ /
+    //                                                  map_resolution)) *
+    //                             NUM_MATCH_POINTS);
+    // map_search_radius = fmin(search_radius, 10 *
+    // lid_process->scan_min_extent_);
 
-    std::cerr << "Bucket size: " << map_bucket_size << std::endl;
-    std::cerr << "Search radius: " << map_search_radius << std::endl;
+    // std::cerr << "Bucket size: " << map_bucket_size << std::endl;
+    // std::cerr << "Search radius: " << map_search_radius << std::endl;
 
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
