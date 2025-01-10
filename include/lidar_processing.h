@@ -30,7 +30,6 @@ class LidarProcess {
                      std::vector<int> &num_bin_pts);
 
   bool lidar_has_data_;
-  float scan_min_extent_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
 
  private:
@@ -57,8 +56,6 @@ class LidarProcess {
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
-
-  std::atomic<float> mean_range_;
 
   std::vector<int> num_bin_pts_;
   std::vector<std::atomic<int>> bin_size_;

@@ -24,7 +24,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   upd_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   upd_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  int num_bins = ceil((params.max_range - params.min_range) / params.bin_size);
+  int num_bins = ceil(params.max_range / params.bin_size);
 
   num_bin_pts_ = std::vector<int>(num_bins, 0);
   bin_size_ = std::vector<std::atomic<int>>(num_bins);
@@ -187,7 +187,6 @@ void LidarProcess::PointCloudHandler(
 
   out_pc->resize(in_pc.size());
 
-  Eigen::VectorXf ranges(in_pc.size());
   std::fill(bin_size_.begin(), bin_size_.end(), 0);
 
 #pragma omp parallel for
@@ -197,16 +196,15 @@ void LidarProcess::PointCloudHandler(
     float range = sqrt(out_pc->points[i].x * out_pc->points[i].x +
                        out_pc->points[i].y * out_pc->points[i].y +
                        out_pc->points[i].z * out_pc->points[i].z);
-    ranges[i] = range;
+
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
-    int bin_idx = floor((range - params_.min_range) / params_.bin_size);
+
+    int bin_idx = floor(range / params_.bin_size);
     bin_idxs_[bin_idx][bin_size_[bin_idx]++] = i;
-    float oct_res =
-        (bin_idx + 1) * params_.bin_size * params_.downsample_factor;
+    float oct_res = params_.bin_size * params_.downsample_factor;
+    oct_res *= (bin_idx + 1);
     out_pc->points[i].curvature = 10.0 * oct_res;
   }
-
-  mean_range_ = ranges.mean();
 }

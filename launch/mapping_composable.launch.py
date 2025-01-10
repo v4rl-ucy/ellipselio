@@ -90,7 +90,7 @@ def generate_launch_description():
     ld.add_action(declare_rviz_config_path_cmd)
     ld.add_action(container_name_arg)
     ld.add_action(rviz_node)
-    ld.add_action(composable_node)
-    # ld.add_action(ellipse_livo_node)
+    # ld.add_action(composable_node)
+    ld.add_action(ellipse_livo_node)
 
     return ld
