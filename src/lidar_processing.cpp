@@ -18,22 +18,21 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
       lidar_opt);
 
   lidar_has_data_ = false;
-  upd_lidar_has_data_ = false;
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  upd_lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  upd_lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  int num_bins = ceil(params.max_range / params.bin_size);
+  num_bins_ = ceil(params.max_range / params.bin_size);
 
-  num_bin_pts_ = std::vector<int>(num_bins, 0);
-  bin_size_ = std::vector<std::atomic<int>>(num_bins);
-  bin_octrees_ = std::vector<iOctree::Octree>(num_bins);
-  bin_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>(200000));
-  new_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>());
-  added_idxs_ = std::vector<std::vector<int>>(num_bins, std::vector<int>());
+  bin_pcs_sizes_ = std::vector<int>(num_bins_, 0);
+  bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
+  bin_octrees_ = std::vector<iOctree::Octree>(num_bins_);
+  bin_idxs_ =
+      std::vector<std::vector<int>>(num_bins_, std::vector<int>(200000));
+  bin_pcs_ = std::vector<EllipseLivoPointCloud>(num_bins_);
+  bin_min_times_ = std::vector<rclcpp::Time>(num_bins_);
+  bin_max_times_ = std::vector<rclcpp::Time>(num_bins_);
 
-  std::fill(bin_size_.begin(), bin_size_.end(), 0);
+  std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 }
 
 void LidarProcess::LidarCallback(
@@ -66,34 +65,43 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
       break;
   }
 
-  upd_lidar_has_data_ = lidar_has_data_;
-
 #pragma omp parallel for
-  for (size_t i = 0; i < bin_size_.size(); i++) {
-    if (!bin_size_[i]) continue;
+  for (size_t i = 0; i < num_bins_; i++) {
+    std::vector<int> new_idxs, added_idxs;
+    if (!bin_sizes_[i]) continue;
 
     float oct_res = (i + 1) * params_.bin_size * params_.downsample_factor;
 
     bin_octrees_[i].set_bucket_size(1);
     bin_octrees_[i].set_min_extent(oct_res);
-    bin_octrees_[i].initialize(*out_pc, bin_size_[i], bin_idxs_[i],
-                               added_idxs_[i], new_idxs_[i]);
+    bin_octrees_[i].initialize(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
+                               new_idxs);
+
+    if (!added_idxs.size()) continue;
+    bin_pcs_[i] += EllipseLivoPointCloud(*out_pc, added_idxs);
+    bin_pcs_sizes_[i] = bin_pcs_[i].size();
+    SetMinMaxTime(i);
   }
 
   lidar_mutex_.lock();
 
-  for (size_t i = 0; i < bin_size_.size(); i++) {
-    if (!bin_size_[i] || !added_idxs_[i].size()) continue;
-    num_bin_pts_[i] = added_idxs_[i].size();
-    *ellipselivo_pc_ += EllipseLivoPointCloud(*out_pc, added_idxs_[i]);
-    for (size_t j = 0; j < added_idxs_[i].size(); j++) {
-      SetMinMaxTime(out_pc->points[added_idxs_[i][j]]);
+  ellipselivo_pc_->clear();
+  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
+  for (size_t i = 0; i < num_bins_; i++) {
+    if (!bin_pcs_sizes_[i]) continue;
+    *ellipselivo_pc_ += bin_pcs_[i];
+
+    if (lidar_start_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+      lidar_start_time_ = bin_min_times_[i];
+      lidar_end_time_ = bin_max_times_[i];
+    } else {
+      lidar_start_time_ = std::min(lidar_start_time_, bin_min_times_[i]);
+      lidar_end_time_ = std::max(lidar_end_time_, bin_max_times_[i]);
     }
   }
 
-  lidar_start_time_ = upd_lidar_start_time_;
-  lidar_end_time_ = upd_lidar_end_time_;
-  lidar_has_data_ = upd_lidar_has_data_;
+  lidar_has_data_ = true;
 
   if ((lidar_end_time_ - lidar_start_time_).seconds() >= 0.11) {
     std::cerr << "Lidar longer than 100ms" << std::endl;
@@ -105,38 +113,47 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_mutex_.unlock();
 }
 
+void LidarProcess::ClearBins() {
+#pragma omp parallel for
+  for (size_t i = 0; i < num_bins_; i++) {
+    if (!bin_pcs_sizes_[i]) continue;
+    bin_pcs_sizes_[i] = 0;
+    bin_pcs_[i].clear();
+  }
+}
+
 void LidarProcess::ClearPointCloud() {
   lidar_mutex_.lock();
-  ellipselivo_pc_->clear();
-  std::fill(num_bin_pts_.begin(), num_bin_pts_.end(), 0);
+  ClearBins();
   lidar_has_data_ = false;
   lidar_mutex_.unlock();
 }
 
 void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
                                  rclcpp::Time &end_time,
-                                 std::vector<int> &num_bin_pts) {
+                                 std::vector<int> &bin_pcs_sizes) {
   lidar_mutex_.lock();
   *pc = *ellipselivo_pc_;
   end_time = lidar_end_time_;
-  ellipselivo_pc_->clear();
-  num_bin_pts = num_bin_pts_;
-  std::fill(num_bin_pts_.begin(), num_bin_pts_.end(), 0);
+  bin_pcs_sizes = bin_pcs_sizes_;
+  ClearBins();
   lidar_has_data_ = false;
   lidar_mutex_.unlock();
 }
 
-void LidarProcess::SetMinMaxTime(EllipseLivoPoint &pt) {
-  rclcpp::Time pt_time;
-  pt_time = rclcpp::Time(pt.time_secs, pt.time_nsecs, RCL_ROS_TIME);
+void LidarProcess::SetMinMaxTime(int bin_idx) {
+  rclcpp::Time pt1_time, pt2_time;
 
-  if (upd_lidar_has_data_) {
-    upd_lidar_start_time_ = std::min(upd_lidar_start_time_, pt_time);
-    upd_lidar_end_time_ = std::max(upd_lidar_end_time_, pt_time);
-  } else {
-    upd_lidar_start_time_ = pt_time;
-    upd_lidar_end_time_ = pt_time;
-    upd_lidar_has_data_ = true;
+  EllipseLivoPoint &pt1 = bin_pcs_[bin_idx].points[0];
+  pt1_time = rclcpp::Time(pt1.time_secs, pt1.time_nsecs, RCL_ROS_TIME);
+  bin_min_times_[bin_idx] = pt1_time;
+  bin_max_times_[bin_idx] = pt1_time;
+  for (size_t i = 1; i < bin_pcs_[bin_idx].size(); i++) {
+    EllipseLivoPoint &pt2 = bin_pcs_[bin_idx].points[i];
+    pt2_time = rclcpp::Time(pt2.time_secs, pt2.time_nsecs, RCL_ROS_TIME);
+
+    bin_min_times_[bin_idx] = std::min(bin_min_times_[bin_idx], pt2_time);
+    bin_max_times_[bin_idx] = std::max(bin_max_times_[bin_idx], pt2_time);
   }
 }
 
@@ -187,7 +204,10 @@ void LidarProcess::PointCloudHandler(
 
   out_pc->resize(in_pc.size());
 
-  std::fill(bin_size_.begin(), bin_size_.end(), 0);
+  std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
+
+  float oct_res = params_.bin_size * params_.downsample_factor;
+  float search_radius = 10.0 * oct_res;
 
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc.size(); i++) {
@@ -202,9 +222,13 @@ void LidarProcess::PointCloudHandler(
     }
 
     int bin_idx = floor(range / params_.bin_size);
-    bin_idxs_[bin_idx][bin_size_[bin_idx]++] = i;
-    float oct_res = params_.bin_size * params_.downsample_factor;
-    oct_res *= (bin_idx + 1);
-    out_pc->points[i].curvature = 10.0 * oct_res;
+    bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
+
+    out_pc->points[i].bin_idx = bin_idx;
+    out_pc->points[i].bucket_size =
+        fmin(NUM_MATCH_POINTS,
+             fmax(1, params_.map_resolution / ((bin_idx + 1) * oct_res)));
+    out_pc->points[i].search_radius =
+        fmin((bin_idx + 1) * search_radius, params_.map_search_radius);
   }
 }

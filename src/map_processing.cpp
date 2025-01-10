@@ -13,6 +13,7 @@ bool MappingNode::sync_packages() {
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
+    std::cerr << "Lidar data is too old" << std::endl;
     lid_process->ClearPointCloud();
     return false;
   }
@@ -24,8 +25,8 @@ void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
   float d_ij = (p_i - p_j).norm();
-  float c_ij = std::exp(-std::pow(d_ij, 2) /
-                        fmin(map_cloud->points[i].curvature, search_radius));
+  float c_ij =
+      std::exp(-std::pow(d_ij, 2) / map_cloud->points[i].search_radius);
   V3F r_ij = (p_i - p_j).normalized();
   M3F rrt = r_ij * r_ij.transpose();
   M3F R_ij = Eye3f - 2.0 * rrt;
@@ -60,7 +61,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-3)).matrix().normalized();
-    eigenvalues[i] *= fmin(map_cloud->points[i].curvature, search_radius);
+    eigenvalues[i] *= map_cloud->points[i].search_radius;
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].intensity = (saliency_idxs[i] + 1) * 85;
   }
@@ -80,11 +81,9 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     map_cloud->points[map_i].intensity = 0;
-    map_cloud->points[map_i].getNormalVector3fMap() = V3F::Zero();
 
-    ioctree.radiusNeighbors(
-        map_cloud->points[map_i],
-        fmin(map_cloud->points[map_i].curvature, search_radius), N_idxs);
+    ioctree.radiusNeighbors(map_cloud->points[map_i],
+                            map_cloud->points[map_i].search_radius, N_idxs);
     neighbours[map_i] = N_idxs;
 
     loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
@@ -236,11 +235,7 @@ void MappingNode::map_incremental(bool init_map) {
     if (!scan_cloud_bins[i]) continue;
     std::vector<int> added_idxs_i, new_idxs_i;
     end_idx += scan_cloud_bins[i];
-    int bin_bucket_size = fmin(
-        NUM_MATCH_POINTS,
-        (map_resolution /
-         (0.1 * fmin(scan_cloud->points[start_idx].curvature, search_radius))));
-    ioctree.set_bucket_size(bin_bucket_size);
+    ioctree.set_bucket_size(scan_cloud->points[start_idx].bucket_size);
     ioctree.update(*scan_cloud, added_idxs_i, new_idxs_i, true, start_idx,
                    end_idx);
     *map_cloud += EllipseLivoPointCloud(*scan_cloud, added_idxs_i);
@@ -417,7 +412,7 @@ void MappingNode::tensor_registration(
     pt.getVector3fMap() = p_world;
     ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
-    if (sqrt(N_dst[0]) > fmin(scan_cloud->points[i].curvature, search_radius) ||
+    if (sqrt(N_dst[0]) > scan_cloud->points[i].search_radius ||
         !filters[map_i][1])
       continue;
 
@@ -530,7 +525,7 @@ MappingNode::MappingNode(
   this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);
   this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs, 1);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution, 0.1);
-  this->get_parameter_or<double>("mapping.map_search_radius", search_radius,
+  this->get_parameter_or<double>("mapping.map_search_radius", map_search_radius,
                                  1.0);
 
   this->get_parameter_or<int>("imu.rate", imu_params.rate, 100);
@@ -565,6 +560,9 @@ MappingNode::MappingNode(
                                          vector<double>());
   this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
                                          vector<double>());
+
+  lidar_params.map_search_radius = map_search_radius;
+  lidar_params.map_resolution = map_resolution;
 
   ioctree.set_min_extent(map_resolution);
   ioctree.set_bucket_size(1);
@@ -690,16 +688,6 @@ void MappingNode::timer_callback() {
       RCLCPP_WARN(this->get_logger(), "No point, skip this scan!\n");
       return;
     }
-
-    // map_bucket_size = 1 + floor((1.0 - fmin(1.0,
-    // lid_process->scan_min_extent_ /
-    //                                                  map_resolution)) *
-    //                             NUM_MATCH_POINTS);
-    // map_search_radius = fmin(search_radius, 10 *
-    // lid_process->scan_min_extent_);
-
-    // std::cerr << "Bucket size: " << map_bucket_size << std::endl;
-    // std::cerr << "Search radius: " << map_search_radius << std::endl;
 
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");

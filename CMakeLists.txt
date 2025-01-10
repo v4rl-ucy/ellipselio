@@ -4,7 +4,7 @@ project(ellipse_livo)
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
 set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -fopenmp -fPIC")
 
 find_package(ament_cmake_auto REQUIRED)

@@ -73,7 +73,7 @@ class MappingNode : public rclcpp::Node {
          total_time = 0;
 
   int kf_iterations, map_bucket_size, map_counter, pub_map_n_secs;
-  double map_resolution, map_search_radius, search_radius;
+  double map_resolution, map_search_radius;
 
   bool initialized = false;
 

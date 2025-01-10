@@ -3,6 +3,7 @@
 #ifndef LIDARPROCESS_H
 #define LIDARPROCESS_H
 
+#include <common_lib.h>
 #include <common_pcl.h>
 #include <ioctree.h>
 
@@ -17,6 +18,8 @@ struct LidarParams {
   double min_range;
   double max_range;
   double bin_size;
+  double map_resolution;
+  double map_search_radius;
   double downsample_factor;
   std::string topic;
 };
@@ -27,7 +30,7 @@ class LidarProcess {
   LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
   void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &end_time,
-                     std::vector<int> &num_bin_pts);
+                     std::vector<int> &bin_pc_sizes);
 
   bool lidar_has_data_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
@@ -35,7 +38,8 @@ class LidarProcess {
  private:
   void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
   void Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
-  void SetMinMaxTime(EllipseLivoPoint &pt);
+  void SetMinMaxTime(int bin_idx);
+  void ClearBins();
 
   void SetPoint(LivoxPoint &in_pt, EllipseLivoPoint &out_pt,
                 rclcpp::Time &point_time);
@@ -57,16 +61,18 @@ class LidarProcess {
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
-  std::vector<int> num_bin_pts_;
-  std::vector<std::atomic<int>> bin_size_;
+  std::vector<int> bin_pcs_sizes_;
+  std::vector<std::vector<int>> bin_idxs_;
+  std::vector<std::atomic<int>> bin_sizes_;
   std::vector<iOctree::Octree> bin_octrees_;
-  std::vector<std::vector<int>> bin_idxs_, new_idxs_, added_idxs_;
+  std::vector<EllipseLivoPointCloud> bin_pcs_;
+
+  std::vector<rclcpp::Time> bin_min_times_;
+  std::vector<rclcpp::Time> bin_max_times_;
 
   EllipseLivoPointCloudPtr ellipselivo_pc_;
 
-  bool upd_lidar_has_data_;
-  rclcpp::Time upd_lidar_start_time_, upd_lidar_end_time_;
-
+  int num_bins_;
   std::mutex lidar_mutex_;
   LidarParams params_;
 };
