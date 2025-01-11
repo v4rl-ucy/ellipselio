@@ -423,9 +423,9 @@ void MappingNode::tensor_registration(
       continue;
 
     sali_idx = saliency_idxs[map_i];
-    // if (salivalues[map_i](sali_idx) <
-    //     mean_sali[map_cloud->points[map_i].bin_idx](sali_idx))
-    // continue;
+    if (salivalues[map_i](sali_idx) <
+        mean_sali[map_cloud->points[map_i].bin_idx](sali_idx))
+      continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
 

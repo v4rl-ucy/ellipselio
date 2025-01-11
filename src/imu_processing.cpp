@@ -35,6 +35,7 @@ void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
 
   if (rclcpp::Time(msg->header.stamp) < imu_end_time_) {
+    std::cerr << "Imu time out of order" << std::endl;
     return;
   }
 

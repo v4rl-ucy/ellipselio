@@ -20,6 +20,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_has_data_ = false;
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   num_bins_ = ceil(params.max_range / params.bin_size);
 
@@ -40,7 +41,20 @@ void LidarProcess::LidarCallback(
   sensor_msgs::msg::PointCloud2::SharedPtr msg(
       new sensor_msgs::msg::PointCloud2(*msg_in));
 
-  if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) return;
+  if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
+    std::cerr << "Lidar time out of order" << std::endl;
+    return;
+  }
+
+  std::cerr << "Filtered lidar delay: "
+            << (rclcpp::Time(msg->header.stamp) - lidar_start_time_).seconds()
+            << std::endl;
+  std::cerr << "Raw lidar delay: "
+            << (rclcpp::Time(msg->header.stamp) - last_time_).seconds()
+            << std::endl;
+
+  last_time_ = rclcpp::Time(msg->header.stamp);
+
   double t1 = omp_get_wtime();
   Process(msg);
   double t2 = omp_get_wtime();
@@ -86,15 +100,16 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_mutex_.lock();
 
   ellipselivo_pc_->clear();
-  lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
+  bool init_time = true;
   for (size_t i = 0; i < num_bins_; i++) {
     if (!bin_pcs_sizes_[i]) continue;
     *ellipselivo_pc_ += bin_pcs_[i];
 
-    if (lidar_start_time_ == rclcpp::Time(0, 0, RCL_ROS_TIME)) {
+    if (init_time) {
       lidar_start_time_ = bin_min_times_[i];
       lidar_end_time_ = bin_max_times_[i];
+      init_time = false;
     } else {
       lidar_start_time_ = std::min(lidar_start_time_, bin_min_times_[i]);
       lidar_end_time_ = std::max(lidar_end_time_, bin_max_times_[i]);

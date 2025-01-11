@@ -72,6 +72,8 @@ class LidarProcess {
 
   EllipseLivoPointCloudPtr ellipselivo_pc_;
 
+  rclcpp::Time last_time_;
+
   int num_bins_;
   std::mutex lidar_mutex_;
   LidarParams params_;
