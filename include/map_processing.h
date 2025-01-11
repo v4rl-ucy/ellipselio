@@ -75,9 +75,10 @@ class MappingNode : public rclcpp::Node {
   int kf_iterations, map_bucket_size, map_counter, pub_map_n_secs;
   double map_resolution, map_search_radius;
 
+  int num_bins;
   bool initialized = false;
 
-  V3F mean_sali;
+  std::vector<V3F> mean_sali;
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
   std::vector<M3F> eigenvectors;
@@ -88,6 +89,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
+  std::vector<int> mean_cnt;
   std::vector<int> scan_cloud_bins;
   std::vector<int> update_cnt;
   std::vector<int> update_idx;

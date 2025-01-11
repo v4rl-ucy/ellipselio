@@ -161,14 +161,15 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
 void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
-  Eigen::MatrixXf sali_vals;
-  Eigen::VectorXi sali_filter;
-  V3F cur_mean_sali;
+  std::vector<Eigen::MatrixXf> sali_vals;
+  std::vector<Eigen::VectorXi> sali_filter;
 
   int total_size = added_idxs.size() + updated_idxs.size();
 
-  sali_vals = Eigen::MatrixXf::Zero(total_size, 3);
-  sali_filter = Eigen::VectorXi::Zero(total_size);
+  sali_vals = std::vector<Eigen::MatrixXf>(
+      num_bins, Eigen::MatrixXf::Zero(total_size, 3));
+  sali_filter =
+      std::vector<Eigen::VectorXi>(num_bins, Eigen::VectorXi::Zero(total_size));
 
 #pragma omp parallel for
   for (int i = 0; i < total_size; i++) {
@@ -204,13 +205,18 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
 
-    sali_filter(i) = filters[map_i][1];
-    sali_vals.row(i) = salivalues[map_i];
+    sali_filter[map_cloud->points[map_i].bin_idx](i) = filters[map_i][1];
+    sali_vals[map_cloud->points[map_i].bin_idx].row(i) = salivalues[map_i];
   }
 
-  cur_mean_sali = sali_vals.colwise().sum() / float(sali_filter.sum());
-  mean_sali = (cur_mean_sali + (float(map_counter) * mean_sali)) /
-              (float(map_counter) + 1);
+#pragma omp parallel for
+  for (int i = 0; i < num_bins; i++) {
+    if (sali_filter[i].sum() == 0) continue;
+    Eigen::Vector3f sali_vals_i = sali_vals[i].colwise().sum();
+    mean_sali[i] = ((mean_cnt[i] * mean_sali[i]) + sali_vals_i) /
+                   (mean_cnt[i] + sali_filter[i].sum());
+    mean_cnt[i] += sali_filter[i].sum();
+  }
 }
 
 void MappingNode::map_incremental(bool init_map) {
@@ -417,7 +423,9 @@ void MappingNode::tensor_registration(
       continue;
 
     sali_idx = saliency_idxs[map_i];
-    // if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
+    if (salivalues[map_i](sali_idx) <
+        mean_sali[map_cloud->points[map_i].bin_idx](sali_idx))
+      continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
 
@@ -567,7 +575,9 @@ MappingNode::MappingNode(
   ioctree.set_min_extent(map_resolution);
   ioctree.set_bucket_size(1);
 
-  mean_sali = V3F::Zero();
+  num_bins = ceil(lidar_params.max_range / lidar_params.bin_size);
+  mean_cnt = std::vector<int>(num_bins, 0);
+  mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
   new_neighbours_map_idx = std::vector<int>(100000);
   new_neighbours_size = std::vector<std::atomic<int>>(100000);
