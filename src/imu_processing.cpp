@@ -29,6 +29,12 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
   gyr_noise << params.gyr_noise, params.gyr_noise, params.gyr_noise;
   acc_bias << params.acc_bias, params.acc_bias, params.acc_bias;
   gyr_bias << params.gyr_bias, params.gyr_bias, params.gyr_bias;
+
+  Q = process_noise_cov();
+  Q.block<3, 3>(0, 0).diagonal() = gyr_noise;
+  Q.block<3, 3>(3, 3).diagonal() = acc_noise;
+  Q.block<3, 3>(6, 6).diagonal() = gyr_bias;
+  Q.block<3, 3>(9, 9).diagonal() = acc_bias;
 }
 
 void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
@@ -96,19 +102,9 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   imu_has_data_ = true;
 }
 
-void ImuProcess::Reset() {
-  init_iter_num = 1;
-  imu_need_init_ = true;
-  Q = process_noise_cov();
-  Q.block<3, 3>(0, 0).diagonal() = gyr_noise;
-  Q.block<3, 3>(3, 3).diagonal() = acc_noise;
-  Q.block<3, 3>(6, 6).diagonal() = gyr_bias;
-  Q.block<3, 3>(9, 9).diagonal() = acc_bias;
-}
-
 void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
   if (b_first_frame_) {
-    Reset();
+    init_iter_num = 1;
     b_first_frame_ = false;
     const auto &imu_acc = msg->linear_acceleration;
     const auto &gyr_acc = msg->angular_velocity;
@@ -121,14 +117,16 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
 
-    mean_acc += (cur_acc - mean_acc) / (init_iter_num + 1);
-    mean_gyr += (cur_gyr - mean_gyr) / (init_iter_num + 1);
+    mean_acc += cur_acc;
+    mean_gyr += cur_gyr;
 
     init_iter_num++;
   }
 
   if (init_iter_num > params_.rate) {
     imu_need_init_ = false;
+    mean_acc /= init_iter_num;
+    mean_gyr /= init_iter_num;
 
     kf_state_.time = rclcpp::Time(msg->header.stamp);
 
@@ -164,8 +162,10 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
       }
     } else if (match_idx == imu_states.size() - 1) {
       match_flag = true;
-    } else {
+    } else if (imu_states[match_idx + 1].state.time < match_time) {
       match_idx++;
+    } else {
+      match_flag = true;
     }
   }
 }
@@ -238,6 +238,10 @@ void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
 
   *kf_ = *kf;
   GetTimeMatch(match_idx, lidar_end_time, imu_states_);
+  std::cerr << "Match idx: " << match_idx << std::endl;
+  std::cerr << "Time diff: "
+            << (lidar_end_time - imu_states_[match_idx].state.time).seconds()
+            << std::endl;
   imu_states_[match_idx].state.state = kf_->get_x();
   imu_states_[match_idx].state.cov = kf_->get_P();
 

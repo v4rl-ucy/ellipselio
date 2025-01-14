@@ -34,6 +34,26 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   bin_max_times_ = std::vector<rclcpp::Time>(num_bins_);
 
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
+
+  bucket_sizes_ = std::vector<int>(num_bins_, 1);
+  min_neighbours_ = std::vector<int>(num_bins_, NUM_MATCH_POINTS);
+  search_radii_ = std::vector<float>(num_bins_, params_.map_search_radius);
+  octree_resolutions_ = std::vector<float>(num_bins_, params_.map_resolution);
+
+#pragma omp parallel for
+  for (size_t i = 0; i < num_bins_; i++) {
+    float octree_res = (i + 1) * params_.bin_size * params_.downsample_factor;
+    float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
+    int min_neighbours = NUM_MATCH_POINTS;
+    int bucket_size =
+        fmin(NUM_MATCH_POINTS, ceil(params_.map_resolution / octree_res));
+    //  std::cerr << "Bucket size: " << bucket_size << std::endl;
+
+    bucket_sizes_[i] = bucket_size;
+    min_neighbours_[i] = min_neighbours;
+    search_radii_[i] = search_radius;
+    octree_resolutions_[i] = octree_res;
+  }
 }
 
 void LidarProcess::LidarCallback(
@@ -46,14 +66,15 @@ void LidarProcess::LidarCallback(
     return;
   }
 
-  std::cerr << "Filtered lidar delay: "
-            << (rclcpp::Time(msg->header.stamp) - lidar_start_time_).seconds()
-            << std::endl;
-  std::cerr << "Raw lidar delay: "
-            << (rclcpp::Time(msg->header.stamp) - last_time_).seconds()
-            << std::endl;
+  // std::cerr << "Filtered lidar delay: "
+  //           << (rclcpp::Time(msg->header.stamp) -
+  //           lidar_start_time_).seconds()
+  //           << std::endl;
+  // std::cerr << "Raw lidar delay: "
+  //           << (rclcpp::Time(msg->header.stamp) - last_time_).seconds()
+  //           << std::endl;
 
-  last_time_ = rclcpp::Time(msg->header.stamp);
+  // last_time_ = rclcpp::Time(msg->header.stamp);
 
   double t1 = omp_get_wtime();
   Process(msg);
@@ -84,10 +105,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     std::vector<int> new_idxs, added_idxs;
     if (!bin_sizes_[i]) continue;
 
-    float oct_res = (i + 1) * params_.bin_size * params_.downsample_factor;
-
     bin_octrees_[i].set_bucket_size(1);
-    bin_octrees_[i].set_min_extent(oct_res);
+    bin_octrees_[i].set_min_extent(octree_resolutions_[i]);
     bin_octrees_[i].initialize(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
                                new_idxs);
 
@@ -100,7 +119,6 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_mutex_.lock();
 
   ellipselivo_pc_->clear();
-
   bool init_time = true;
   for (size_t i = 0; i < num_bins_; i++) {
     if (!bin_pcs_sizes_[i]) continue;
@@ -116,16 +134,16 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     }
   }
 
+  lidar_mutex_.unlock();
+
   lidar_has_data_ = true;
 
-  if ((lidar_end_time_ - lidar_start_time_).seconds() >= 0.11) {
-    std::cerr << "Lidar longer than 100ms" << std::endl;
-  }
-  if ((lidar_end_time_ - lidar_start_time_).seconds() <= 0.09) {
-    std::cerr << "Lidar shorter than 100ms" << std::endl;
-  }
-
-  lidar_mutex_.unlock();
+  // if ((lidar_end_time_ - lidar_start_time_).seconds() >= 0.11) {
+  //   std::cerr << "Lidar longer than 100ms" << std::endl;
+  // }
+  // if ((lidar_end_time_ - lidar_start_time_).seconds() <= 0.09) {
+  //   std::cerr << "Lidar shorter than 100ms" << std::endl;
+  // }
 }
 
 void LidarProcess::ClearBins() {
@@ -146,9 +164,11 @@ void LidarProcess::ClearPointCloud() {
 
 void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
                                  rclcpp::Time &end_time,
-                                 std::vector<int> &bin_pcs_sizes) {
+                                 std::vector<int> &bin_pcs_sizes,
+                                 int &start_bin) {
   lidar_mutex_.lock();
   *pc = *ellipselivo_pc_;
+  start_bin = start_bin_;
   end_time = lidar_end_time_;
   bin_pcs_sizes = bin_pcs_sizes_;
   ClearBins();
@@ -219,10 +239,8 @@ void LidarProcess::PointCloudHandler(
 
   out_pc->resize(in_pc.size());
 
+  Eigen::VectorXf ranges(in_pc.size());
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
-
-  float oct_res = params_.bin_size * params_.downsample_factor;
-  float search_radius = 10.0 * oct_res;
 
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc.size(); i++) {
@@ -232,6 +250,7 @@ void LidarProcess::PointCloudHandler(
                        out_pc->points[i].y * out_pc->points[i].y +
                        out_pc->points[i].z * out_pc->points[i].z);
 
+    ranges[i] = range;
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
@@ -240,10 +259,10 @@ void LidarProcess::PointCloudHandler(
     bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
 
     out_pc->points[i].bin_idx = bin_idx;
-    out_pc->points[i].bucket_size =
-        fmin(NUM_MATCH_POINTS,
-             fmax(1, params_.map_resolution / ((bin_idx + 1) * oct_res)));
-    out_pc->points[i].search_radius =
-        fmin((bin_idx + 1) * search_radius, params_.map_search_radius);
   }
+
+  mean_range_ = ranges.mean();
+  start_bin_ = round(mean_range_ / params_.bin_size);
+  std::cerr << "Mean range: " << mean_range_ << std::endl;
+  std::cerr << "Start bin: " << start_bin_ << std::endl;
 }

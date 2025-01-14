@@ -58,7 +58,6 @@ class ImuProcess {
   rclcpp::Time imu_start_time_, imu_end_time_;
 
  private:
-  void Reset();
   void Process(const sensor_msgs::msg::Imu::SharedPtr msg);
   void InitImu(const sensor_msgs::msg::Imu::SharedPtr msg);
   void ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in);

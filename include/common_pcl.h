@@ -16,9 +16,7 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
   PCL_ADD_POINT4D;
   union {
     struct {
-      float search_radius;
       uint32_t bin_idx;
-      uint32_t bucket_size;
     };
     float data_n[4];
   };
@@ -37,11 +35,8 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZNRGBIT,
-    (float, x, x)(float, y, y)(float, z, z)(float, search_radius,
-                                            search_radius)(uint32_t, bin_idx,
-                                                           bin_idx)(
-        uint32_t, bucket_size, bucket_size)(float, rgb, rgb)(float, intensity,
-                                                             intensity)(
+    (float, x, x)(float, y, y)(float, z, z)(uint32_t, bin_idx, bin_idx)(
+        float, rgb, rgb)(float, intensity, intensity)(
         uint32_t, time_secs, time_secs)(uint32_t, time_nsecs, time_nsecs))
 
 typedef PointXYZNRGBIT EllipseLivoPoint;

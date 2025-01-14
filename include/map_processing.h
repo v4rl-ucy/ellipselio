@@ -76,6 +76,7 @@ class MappingNode : public rclcpp::Node {
   double map_resolution, map_search_radius;
 
   int num_bins;
+  int start_bin;
   bool initialized = false;
 
   std::vector<V3F> mean_sali;
