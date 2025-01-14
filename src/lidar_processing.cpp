@@ -45,9 +45,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     float octree_res = (i + 1) * params_.bin_size * params_.downsample_factor;
     float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
     int min_neighbours = NUM_MATCH_POINTS;
-    int bucket_size =
-        fmin(NUM_MATCH_POINTS, ceil(params_.map_resolution / octree_res));
-    //  std::cerr << "Bucket size: " << bucket_size << std::endl;
+    int bucket_size = ceil(NUM_MATCH_POINTS / pow(2, fmin(i, 10)));
 
     bucket_sizes_[i] = bucket_size;
     min_neighbours_[i] = min_neighbours;
@@ -65,16 +63,6 @@ void LidarProcess::LidarCallback(
     std::cerr << "Lidar time out of order" << std::endl;
     return;
   }
-
-  // std::cerr << "Filtered lidar delay: "
-  //           << (rclcpp::Time(msg->header.stamp) -
-  //           lidar_start_time_).seconds()
-  //           << std::endl;
-  // std::cerr << "Raw lidar delay: "
-  //           << (rclcpp::Time(msg->header.stamp) - last_time_).seconds()
-  //           << std::endl;
-
-  // last_time_ = rclcpp::Time(msg->header.stamp);
 
   double t1 = omp_get_wtime();
   Process(msg);
@@ -133,17 +121,9 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
       lidar_end_time_ = std::max(lidar_end_time_, bin_max_times_[i]);
     }
   }
-
-  lidar_mutex_.unlock();
-
   lidar_has_data_ = true;
 
-  // if ((lidar_end_time_ - lidar_start_time_).seconds() >= 0.11) {
-  //   std::cerr << "Lidar longer than 100ms" << std::endl;
-  // }
-  // if ((lidar_end_time_ - lidar_start_time_).seconds() <= 0.09) {
-  //   std::cerr << "Lidar shorter than 100ms" << std::endl;
-  // }
+  lidar_mutex_.unlock();
 }
 
 void LidarProcess::ClearBins() {
@@ -262,7 +242,7 @@ void LidarProcess::PointCloudHandler(
   }
 
   mean_range_ = ranges.mean();
-  start_bin_ = round(mean_range_ / params_.bin_size);
+  start_bin_ = floor(mean_range_ / params_.bin_size);
   std::cerr << "Mean range: " << mean_range_ << std::endl;
   std::cerr << "Start bin: " << start_bin_ << std::endl;
 }

@@ -682,13 +682,15 @@ class Octree {
 
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
-                       std::vector<int> &resultIndices) {
+                       std::vector<int> &resultIndices,
+                       size_t bucket_size = 0) {
     resultIndices.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
-    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr);
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr,
+                    bucket_size);
     resultIndices.resize(points_ptr.size());
 
     for (size_t i = 0; i < points_ptr.size(); i++) {
@@ -699,14 +701,15 @@ class Octree {
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
                        std::vector<size_t> &resultIndices,
-                       std::vector<float> &distances) {
+                       std::vector<float> &distances, size_t bucket_size = 0) {
     resultIndices.clear();
     distances.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
-    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances);
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances,
+                    bucket_size);
     // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultIndices.resize(points_ptr.size());
 
@@ -719,14 +722,15 @@ class Octree {
   void radiusNeighbors(
       const PointT &query, float radius,
       std::vector<PointT, Eigen::aligned_allocator<PointT>> &resultPoints,
-      std::vector<float> &distances) {
+      std::vector<float> &distances, size_t bucket_size = 0) {
     resultPoints.clear();
     distances.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
-    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances);
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances,
+                    bucket_size);
     // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultPoints.resize(points_ptr.size());
 
@@ -742,14 +746,15 @@ class Octree {
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
                        Eigen::MatrixXf &resultMatrix,
-                       std::vector<float> &distances) {
+                       std::vector<float> &distances, size_t bucket_size = 0) {
     // resultIndices.clear();
     distances.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
-    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances);
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances,
+                    bucket_size);
     // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultMatrix.resize(points_ptr.size(), 3);
 
@@ -763,14 +768,16 @@ class Octree {
   template <typename PointT>
   void radiusNeighbors(const PointT &query, float radius,
                        Eigen::MatrixXf &resultMatrix,
-                       std::vector<int> &resultIndices) {
+                       std::vector<int> &resultIndices,
+                       size_t bucket_size = 0) {
     resultIndices.clear();
     // distances.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
-    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr);
+    radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr,
+                    bucket_size);
     // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultMatrix.resize(points_ptr.size(), 3);
     resultIndices.resize(points_ptr.size(), 3);
@@ -1126,17 +1133,19 @@ class Octree {
   }
 
   void radiusNeighbors(const Octant *octant, const float *query, float radius,
-                       float sqrRadius, std::vector<float *> &resultIndices) {
+                       float sqrRadius, std::vector<float *> &resultIndices,
+                       size_t bucket_size) {
     if (!octant->isActive) return;
     if (3 * octant->extent * octant->extent < sqrRadius &&
         contains(query, sqrRadius, octant)) {
-      // printf("contains\n");
       std::vector<const Octant *> candidate_octants;
       candidate_octants.reserve(8);
       get_leaf_nodes(octant, candidate_octants);
 
       for (size_t k = 0; k < candidate_octants.size(); k++) {
-        const size_t size = candidate_octants[k]->points.size();
+        size_t size = candidate_octants[k]->points.size();
+        if (bucket_size) size = std::min(size, bucket_size);
+
         const size_t result_size = resultIndices.size();
         resultIndices.resize(result_size + size);
 
@@ -1159,11 +1168,10 @@ class Octree {
       return;
     }
     if (octant->child == nullptr) {
-      const size_t size = octant->points.size();
+      size_t size = octant->points.size();
+      if (bucket_size) size = std::min(size, bucket_size);
 
       for (size_t i = 0; i < size; ++i) {
-        // const float * p = ordered? octant->ordered_points[i] :
-        // octant->points[i];
         const float *p = octant->points[i];
         float dist = 0, diff = 0;
 
@@ -1180,14 +1188,14 @@ class Octree {
     for (size_t c = 0; c < 8; ++c) {
       if (octant->child[c] == 0) continue;
       if (!overlaps(query, sqrRadius, octant->child[c])) continue;
-      radiusNeighbors(octant->child[c], query, radius, sqrRadius,
-                      resultIndices);
+      radiusNeighbors(octant->child[c], query, radius, sqrRadius, resultIndices,
+                      bucket_size);
     }
   }
 
   void radiusNeighbors(const Octant *octant, const float *query, float radius,
                        float sqrRadius, std::vector<float *> &resultIndices,
-                       std::vector<float> &distances) {
+                       std::vector<float> &distances, size_t bucket_size) {
     if (!octant->isActive) return;
     if (3 * octant->extent * octant->extent < sqrRadius &&
         contains(query, sqrRadius, octant)) {
@@ -1195,7 +1203,9 @@ class Octree {
       get_leaf_nodes(octant, candidate_octants);
 
       for (size_t k = 0; k < candidate_octants.size(); k++) {
-        const size_t size = candidate_octants[k]->points.size();
+        size_t size = candidate_octants[k]->points.size();
+        if (bucket_size) size = std::min(size, bucket_size);
+
         const size_t result_size = resultIndices.size();
         resultIndices.resize(result_size + size);
         size_t m = 0;
@@ -1218,7 +1228,8 @@ class Octree {
       return;
     }
     if (octant->child == nullptr) {
-      const size_t size = octant->points.size();
+      size_t size = octant->points.size();
+      if (bucket_size) size = std::min(size, bucket_size);
 
       for (size_t i = 0; i < size; ++i) {
         const float *p = octant->points[i];
@@ -1240,7 +1251,7 @@ class Octree {
       if (octant->child[c] == 0) continue;
       if (!overlaps(query, sqrRadius, octant->child[c])) continue;
       radiusNeighbors(octant->child[c], query, radius, sqrRadius, resultIndices,
-                      distances);
+                      distances, bucket_size);
     }
   }
 
