@@ -36,7 +36,8 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
-  min_neighbours_ = std::vector<int>(num_bins_, NUM_MATCH_POINTS);
+  min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
+  max_neighbours_ = std::vector<int>(num_bins_, MAX_NEIGHBOURS);
   search_radii_ = std::vector<float>(num_bins_, params_.map_search_radius);
   octree_resolutions_ = std::vector<float>(num_bins_, params_.map_resolution);
 
@@ -44,11 +45,9 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   for (size_t i = 0; i < num_bins_; i++) {
     float octree_res = (i + 1) * params_.bin_size * params_.downsample_factor;
     float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
-    int min_neighbours = NUM_MATCH_POINTS;
-    int bucket_size = ceil(NUM_MATCH_POINTS / pow(2, fmin(i, 10)));
+    int bucket_size = ceil(MIN_NEIGHBOURS / pow(2, fmin(i, 10)));
 
     bucket_sizes_[i] = bucket_size;
-    min_neighbours_[i] = min_neighbours;
     search_radii_[i] = search_radius;
     octree_resolutions_[i] = octree_res;
   }

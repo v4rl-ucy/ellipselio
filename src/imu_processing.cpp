@@ -238,10 +238,6 @@ void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
 
   *kf_ = *kf;
   GetTimeMatch(match_idx, lidar_end_time, imu_states_);
-  std::cerr << "Match idx: " << match_idx << std::endl;
-  std::cerr << "Time diff: "
-            << (lidar_end_time - imu_states_[match_idx].state.time).seconds()
-            << std::endl;
   imu_states_[match_idx].state.state = kf_->get_x();
   imu_states_[match_idx].state.cov = kf_->get_P();
 

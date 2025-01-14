@@ -77,7 +77,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
-    int map_i, loop_cnt, min_neigh, bin_idx, bucket_size;
+    int map_i, loop_cnt, min_neigh, max_neigh, bin_idx, bucket_size;
     float search_rad;
     Eigen::MatrixXf K;
     std::vector<int> N_idxs;
@@ -88,6 +88,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     bin_idx = fmax(map_cloud->points[map_i].bin_idx, start_bin);
     min_neigh = lid_process->min_neighbours_[bin_idx];
+    max_neigh = lid_process->max_neighbours_[bin_idx];
     search_rad = lid_process->search_radii_[bin_idx];
     bucket_size = lid_process->bucket_sizes_[bin_idx];
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
@@ -96,7 +97,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     // std::cerr << "Search radius: " << search_rad
     //           << " Neighbours: " << N_idxs.size() << std::endl;
 
-    loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
+    loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
 
 #pragma omp parallel for
@@ -132,7 +133,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
   for (int i = 0; i < new_neighbours_idx; i++) {
     Eigen::MatrixXf K;
     M3F tensor_i1;
-    int map_i, loop_cnt, max_loop, old_size, min_neigh, bin_idx;
+    int map_i, loop_cnt, max_loop, old_size, min_neigh, max_neigh, bin_idx;
 
     map_i = new_neighbours_map_idx[i];
     if (!updated_pt[map_i]) continue;
@@ -140,11 +141,12 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     bin_idx = fmax(map_cloud->points[map_i].bin_idx, start_bin);
     min_neigh = lid_process->min_neighbours_[bin_idx];
-    if (neighbours[map_i].size() >= MAX_NEIGHBOURS) continue;
+    max_neigh = lid_process->max_neighbours_[bin_idx];
+    if (neighbours[map_i].size() >= max_neigh) continue;
 
     updated_idxs[upd_idx++] = map_i;
 
-    max_loop = (MAX_NEIGHBOURS)-neighbours[map_i].size();
+    max_loop = max_neigh - neighbours[map_i].size();
     loop_cnt = min(int(new_neighbours_size[i]), max_loop);
 
     old_size = neighbours[map_i].size();
@@ -187,14 +189,15 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     Eigen::MatrixXf K;
     Eigen::VectorXi K_filter;
     M3F tensor_i2;
-    int map_i, loop_cnt, filter_cnt, min_neigh, bin_idx;
+    int map_i, loop_cnt, filter_cnt, min_neigh, max_neigh, bin_idx;
 
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
 
     bin_idx = fmax(map_cloud->points[map_i].bin_idx, start_bin);
     min_neigh = lid_process->min_neighbours_[bin_idx];
-    loop_cnt = min(int(neighbours[map_i].size()), MAX_NEIGHBOURS);
+    max_neigh = lid_process->max_neighbours_[bin_idx];
+    loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
 
     if (!filters[map_i][0]) continue;
 
@@ -708,7 +711,6 @@ void MappingNode::timer_callback() {
 
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
-      if (scan_cloud->points.size() < NUM_MATCH_POINTS) return;
       map_incremental(true);
       return;
     }
