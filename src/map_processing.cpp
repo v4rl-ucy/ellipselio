@@ -74,6 +74,9 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
                                      std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
+  int num_bins = lid_process->num_bins_;
+  Eigen::ArrayXi n_cnt = Eigen::ArrayXi::Zero(added_idxs.size());
+  Eigen::ArrayXXi n_bins = Eigen::ArrayXXi::Zero(added_idxs.size(), num_bins);
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -94,6 +97,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
                             bucket_size);
     neighbours[map_i] = N_idxs;
+    n_cnt(i) = N_idxs.size();
+    n_bins(i, bin_idx) = 1;
     // std::cerr << "Search radius: " << search_rad
     //           << " Neighbours: " << N_idxs.size() << std::endl;
 
@@ -126,8 +131,21 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     tensor_i1 = tensors_p1[map_i] / float(loop_cnt);
     compute_tensor_eigen(map_i, tensor_i1, true);
   }
-
   updated_idxs.resize(new_neighbours_idx);
+
+#pragma omp parallel for
+  for (int i = 0; i < num_bins; i++) {
+    Eigen::ArrayXi n_cnt_bin = n_cnt * n_bins.col(i);
+    if (!n_cnt_bin.sum()) continue;
+    int n_mean = lid_process->min_neighbours_[i];
+    n_mean *= lid_process->cnt_neighbours_[i];
+    n_mean += n_cnt_bin.sum();
+    n_mean /= lid_process->cnt_neighbours_[i] + n_bins.col(i).sum();
+    lid_process->min_neighbours_[i] = fmax(n_mean, MIN_NEIGHBOURS);
+    lid_process->max_neighbours_[i] = 2 * lid_process->min_neighbours_[i];
+    lid_process->cnt_neighbours_[i] += n_bins.col(i).sum();
+    // std::cerr << "Bin: " << i << " Neighbours: " << n_mean << std::endl;
+  }
 
 #pragma omp parallel for
   for (int i = 0; i < new_neighbours_idx; i++) {
