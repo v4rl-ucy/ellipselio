@@ -44,9 +44,13 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
-    float octree_res = (i + 1) * params_.bin_size * params_.downsample_factor;
+    float octree_res =
+        fmin((i + 1) * params_.bin_size * params_.downsample_factor,
+             params_.map_resolution);
     float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
-    int bucket_size = ceil(MIN_NEIGHBOURS / pow(2, fmin(i, 10)));
+    int bucket_size = fmax(
+        ceil((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
+        1);
 
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_radius;
@@ -94,7 +98,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     if (!bin_sizes_[i]) continue;
 
     bin_octrees_[i].set_bucket_size(1);
-    bin_octrees_[i].set_min_extent(octree_resolutions_[i]);
+    bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
     bin_octrees_[i].initialize(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
                                new_idxs);
 
@@ -244,5 +248,5 @@ void LidarProcess::PointCloudHandler(
   }
 
   mean_range_ = (ranges * valid_range).sum() / valid_range.sum();
-  start_bin_ = round(mean_range_ / params_.bin_size);
+  start_bin_ = floor(mean_range_ / params_.bin_size);
 }
