@@ -244,7 +244,5 @@ void LidarProcess::PointCloudHandler(
   }
 
   mean_range_ = (ranges * valid_range).sum() / valid_range.sum();
-  start_bin_ = floor(mean_range_ / params_.bin_size);
-  std::cerr << "Mean range: " << mean_range_ << std::endl;
-  std::cerr << "Start bin: " << start_bin_ << std::endl;
+  start_bin_ = round(mean_range_ / params_.bin_size);
 }

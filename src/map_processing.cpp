@@ -24,8 +24,8 @@ bool MappingNode::sync_packages() {
 void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
-  int bin_idx = fmax(map_cloud->points[i].bin_idx, start_bin);
-  float search_rad = lid_process->search_radii_[bin_idx];
+  const int &bin_idx = map_cloud->points[i].bin_idx;
+  const float &search_rad = lid_process->search_radii_[bin_idx];
   float d_ij = (p_i - p_j).norm();
   float c_ij = std::exp(-std::pow(d_ij, 2) / search_rad);
   V3F r_ij = (p_i - p_j).normalized();
@@ -46,7 +46,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   eig_vec = eig_solver.eigenvectors();
   eig_val = eig_solver.eigenvalues().cwiseAbs();
 
-  int bin_idx = fmax(map_cloud->points[i].bin_idx, start_bin);
+  const int &bin_idx = map_cloud->points[i].bin_idx;
 
   if (first_pass) {
     tensor_i2 =
@@ -80,8 +80,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
-    int map_i, loop_cnt, min_neigh, max_neigh, bin_idx, bucket_size;
-    float search_rad;
+    int map_i, loop_cnt;
     Eigen::MatrixXf K;
     std::vector<int> N_idxs;
     M3F tensor_i1;
@@ -89,18 +88,17 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     map_i = added_idxs[i];
     map_cloud->points[map_i].intensity = 0;
 
-    bin_idx = fmax(map_cloud->points[map_i].bin_idx, start_bin);
-    min_neigh = lid_process->min_neighbours_[bin_idx];
-    max_neigh = lid_process->max_neighbours_[bin_idx];
-    search_rad = lid_process->search_radii_[bin_idx];
-    bucket_size = lid_process->bucket_sizes_[bin_idx];
+    const int &bin_idx = map_cloud->points[map_i].bin_idx;
+    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
+    const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
+    const float &search_rad = lid_process->search_radii_[bin_idx];
+
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
                             bucket_size);
     neighbours[map_i] = N_idxs;
     n_cnt(i) = N_idxs.size();
     n_bins(i, bin_idx) = 1;
-    // std::cerr << "Search radius: " << search_rad
-    //           << " Neighbours: " << N_idxs.size() << std::endl;
 
     loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
@@ -144,22 +142,21 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     lid_process->min_neighbours_[i] = fmax(n_mean, MIN_NEIGHBOURS);
     lid_process->max_neighbours_[i] = 2 * lid_process->min_neighbours_[i];
     lid_process->cnt_neighbours_[i] += n_bins.col(i).sum();
-    // std::cerr << "Bin: " << i << " Neighbours: " << n_mean << std::endl;
   }
 
 #pragma omp parallel for
   for (int i = 0; i < new_neighbours_idx; i++) {
     Eigen::MatrixXf K;
     M3F tensor_i1;
-    int map_i, loop_cnt, max_loop, old_size, min_neigh, max_neigh, bin_idx;
+    int map_i, loop_cnt, max_loop, old_size;
 
     map_i = new_neighbours_map_idx[i];
     if (!updated_pt[map_i]) continue;
     updated_pt[map_i] = 0;
 
-    bin_idx = fmax(map_cloud->points[map_i].bin_idx, start_bin);
-    min_neigh = lid_process->min_neighbours_[bin_idx];
-    max_neigh = lid_process->max_neighbours_[bin_idx];
+    const int &bin_idx = map_cloud->points[map_i].bin_idx;
+    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
     if (neighbours[map_i].size() >= max_neigh) continue;
 
     updated_idxs[upd_idx++] = map_i;
@@ -194,27 +191,29 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
 void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
-  Eigen::MatrixXf sali_vals;
-  Eigen::VectorXi sali_filter;
+  std::vector<Eigen::MatrixXf> sali_vals;
+  std::vector<Eigen::VectorXi> sali_filter;
 
   int total_size = added_idxs.size() + updated_idxs.size();
 
-  sali_vals = Eigen::MatrixXf::Zero(total_size, 3);
-  sali_filter = Eigen::VectorXi::Zero(total_size);
+  sali_vals = std::vector<Eigen::MatrixXf>(
+      num_bins, Eigen::MatrixXf::Zero(total_size, 3));
+  sali_filter =
+      std::vector<Eigen::VectorXi>(num_bins, Eigen::VectorXi::Zero(total_size));
 
 #pragma omp parallel for
   for (int i = 0; i < total_size; i++) {
     Eigen::MatrixXf K;
     Eigen::VectorXi K_filter;
     M3F tensor_i2;
-    int map_i, loop_cnt, filter_cnt, min_neigh, max_neigh, bin_idx;
+    int map_i, loop_cnt, filter_cnt;
 
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
 
-    bin_idx = fmax(map_cloud->points[map_i].bin_idx, start_bin);
-    min_neigh = lid_process->min_neighbours_[bin_idx];
-    max_neigh = lid_process->max_neighbours_[bin_idx];
+    const int &bin_idx = map_cloud->points[map_i].bin_idx;
+    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
     loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
 
     if (!filters[map_i][0]) continue;
@@ -240,13 +239,18 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
 
-    sali_filter(i) = filters[map_i][1];
-    sali_vals.row(i) = salivalues[map_i];
+    sali_filter[bin_idx](i) = filters[map_i][1];
+    sali_vals[bin_idx].row(i) = salivalues[map_i];
   }
 
-  V3F cur_mean_sali = sali_vals.colwise().sum();
-  mean_sali = (cur_mean_sali + (float(mean_cnt) * mean_sali)) /
-              (float(mean_cnt + sali_filter.sum()));
+#pragma omp parallel for
+  for (int i = 0; i < num_bins; i++) {
+    if (sali_filter[i].sum() == 0) continue;
+    Eigen::Vector3f sali_vals_sum = sali_vals[i].colwise().sum();
+    mean_sali[i] = ((mean_cnt[i] * mean_sali[i]) + sali_vals_sum) /
+                   (mean_cnt[i] + sali_filter[i].sum());
+    mean_cnt[i] += sali_filter[i].sum();
+  }
 }
 
 void MappingNode::map_incremental(bool init_map) {
@@ -255,6 +259,8 @@ void MappingNode::map_incremental(bool init_map) {
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
+    const int &bin_idx = scan_cloud->points[i].bin_idx;
+    scan_cloud->points[i].bin_idx = fmax(bin_idx, start_bin);
     scan_cloud->points[i].getVector3fMap() =
         (kf_state_.state.rot *
              (kf_state_.state.offset_R_L_I *
@@ -426,8 +432,8 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    int sali_idx, map_i, bin_idx;
-    float residual, search_radius;
+    int sali_idx, map_i;
+    float residual;
     V3F c, a;
     M3F P_skew;
     std::vector<int> N_idxs, N_p_idxs;
@@ -448,15 +454,20 @@ void MappingNode::tensor_registration(
     pt.getVector3fMap() = p_world;
     ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
-    bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
-    search_radius = lid_process->search_radii_[bin_idx];
-    if (sqrt(N_dst[0]) > search_radius || !filters[map_i][1]) continue;
+
+    const int &scan_bin_idx = scan_cloud->points[i].bin_idx;
+    const float &scan_search_radius = lid_process->search_radii_[scan_bin_idx];
+    if (sqrt(N_dst[0]) > scan_search_radius || !filters[map_i][1]) continue;
+
+    const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
+    const float &map_search_radius = lid_process->search_radii_[map_bin_idx];
+    float ratio = fmin(1.0, scan_search_radius / map_search_radius);
 
     sali_idx = saliency_idxs[map_i];
-    // if (salivalues[map_i](sali_idx) < mean_sali(sali_idx)) continue;
+    if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
+      continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
-
     eig_vals = eigenvalues[map_i];
 
     if (sali_idx == 0) {
@@ -466,22 +477,22 @@ void MappingNode::tensor_registration(
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > ratio) continue;
       plane_cnt++;
     } else if (sali_idx == 1) {
-      //  Point to curve
+      //  Point to line
       q = p_world - n_world;
       q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
       p_dash = n_world + q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > ratio) continue;
       curve_cnt++;
     } else if (sali_idx == 2) {
-      //  Point to junction
+      //  Point to point
       norm_vec = p_world - n_world;
       p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > ratio) continue;
       junct_cnt++;
     }
 
@@ -603,8 +614,9 @@ MappingNode::MappingNode(
   ioctree.set_min_extent(map_resolution);
   ioctree.set_bucket_size(1);
 
-  mean_cnt = 0;
-  mean_sali = V3F::Zero();
+  num_bins = ceil(lidar_params.max_range / lidar_params.bin_size);
+  mean_cnt = std::vector<int>(num_bins, 0);
+  mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
   new_neighbours_map_idx = std::vector<int>(100000);
   new_neighbours_size = std::vector<std::atomic<int>>(100000);
