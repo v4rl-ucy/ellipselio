@@ -455,13 +455,12 @@ void MappingNode::tensor_registration(
     ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
 
-    const int &scan_bin_idx = scan_cloud->points[i].bin_idx;
+    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
     const float &scan_search_radius = lid_process->search_radii_[scan_bin_idx];
     if (sqrt(N_dst[0]) > scan_search_radius || !filters[map_i][1]) continue;
 
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
     const float &map_search_radius = lid_process->search_radii_[map_bin_idx];
-    float ratio = fmin(1.0, scan_search_radius / map_search_radius);
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
@@ -477,7 +476,7 @@ void MappingNode::tensor_registration(
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > ratio) continue;
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       plane_cnt++;
     } else if (sali_idx == 1) {
       //  Point to line
@@ -486,13 +485,13 @@ void MappingNode::tensor_registration(
       p_dash = n_world + q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > ratio) continue;
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       curve_cnt++;
     } else if (sali_idx == 2) {
       //  Point to point
       norm_vec = p_world - n_world;
       p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > ratio) continue;
+      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       junct_cnt++;
     }
 
