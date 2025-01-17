@@ -69,7 +69,9 @@ void LidarProcess::LidarCallback(
   }
 
   double t1 = omp_get_wtime();
+  lidar_mutex_.lock();
   Process(msg);
+  lidar_mutex_.unlock();
   double t2 = omp_get_wtime();
   std::cerr << "Lidar processing time: " << t2 - t1 << std::endl;
 }
@@ -99,16 +101,14 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
     bin_octrees_[i].set_bucket_size(1);
     bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
-    bin_octrees_[i].initialize(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
-                               new_idxs);
+    bin_octrees_[i].update(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
+                           new_idxs);
 
     if (!added_idxs.size()) continue;
     bin_pcs_[i] += EllipseLivoPointCloud(*out_pc, added_idxs);
     bin_pcs_sizes_[i] = bin_pcs_[i].size();
     SetMinMaxTime(i);
   }
-
-  lidar_mutex_.lock();
 
   ellipselivo_pc_->clear();
   bool init_time = true;
@@ -126,8 +126,6 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     }
   }
   lidar_has_data_ = true;
-
-  lidar_mutex_.unlock();
 }
 
 void LidarProcess::ClearBins() {
@@ -136,6 +134,7 @@ void LidarProcess::ClearBins() {
     if (!bin_pcs_sizes_[i]) continue;
     bin_pcs_sizes_[i] = 0;
     bin_pcs_[i].clear();
+    bin_octrees_[i].clear();
   }
 }
 

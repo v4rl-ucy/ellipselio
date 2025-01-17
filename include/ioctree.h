@@ -566,6 +566,116 @@ class Octree {
   }
 
   template <typename ContainerT>
+  void update(ContainerT &pts_, int filter_size, std::vector<int> &filter_idxs,
+              std::vector<int> &added_idxs, std::vector<int> &new_idxs,
+              bool down_size = true) {
+    if (m_root_ == 0) {
+      initialize(pts_, filter_size, filter_idxs, added_idxs, new_idxs,
+                 down_size);
+      return;
+    }
+    added_idxs.clear();
+    new_idxs.clear();
+
+    const size_t pts_num = filter_size;
+
+    added_idxs.reserve(pts_num);
+    new_idxs.reserve(pts_num);
+    m_downSize = down_size;
+    std::vector<float *> points_tmp;
+    int dim_ = 3;
+    points_tmp.resize(pts_num, 0);
+    size_t cloud_index = 0;
+    float min[3], max[3];
+
+    for (size_t i = 0; i < pts_num; ++i) {
+      const float &x = pts_[filter_idxs[i]].x;
+      const float &y = pts_[filter_idxs[i]].y;
+      const float &z = pts_[filter_idxs[i]].z;
+      if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
+      float *cloud_ptr = new float[dim];
+      cloud_ptr[0] = x;
+      cloud_ptr[1] = y;
+      cloud_ptr[2] = z;
+      cloud_ptr[3] = -(filter_idxs[i] + 1);
+      points_tmp[cloud_index] = cloud_ptr;
+      if (cloud_index == 0) {
+        min[0] = max[0] = x;
+        min[1] = max[1] = y;
+        min[2] = max[2] = z;
+      } else {
+        min[0] = x < min[0] ? x : min[0];
+        min[1] = y < min[1] ? y : min[1];
+        min[2] = z < min[2] ? z : min[2];
+        max[0] = x > max[0] ? x : max[0];
+        max[1] = y > max[1] ? y : max[1];
+        max[2] = z > max[2] ? z : max[2];
+      }
+      cloud_index++;
+    }
+    if (cloud_index == 0) return;
+    points_tmp.resize(cloud_index);
+    // std::cout<<"updateOctant filter: "<<cloud_index<<std::endl;
+    // 先创建一个对当前节点全包围的父节点，首先确定父节点中心所在的方向
+    static const float factor[] = {-0.5f, 0.5f};
+    // 判断是否存在越界
+    while (std::abs(max[0] - m_root_->x) > m_root_->extent ||
+           std::abs(max[1] - m_root_->y) > m_root_->extent ||
+           std::abs(max[2] - m_root_->z) > m_root_->extent) {
+      // 父节点中心坐标
+      float parentExtent = 2 * m_root_->extent;
+      float parentX = m_root_->x + factor[max[0] > m_root_->x] * parentExtent;
+      float parentY = m_root_->y + factor[max[1] > m_root_->y] * parentExtent;
+      float parentZ = m_root_->z + factor[max[2] > m_root_->z] * parentExtent;
+      // 构造父节点
+      Octant *octant = new Octant;
+      octant->x = parentX;
+      octant->y = parentY;
+      octant->z = parentZ;
+      octant->extent = parentExtent;
+      octant->init_child();
+      size_t mortonCode = 0;
+      if (m_root_->x > parentX) mortonCode |= 1;
+      if (m_root_->y > parentY) mortonCode |= 2;
+      if (m_root_->z > parentZ) mortonCode |= 4;
+      octant->child[mortonCode] = m_root_;
+      m_root_ = octant;
+    }
+    while (std::abs(min[0] - m_root_->x) > m_root_->extent ||
+           std::abs(min[1] - m_root_->y) > m_root_->extent ||
+           std::abs(min[2] - m_root_->z) > m_root_->extent) {
+      // 父节点中心坐标
+      float parentExtent = 2 * m_root_->extent;
+      float parentX = m_root_->x + factor[min[0] > m_root_->x] * parentExtent;
+      float parentY = m_root_->y + factor[min[1] > m_root_->y] * parentExtent;
+      float parentZ = m_root_->z + factor[min[2] > m_root_->z] * parentExtent;
+      // 构造父节点
+      Octant *octant = new Octant;
+      // octant->isLeaf = false;
+      octant->x = parentX;
+      octant->y = parentY;
+      octant->z = parentZ;
+      octant->extent = parentExtent;
+      octant->init_child();
+      size_t mortonCode = 0;
+      if (m_root_->x > parentX) mortonCode |= 1;
+      if (m_root_->y > parentY) mortonCode |= 2;
+      if (m_root_->z > parentZ) mortonCode |= 4;
+      octant->child[mortonCode] = m_root_;
+      m_root_ = octant;
+    }
+
+    if (points_tmp.size() == 0) return;
+    // std::cout<<"updateOctant start: "<<points_tmp.size()<<std::endl;;
+    updateOctant(m_root_, points_tmp, added_idxs, new_idxs);
+    // std::cout<<"updateOctant end\n";
+
+    for (size_t i = 0; i < points_tmp.size(); ++i) {
+      delete[] points_tmp[i];
+    }
+  }
+
+  template <typename ContainerT>
   void update(ContainerT &pts_, std::vector<int> &added_idxs,
               std::vector<int> &new_idxs, bool down_size = true,
               int start_idx = 0, int end_idx = 0) {
