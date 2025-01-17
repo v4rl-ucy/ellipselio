@@ -162,10 +162,8 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
       }
     } else if (match_idx == imu_states.size() - 1) {
       match_flag = true;
-    } else if (imu_states[match_idx + 1].state.time < match_time) {
-      match_idx++;
     } else {
-      match_flag = true;
+      match_idx++;
     }
   }
 }
@@ -192,6 +190,7 @@ void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
       imu_states[match_idx].state.state.rot.toRotationMatrix();
   T_world_imu_e.translation() = imu_states[match_idx].state.state.pos;
 
+#pragma omp parallel for
   for (size_t i = 0; i < pc->points.size(); i++) {
     int head_idx, tail_idx;
     Eigen::Isometry3d T_world_imu_p, T_imu_e_imu_p;
