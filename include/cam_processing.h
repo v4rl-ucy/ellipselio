@@ -17,17 +17,25 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
+struct CamParams {
+  int rate;
+  V3D t_imu_lidar;
+  M3D r_imu_lidar;
+  V3D t_cam_lidar;
+  M3D r_cam_lidar;
+  M3D cam_intrinsics;
+  std::string topic;
+};
+
 class CamProcess {
  public:
-  CamProcess(int queue_size, std::string cam_topic,
-             rclcpp::Node::SharedPtr node);
+  CamProcess(CamParams params, rclcpp::Node::SharedPtr node);
   void MatchImageswithIMU(std::vector<Pose6D> &imu_poses, double pcl_beg_time);
   void ColorPoint(EllipseLivoPoint &pt, Pose6D &imu_head, Pose6D &imu_tail,
                   double pcl_beg_time);
-  void SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
-                                V3D &t_imu_lidar, M3D &R_imu_lidar,
-                                M3D &cam_intrinsics);
+
   boost::circular_buffer<sensor_msgs::msg::Image::ConstSharedPtr> img_buffer_;
+  rclcpp::Time img_start_time_, img_end_time_;
 
  private:
   struct MatchedImg {

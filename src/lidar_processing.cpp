@@ -35,6 +35,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
+  ellipselivo_pc_->reserve(100000);
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
   cnt_neighbours_ = std::vector<int>(num_bins_, 0);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
@@ -55,6 +56,8 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_radius;
     octree_resolutions_[i] = octree_res;
+
+    bin_pcs_[i].reserve(10000);
     bin_octrees_[i].set_max_octants(10000);
   }
 }

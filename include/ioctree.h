@@ -39,127 +39,11 @@ namespace iOctree {
 #define DIM 4
 #define MAX_BUCKET 6
 
-template <typename T>
-struct PointType_CMP {
-  T point;
-  float dist = INFINITY;
-
-  PointType_CMP() {};
-
-  PointType_CMP(T p, float d) {
-    this->point = p;
-    this->dist = d;
-  };
-
-  bool operator<(const PointType_CMP &a) const { return dist < a.dist; }
-};
-
-// 自动排序堆栈！！首个元素永远是值最大的一个。对于kd树搜索，不需要完全排序，只要首个元素最大即可
-template <typename PointType>
-class MANUAL_HEAP {
- private:
-  PointType_CMP<PointType> *heap;
-  int heap_size = 0;
-  int cap = 0;
-
- public:
-  MANUAL_HEAP(int max_capacity = 100) {
-    cap = max_capacity;
-    heap = new PointType_CMP<PointType>[max_capacity];
-    heap_size = 0;
-  }
-
-  ~MANUAL_HEAP() { delete[] heap; }
-
-  void pop() {
-    if (heap_size == 0) return;
-    heap[0] = heap[heap_size - 1];
-    heap_size--;
-    MoveDown(0);
-    return;
-  }
-
-  PointType_CMP<PointType> top() { return heap[0]; }
-
-  float top_v() { return heap[0].dist; }
-
-  void push(PointType_CMP<PointType> point) {
-    if (heap_size >= cap) {
-      if (point < heap[0]) {
-        // std::cout<<"point.dist: "<<point.dist<<", heap[0].dist:
-        // "<<heap[0].dist<<std::endl;
-        pop();
-      } else {
-        // std::cout<<"point.dist: "<<point.dist<<", heap[0].dist:
-        // "<<heap[0].dist<<std::endl;
-        return;
-      }
-    }
-    heap[heap_size] = point;
-    FloatUp(heap_size);
-    heap_size++;
-    return;
-  }
-
-  bool full() { return heap_size >= cap; }
-
-  int size() { return heap_size; }
-
-  void clear() {
-    heap_size = 0;
-    return;
-  }
-
-  std::vector<PointType_CMP<PointType>> get_data() {
-    std::vector<PointType_CMP<PointType>> datas;
-
-    for (int i = 0; i < heap_size; i++) {
-      datas.push_back(heap[i]);
-    }
-    return datas;
-  }
-
- private:
-  void MoveDown(int heap_index) {
-    int l = heap_index * 2 + 1;
-    PointType_CMP<PointType> tmp = heap[heap_index];
-    while (l < heap_size) {
-      if (l + 1 < heap_size && heap[l] < heap[l + 1]) l++;
-      if (tmp < heap[l]) {
-        heap[heap_index] = heap[l];
-        heap_index = l;
-        l = heap_index * 2 + 1;
-      } else
-        break;
-    }
-    heap[heap_index] = tmp;
-    return;
-  }
-
-  void FloatUp(int heap_index) {
-    int ancestor = (heap_index - 1) / 2;
-    PointType_CMP<PointType> tmp = heap[heap_index];  // 新加入的数据
-    while (heap_index > 0) {
-      if (heap[ancestor] < tmp) {
-        heap[heap_index] = heap[ancestor];
-        heap_index = ancestor;
-        ancestor = (heap_index - 1) / 2;
-      } else
-        break;
-    }
-    heap[heap_index] = tmp;
-    return;
-  }
-};
-
 struct DistanceIndex {
   float dist_;
   float *index_;
 
-  DistanceIndex() {
-    dist_ = std::numeric_limits<float>::max();
-    // index_ = std::numeric_limits<size_t>::max();
-  }
+  DistanceIndex() { dist_ = std::numeric_limits<float>::max(); }
 
   DistanceIndex(float dist, float *index) : dist_(dist), index_(index) {}
 
@@ -177,7 +61,6 @@ class KNNSimpleResultSet {
 
  public:
   KNNSimpleResultSet(size_t capacity_) : capacity_(capacity_) {
-    // reserving capacity to prevent memory re-allocations
     dist_index_.resize(capacity_, DistanceIndex());
     clear();
   }
@@ -224,87 +107,14 @@ struct BoxDeleteType {
   }
 };
 
-template <typename T = float>
-class Matrix {
- public:
-  size_t rows;
-  size_t cols;
-  T *data;
-
-  Matrix() : rows(0), cols(0), data(NULL) {}
-
-  Matrix(T *data_, size_t rows_, size_t cols_) : rows(rows_), cols(cols_) {
-    data = data_;
-  }
-
-  void setdata(T *data_, size_t rows_, size_t cols_) {
-    rows = rows_;
-    cols = cols_;
-    data = data_;
-  }
-
-  inline T *operator[](size_t index) const { return data + index * cols; }
-
-  T *ptr() const { return data; }
-
-  void clear() {
-    if (data) delete[] data;
-    data = nullptr;
-  }
-};
-
-struct RunDetails {
-  int depth;      // 搜索深度
-  int pts_n;      // 搜索的点数
-  int node_n;     // 搜索的叶子节点数
-  bool one_path;  // 首次搜索的单条路径
-  std::chrono::high_resolution_clock::time_point begin_;
-  std::chrono::high_resolution_clock::time_point end_;
-  float total_time;
-
-  RunDetails() { clear(); }
-
-  void start() { begin_ = std::chrono::high_resolution_clock::now(); }
-
-  float end() {
-    end_ = std::chrono::high_resolution_clock::now();
-    float time = float(std::chrono::duration_cast<std::chrono::microseconds>(
-                           end_ - begin_)
-                           .count()) /
-                 1e3;
-    begin_ = end_;
-    total_time += time;
-    return time;
-  }
-
-  void clear() {
-    depth = pts_n = node_n = 0;
-    one_path = true;
-    total_time = 0.0f;
-  }
-
-  void show() {
-    printf("octree\t depth: %d, node_n: %d, pts_n: %d\n\n", depth, node_n,
-           pts_n);
-  }
-
-  friend std::ostream &operator<<(std::ostream &os, const RunDetails &c) {
-    os << "octree depth: " << c.depth << ", node_n: " << c.node_n
-       << ", pts_n: " << c.pts_n << std::endl;
-    ;  // 以"a+bi"的形式输出
-    return os;
-  }
-};
-
 class Octant {
  public:
   int idx = -1;
   bool isActive;
-  float x, y, z;  // center
-  float extent;   // half of side-length
+  float x, y, z;
+  float extent;
   std::vector<float *> points;
-  // Matrix<float> ordered_points;
-  Octant **child;  // 对于叶子节点可减少 56字节的内存需求
+  Octant **child;
 
   Octant() : x(0.0f), y(0.0f), z(0.0f), extent(0.0f) {
     child = nullptr;
@@ -314,14 +124,13 @@ class Octant {
 
   ~Octant() {
     if (child != nullptr) {
-      // for (size_t i = 0; i < 8; ++i) {
-      //   if (child[i] != 0) delete child[i];
-      // }
-      // delete[] child;
+      for (size_t i = 0; i < 8; ++i) {
+        if (child[i] != 0) delete child[i];
+      }
+      delete[] child;
       child = nullptr;
     } else {
-      // delete[] points[0];
-      points = std::vector<float *>();
+      points.clear();
     }
   }
 
@@ -349,36 +158,6 @@ class Octant {
   }
 };
 
-class InfoRecord {
- public:
-  std::vector<Octant *> octant_vec;
-
-  InfoRecord() {}
-
-  void add_octant(Octant *octant) {
-    if (octant == 0) return;
-    octant_vec.push_back(octant);
-  }
-
-  void write_to_txt(std::string name = "otree_info") {
-    {
-      std::string filename =
-          "/media/zhujun/0DFD06D20DFD06D2/SLAM/octree_test/ikd-Tree-main/data/";
-      filename += name + ".txt";
-      std::ofstream log_file(filename, std::ios::out);
-      log_file << "# x y z extent" << std::endl;
-
-      for (int i = 0; i < octant_vec.size(); i++) {
-        log_file << octant_vec[i]->x << " " << octant_vec[i]->y << " "
-                 << octant_vec[i]->z << " " << octant_vec[i]->extent << "\n";
-      }
-      log_file.close();
-    }
-  }
-
-  void clear() { octant_vec.clear(); }
-};
-
 class Octree {
  public:
   size_t m_bucketSize;
@@ -390,12 +169,11 @@ class Octree {
                                  {0, 5, 6, 1, 2, 7, 3}, {1, 4, 7, 0, 3, 6, 2},
                                  {2, 4, 7, 0, 3, 5, 1}, {3, 5, 6, 1, 2, 4, 0}};
   bool ordered;
-  RunDetails run_details;
 
   Octree()
       : m_bucketSize(32), m_minExtent(0.01f), m_root_(0), m_downSize(false) {
     ordered = true;
-    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_num = 0;
     dim = DIM;
     m_bucketSize = fmin(m_bucketSize, MAX_BUCKET);
   }
@@ -406,7 +184,7 @@ class Octree {
         m_root_(0),
         m_downSize(false) {
     ordered = true;
-    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_num = 0;
     dim = DIM;
     m_bucketSize = fmin(m_bucketSize, MAX_BUCKET);
   }
@@ -417,10 +195,9 @@ class Octree {
         m_root_(0),
         m_downSize(false) {
     ordered = true;
-    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_num = 0;
     dim = DIM;
     m_bucketSize = fmin(m_bucketSize, MAX_BUCKET);
-    //  if (dim_ > 4) dim = dim_;
   }
 
   ~Octree() { clear(); }
@@ -429,13 +206,9 @@ class Octree {
 
   void set_max_octants(int max_octants) {
     all_points = new float[max_octants * MAX_BUCKET * DIM];
-    all_octants = new Octant[max_octants];
   }
 
-  void set_min_extent(float extent)  // 网格最小内接园半径
-  {
-    m_minExtent = extent;
-  }
+  void set_min_extent(float extent) { m_minExtent = extent; }
 
   void set_bucket_size(size_t bucket_size) {
     m_bucketSize = fmin(bucket_size, MAX_BUCKET);
@@ -469,7 +242,7 @@ class Octree {
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
-      cloud_ptr[3] = -(filter_idxs[i] + 1);  // 保存在**原始**数据中的索引
+      cloud_ptr[3] = -(filter_idxs[i] + 1);
       points[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
@@ -485,7 +258,7 @@ class Octree {
       }
       cloud_index++;
     }
-    points.resize(cloud_index);  // 删除多余元素
+    points.resize(cloud_index);
     float ctr[3] = {min[0], min[1], min[2]};
     float maxextent = 0.5f * (max[0] - min[0]);
     maxextent = std::max(maxextent, 0.01f);
@@ -496,18 +269,9 @@ class Octree {
       ctr[i] += extent;
       if (extent > maxextent) maxextent = extent;
     }
-    // std::cout<<"maxextent: "<<maxextent<<", "
-    // 		<<"min: "<<min[0]<<", "<<min[1]<<", "<<min[2]<<", "
-    // 		<<"max: "<<max[0]<<", "<<max[1]<<", "<<max[2]<<", "
-    // 		<<std::endl;
-    // m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, 0, N - 1, N);
+
     m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points,
                            added_idxs, new_idxs);
-    // std::cout<<"createOctant success!"<<std::endl;
-
-    // for (size_t i = 0; i < points.size(); ++i) {
-    //   delete[] points[i];
-    // }
   }
 
   template <typename ContainerT>
@@ -539,7 +303,7 @@ class Octree {
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
-      cloud_ptr[3] = -((int)i + 1);  // 保存在**原始**数据中的索引
+      cloud_ptr[3] = -((int)i + 1);
       points[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
@@ -555,7 +319,7 @@ class Octree {
       }
       cloud_index++;
     }
-    points.resize(cloud_index);  // 删除多余元素
+    points.resize(cloud_index);
     float ctr[3] = {min[0], min[1], min[2]};
     float maxextent = 0.5f * (max[0] - min[0]);
     maxextent = std::max(maxextent, 0.01f);
@@ -566,18 +330,9 @@ class Octree {
       ctr[i] += extent;
       if (extent > maxextent) maxextent = extent;
     }
-    // std::cout<<"maxextent: "<<maxextent<<", "
-    // 		<<"min: "<<min[0]<<", "<<min[1]<<", "<<min[2]<<", "
-    // 		<<"max: "<<max[0]<<", "<<max[1]<<", "<<max[2]<<", "
-    // 		<<std::endl;
-    // m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, 0, N - 1, N);
+
     m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points,
                            added_idxs, new_idxs);
-    // std::cout<<"createOctant success!"<<std::endl;
-
-    // for (size_t i = 0; i < points.size(); ++i) {
-    //   delete[] points[i];
-    // }
   }
 
   template <typename ContainerT>
@@ -630,20 +385,17 @@ class Octree {
     }
     if (cloud_index == 0) return;
     points_tmp.resize(cloud_index);
-    // std::cout<<"updateOctant filter: "<<cloud_index<<std::endl;
-    // 先创建一个对当前节点全包围的父节点，首先确定父节点中心所在的方向
+
     static const float factor[] = {-0.5f, 0.5f};
-    // 判断是否存在越界
     while (std::abs(max[0] - m_root_->x) > m_root_->extent ||
            std::abs(max[1] - m_root_->y) > m_root_->extent ||
            std::abs(max[2] - m_root_->z) > m_root_->extent) {
-      // 父节点中心坐标
       float parentExtent = 2 * m_root_->extent;
       float parentX = m_root_->x + factor[max[0] > m_root_->x] * parentExtent;
       float parentY = m_root_->y + factor[max[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[max[2] > m_root_->z] * parentExtent;
-      // 构造父节点
-      Octant *octant = all_octants + octant_num++;
+
+      Octant *octant = new Octant;
       octant->x = parentX;
       octant->y = parentY;
       octant->z = parentZ;
@@ -659,14 +411,13 @@ class Octree {
     while (std::abs(min[0] - m_root_->x) > m_root_->extent ||
            std::abs(min[1] - m_root_->y) > m_root_->extent ||
            std::abs(min[2] - m_root_->z) > m_root_->extent) {
-      // 父节点中心坐标
       float parentExtent = 2 * m_root_->extent;
       float parentX = m_root_->x + factor[min[0] > m_root_->x] * parentExtent;
       float parentY = m_root_->y + factor[min[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[min[2] > m_root_->z] * parentExtent;
-      // 构造父节点
-      Octant *octant = all_octants + octant_num++;
-      // octant->isLeaf = false;
+
+      Octant *octant = new Octant;
+
       octant->x = parentX;
       octant->y = parentY;
       octant->z = parentZ;
@@ -681,13 +432,7 @@ class Octree {
     }
 
     if (points_tmp.size() == 0) return;
-    // std::cout<<"updateOctant start: "<<points_tmp.size()<<std::endl;;
     updateOctant(m_root_, points_tmp, added_idxs, new_idxs);
-    // std::cout<<"updateOctant end\n";
-
-    // for (size_t i = 0; i < points_tmp.size(); ++i) {
-    //   delete[] points_tmp[i];
-    // }
   }
 
   template <typename ContainerT>
@@ -740,20 +485,18 @@ class Octree {
     }
     if (cloud_index == 0) return;
     points_tmp.resize(cloud_index);
-    // std::cout<<"updateOctant filter: "<<cloud_index<<std::endl;
-    // 先创建一个对当前节点全包围的父节点，首先确定父节点中心所在的方向
+
     static const float factor[] = {-0.5f, 0.5f};
-    // 判断是否存在越界
+
     while (std::abs(max[0] - m_root_->x) > m_root_->extent ||
            std::abs(max[1] - m_root_->y) > m_root_->extent ||
            std::abs(max[2] - m_root_->z) > m_root_->extent) {
-      // 父节点中心坐标
       float parentExtent = 2 * m_root_->extent;
       float parentX = m_root_->x + factor[max[0] > m_root_->x] * parentExtent;
       float parentY = m_root_->y + factor[max[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[max[2] > m_root_->z] * parentExtent;
-      // 构造父节点
-      Octant *octant = all_octants + octant_num++;
+
+      Octant *octant = new Octant;
       octant->x = parentX;
       octant->y = parentY;
       octant->z = parentZ;
@@ -769,14 +512,13 @@ class Octree {
     while (std::abs(min[0] - m_root_->x) > m_root_->extent ||
            std::abs(min[1] - m_root_->y) > m_root_->extent ||
            std::abs(min[2] - m_root_->z) > m_root_->extent) {
-      // 父节点中心坐标
       float parentExtent = 2 * m_root_->extent;
       float parentX = m_root_->x + factor[min[0] > m_root_->x] * parentExtent;
       float parentY = m_root_->y + factor[min[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[min[2] > m_root_->z] * parentExtent;
-      // 构造父节点
-      Octant *octant = all_octants + octant_num++;
-      // octant->isLeaf = false;
+
+      Octant *octant = new Octant;
+
       octant->x = parentX;
       octant->y = parentY;
       octant->z = parentZ;
@@ -791,19 +533,13 @@ class Octree {
     }
 
     if (points_tmp.size() == 0) return;
-    // std::cout<<"updateOctant start: "<<points_tmp.size()<<std::endl;;
     updateOctant(m_root_, points_tmp, added_idxs, new_idxs);
-    // std::cout<<"updateOctant end\n";
-
-    // for (size_t i = 0; i < points_tmp.size(); ++i) {
-    //   delete[] points_tmp[i];
-    // }
   }
 
   void clear() {
-    // delete m_root_;
+    delete m_root_;
     m_root_ = 0;
-    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_num = 0;
   }
 
   template <typename PointT>
@@ -812,7 +548,7 @@ class Octree {
                        size_t bucket_size = 0) {
     resultIndices.clear();
     if (m_root_ == 0) return;
-    float sqrRadius = radius * radius;  // "squared" radius
+    float sqrRadius = radius * radius;
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr,
@@ -831,12 +567,11 @@ class Octree {
     resultIndices.clear();
     distances.clear();
     if (m_root_ == 0) return;
-    float sqrRadius = radius * radius;  // "squared" radius
+    float sqrRadius = radius * radius;
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances,
                     bucket_size);
-    // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultIndices.resize(points_ptr.size());
 
     for (size_t i = 0; i < points_ptr.size(); i++) {
@@ -852,12 +587,11 @@ class Octree {
     resultPoints.clear();
     distances.clear();
     if (m_root_ == 0) return;
-    float sqrRadius = radius * radius;  // "squared" radius
+    float sqrRadius = radius * radius;
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances,
                     bucket_size);
-    // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultPoints.resize(points_ptr.size());
 
     for (size_t i = 0; i < resultPoints.size(); i++) {
@@ -873,7 +607,6 @@ class Octree {
   void radiusNeighbors(const PointT &query, float radius,
                        Eigen::MatrixXf &resultMatrix,
                        std::vector<float> &distances, size_t bucket_size = 0) {
-    // resultIndices.clear();
     distances.clear();
     if (m_root_ == 0) return;
     float sqrRadius = radius * radius;  // "squared" radius
@@ -881,7 +614,6 @@ class Octree {
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr, distances,
                     bucket_size);
-    // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultMatrix.resize(points_ptr.size(), 3);
 
     for (size_t i = 0; i < resultMatrix.rows(); i++) {
@@ -897,14 +629,12 @@ class Octree {
                        std::vector<int> &resultIndices,
                        size_t bucket_size = 0) {
     resultIndices.clear();
-    // distances.clear();
     if (m_root_ == 0) return;
-    float sqrRadius = radius * radius;  // "squared" radius
+    float sqrRadius = radius * radius;
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float *> points_ptr;
     radiusNeighbors(m_root_, query_, radius, sqrRadius, points_ptr,
                     bucket_size);
-    // radiusNeighbors2(m_root_, query_, sqrRadius, resultIndices, distances);
     resultMatrix.resize(points_ptr.size(), 3);
     resultIndices.resize(points_ptr.size(), 3);
 
@@ -922,16 +652,12 @@ class Octree {
       std::vector<PointT, Eigen::aligned_allocator<PointT>> &resultIndices,
       std::vector<float> &distances) {
     if (m_root_ == 0) return 0;
-    // MANUAL_HEAP<size_t> heap(k);
-    // knnNeighbors(m_root_, query, heap);
-    // std::cout<<"knnNeighbors start"<<std::endl;
+
     float query_[3] = {query.x, query.y, query.z};
-    // run_details.clear();
-    // run_details.start();
+
     KNNSimpleResultSet heap(k);
     knnNeighbors(m_root_, query_, heap);
-    // run_details.end();
-    // run_details.show();
+
     std::vector<DistanceIndex> data = heap.get_data();
     resultIndices.resize(heap.size());
     distances.resize(heap.size());
@@ -944,8 +670,7 @@ class Octree {
       resultIndices[i] = pt;
       distances[i] = data[i].dist_;
     }
-    // run_details.end();
-    // run_details.show();
+
     return data.size();
   }
 
@@ -954,16 +679,12 @@ class Octree {
                        std::vector<size_t> &resultIndices,
                        std::vector<float> &distances) {
     if (m_root_ == 0) return 0;
-    // MANUAL_HEAP<size_t> heap(k);
-    // knnNeighbors(m_root_, query, heap);
-    // std::cout<<"knnNeighbors start"<<std::endl;
+
     float query_[3] = {query.x, query.y, query.z};
-    // run_details.clear();
-    // run_details.start();
+
     KNNSimpleResultSet heap(k);
     knnNeighbors(m_root_, query_, heap);
-    // run_details.end();
-    // run_details.show();
+
     std::vector<DistanceIndex> data = heap.get_data();
     resultIndices.resize(heap.size());
     distances.resize(heap.size());
@@ -972,8 +693,7 @@ class Octree {
       resultIndices[i] = size_t(data[i].index_[3]);
       distances[i] = data[i].dist_;
     }
-    // run_details.end();
-    // run_details.show();
+
     return data.size();
   }
 
@@ -982,16 +702,12 @@ class Octree {
                        std::vector<int> &resultIndices,
                        std::vector<float> &distances) {
     if (m_root_ == 0) return 0;
-    // MANUAL_HEAP<size_t> heap(k);
-    // knnNeighbors(m_root_, query, heap);
-    // std::cout<<"knnNeighbors start"<<std::endl;
+
     float query_[3] = {query.x, query.y, query.z};
-    // run_details.clear();
-    // run_details.start();
+
     KNNSimpleResultSet heap(k);
     knnNeighbors(m_root_, query_, heap);
-    // run_details.end();
-    // run_details.show();
+
     std::vector<DistanceIndex> data = heap.get_data();
     resultIndices.resize(heap.size());
     distances.resize(heap.size());
@@ -1000,8 +716,7 @@ class Octree {
       resultIndices[i] = int(data[i].index_[3]);
       distances[i] = data[i].dist_;
     }
-    // run_details.end();
-    // run_details.show();
+
     return data.size();
   }
 
@@ -1021,16 +736,13 @@ class Octree {
     box_range.max[0] = max[0];
     box_range.max[1] = max[1];
     box_range.max[2] = max[2];
-    // box_range.show();
-    // printf("clear_data:%d \n", clear_data);
+
     bool deleted = false;
     boxWiseDelete(m_root_, box_range, deleted, clear_data);
     if (deleted) m_root_ = 0;
   }
 
   size_t octant_size() { return octant_num; }
-
-  size_t octant_pts_size() { return octant_pts_num; }
 
   size_t size() { return last_pts_num - pts_num_deleted; }
 
@@ -1045,7 +757,6 @@ class Octree {
     }
     nodes.push_back(octant);
     if (octant->child == nullptr) {
-      // nodes.push_back(octant);
       return;
     }
 
@@ -1072,25 +783,6 @@ class Octree {
     return pts;
   }
 
-  void write_node_info_2_txt(float min_extent = 0) {
-    if (m_root_ == 0) return;
-    std::vector<Octant *> nodes;
-    get_nodes(m_root_, nodes);
-    {
-      std::ofstream log_file(
-          "/media/zhujun/0DFD06D20DFD06D2/SLAM/octree_test/ikd-Tree-main/data/"
-          "node_info.txt",
-          std::ios::out);
-      log_file << "# x y z extent" << std::endl;
-
-      for (int i = 0; i < nodes.size(); i++) {
-        log_file << nodes[i]->x << " " << nodes[i]->y << " " << nodes[i]->z
-                 << " " << nodes[i]->extent << "\n";
-      }
-      log_file.close();
-    }
-  }
-
   void get_leaf_nodes(const Octant *octant,
                       std::vector<const Octant *> &nodes) {
     if (octant == 0) return;
@@ -1107,7 +799,7 @@ class Octree {
 
  protected:
   Octant *m_root_;
-  size_t last_pts_num, pts_num_deleted, octant_pts_num, octant_num;
+  size_t last_pts_num, pts_num_deleted, octant_num;
   float new_points[100000][DIM];
   float *all_points;
   Octant *all_octants;
@@ -1120,9 +812,7 @@ class Octree {
                        std::vector<float *> &points,
                        std::vector<int> &added_idxs,
                        std::vector<int> &new_idxs) {
-    // For a leaf we don't have to change anything; points are already correctly
-    // linked or correctly reordered.
-    Octant *octant = all_octants + octant_num++;
+    Octant *octant = new Octant;
     const size_t size = points.size();
     octant->x = x;
     octant->y = y;
@@ -1130,8 +820,7 @@ class Octree {
     octant->extent = extent;
     static const float factor[] = {-0.5f, 0.5f};
 
-    if (size > m_bucketSize && extent > 2 * m_minExtent)  // 32 0
-    {
+    if (size > m_bucketSize && extent > 2 * m_minExtent) {
       std::vector<std::vector<float *>> child_points(8, std::vector<float *>());
 
       for (size_t i = 0; i < size; ++i) {
@@ -1142,7 +831,6 @@ class Octree {
         if (p[2] > z) mortonCode |= 4;
         child_points[mortonCode].push_back(p);
       }
-      // now, we can create the child nodes...
       float childExtent = 0.5f * extent;
       octant->init_child();
 
@@ -1158,7 +846,7 @@ class Octree {
       const size_t size = std::min(points.size(), m_bucketSize);
       octant->points.resize(size);
 
-      if (octant->idx < 0 && size > 0) octant->idx = octant_pts_num++;
+      if (octant->idx < 0 && size > 0) octant->idx = octant_num++;
       const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
       for (size_t i = 0; i < size; ++i) {
         std::copy(points[i], points[i] + dim, all_points + oct_idx + (i * DIM));
@@ -1175,15 +863,13 @@ class Octree {
 
   void updateOctant(Octant *octant, const std::vector<float *> &points,
                     std::vector<int> &added_idxs, std::vector<int> &new_idxs) {
-    // std::cout<<"updateOctant0 start "<<points.size()<<std::endl;
     static const float factor[] = {-0.5f, 0.5f};
     const float x = octant->x, y = octant->y, z = octant->z,
                 extent = octant->extent;
-    octant->isActive = true;  // 更新状态
+    octant->isActive = true;
     if (octant->child == nullptr) {
       if (octant->points.size() + points.size() > m_bucketSize &&
-          extent > 2 * m_minExtent)  // 32 0
-      {
+          extent > 2 * m_minExtent) {
         octant->points.insert(octant->points.end(), points.begin(),
                               points.end());
         const size_t size = octant->points.size();
@@ -1209,10 +895,8 @@ class Octree {
               createOctant(childX, childY, childZ, childExtent, child_points[i],
                            added_idxs, new_idxs);
         }
-        // delete[] octant->points[0];
-        std::vector<float *>().swap(octant->points);  // 清空非叶子节点索引
+        octant->points.clear();
       } else {
-        //* 如果有下采样且满足条件，直接不添加
         if (m_downSize && octant->points.size() >= m_bucketSize) return;
         const size_t old_size = octant->points.size();
         const size_t dif_size =
@@ -1221,7 +905,7 @@ class Octree {
                               points.begin() + dif_size);
         const size_t new_size = octant->points.size();
 
-        if (octant->idx < 0 && new_size > 0) octant->idx = octant_pts_num++;
+        if (octant->idx < 0 && new_size > 0) octant->idx = octant_num++;
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
         for (size_t i = 0; i < new_size; ++i) {
           std::copy(octant->points[i], octant->points[i] + dim,
@@ -1248,9 +932,7 @@ class Octree {
       float childExtent = 0.5f * extent;
 
       for (size_t i = 0; i < 8; ++i) {
-        if (child_points[i].size() >
-            0)  // 可能存在某些节点没有新分配点，但是存在点的情况！！！
-        {
+        if (child_points[i].size() > 0) {
           if (octant->child[i] == 0) {
             float childX = x + factor[(i & 1) > 0] * extent;
             float childY = y + factor[(i & 2) > 0] * extent;
@@ -1389,63 +1071,13 @@ class Octree {
     }
   }
 
-  bool radiusNeighbors2(const Octant *octant, const float *query,
-                        float sqrRadius, std::vector<size_t> &resultIndices,
-                        std::vector<float> &distances) {
-    if (!octant->isActive) return false;
-    if (octant->child == nullptr) {
-      const size_t size = octant->points.size();
-
-      for (int i = 0; i < size; ++i) {
-        // const float * p = ordered? octant->ordered_points[i] :
-        // octant->points[i];
-        const float *p = octant->points[i];
-        float dist = 0, diff = 0;
-
-        for (int j = 0; j < 3; ++j) {
-          diff = p[j] - query[j];
-          dist += diff * diff;
-        }
-        if (dist > 0 && dist < sqrRadius) {
-          resultIndices.push_back(size_t(p[3]));
-          distances.push_back(dist);
-        }
-      }
-      return inside(
-          query, sqrRadius,
-          octant);  // 如果堆已经满了且最远点在当前网格内，则不必搜索了
-    }
-    size_t mortonCode = 0;
-    if (query[0] > octant->x) mortonCode |= 1;
-    if (query[1] > octant->y) mortonCode |= 2;
-    if (query[2] > octant->z) mortonCode |= 4;
-    if (octant->child[mortonCode] != 0) {
-      if (radiusNeighbors2(octant->child[mortonCode], query, sqrRadius,
-                           resultIndices, distances))
-        return true;
-    }
-
-    for (int i = 0; i < 7; ++i) {
-      int c = ordered_indies[mortonCode][i];
-      if (octant->child[c] == 0) continue;
-      if (!overlaps(query, sqrRadius, octant->child[c])) continue;
-      if (radiusNeighbors2(octant->child[c], query, sqrRadius, resultIndices,
-                           distances))
-        return true;
-    }
-    return inside(query, sqrRadius, octant);
-  }
-
   bool knnNeighbors(const Octant *octant, const float *query,
                     KNNSimpleResultSet &heap) {
-    // if (run_details.one_path) run_details.depth++;
     if (!octant->isActive) return false;
     if (octant->child == nullptr) {
       const size_t size = octant->points.size();
 
       for (int i = 0; i < size; ++i) {
-        // const float * p = ordered? octant->ordered_points[i] :
-        // octant->points[i];
         const float *p = octant->points[i];
         float dist = 0, diff = 0;
 
@@ -1456,14 +1088,8 @@ class Octree {
         if (dist > 0 && dist < heap.worstDist())
           heap.addPoint(dist, octant->points[i]);
       }
-      // run_details.one_path = false;
-      // run_details.pts_n += size;
-      // run_details.node_n++;
-      // run_details.show();
-      return heap.full() &&
-             inside(
-                 query, heap.worstDist(),
-                 octant);  // 如果堆已经满了且最远点在当前网格内，则不必搜索了
+
+      return heap.full() && inside(query, heap.worstDist(), octant);
     }
     size_t mortonCode = 0;
     if (query[0] > octant->x) mortonCode |= 1;
@@ -1483,51 +1109,6 @@ class Octree {
     return heap.full() && inside(query, heap.worstDist(), octant);
   }
 
-  bool knnNeighbors(const Octant *octant, const float *query,
-                    MANUAL_HEAP<size_t> &heap) {
-    // 采用优先级队列，队列里的octant相互独立，距离检索点比较近的octant优先被搜索，重新写一个搜索算法，之后方便作为对比
-    if (!octant->isActive) return false;
-    if (octant->child == nullptr) {
-      const size_t size = octant->points.size();
-
-      for (size_t i = 0; i < size; ++i) {
-        // const float * p = ordered? octant->ordered_points[i] :
-        // octant->points[i];
-        const float *p = octant->points[i];
-        float dist = 0, diff = 0;
-
-        for (size_t j = 0; j < 3; ++j) {
-          diff = *p++ - *query++;
-          dist += diff * diff;
-        }
-        if (dist > 0) {
-          PointType_CMP<size_t> pt(size_t(p[3]), dist);
-          heap.push(pt);
-        }
-      }
-      return heap.full() &&
-             inside(
-                 query, heap.top_v(),
-                 octant);  // 如果堆已经满了且最远点在当前网格内，则不必搜索了
-    }
-    size_t mortonCode = 0;
-    if (query[0] > octant->x) mortonCode |= 1;
-    if (query[1] > octant->y) mortonCode |= 2;
-    if (query[2] > octant->z) mortonCode |= 4;
-    if (octant->child != nullptr && octant->child[mortonCode] != 0) {
-      if (knnNeighbors(octant->child[mortonCode], query, heap)) return true;
-    }
-
-    for (size_t c = 0; c < 8 && octant->child != nullptr; ++c) {
-      if (c == mortonCode) continue;
-      if (octant->child[c] == 0) continue;
-      if (heap.full() && !overlaps(query, heap.top_v(), octant->child[c]))
-        continue;
-      if (knnNeighbors(octant->child[c], query, heap)) return true;
-    }
-    return heap.full() && inside(query, heap.top_v(), octant);
-  }
-
   void boxWiseDelete(Octant *octant, const BoxDeleteType &box_range,
                      bool &deleted, bool clear_data) {
     float cur_min[3];
@@ -1541,10 +1122,7 @@ class Octree {
     if (cur_min[0] > box_range.max[0] || box_range.min[0] > cur_max[0]) return;
     if (cur_min[1] > box_range.max[1] || box_range.min[1] > cur_max[1]) return;
     if (cur_min[2] > box_range.max[2] || box_range.min[2] > cur_max[2]) return;
-    // printf("octant->extent: %f\n", octant->extent);
-    // printf("octant->extent: %f, %d \n", octant->extent,clear_data);
-    // if(!clear_data) exit(1);
-    // 确定有交集
+
     if (cur_min[0] >= box_range.min[0] && cur_min[1] >= box_range.min[1] &&
         cur_min[2] >= box_range.min[2] && cur_max[0] <= box_range.max[0] &&
         cur_max[1] <= box_range.max[1] && cur_max[2] <= box_range.max[2]) {
@@ -1553,18 +1131,16 @@ class Octree {
         return;
       } else {
         pts_num_deleted += octant->size();
-        // delete octant;
+        delete octant;
         deleted = true;
         return;
       }
     }
     if (octant->child == nullptr) {
-      // printf("octant->extent: %f, %d \n", octant->extent,clear_data);
       if (!clear_data) {
         octant->isActive = false;
         return;
       } else {
-        // printf("octant->extent: %f\n", octant->extent);
         const size_t size = octant->points.size();
         std::vector<float *> remainder_points;
         remainder_points.resize(size, 0);
@@ -1590,13 +1166,13 @@ class Octree {
         }
         pts_num_deleted += size - valid_num;
         if (valid_num == 0) {
-          // delete octant;
+          delete octant;
           deleted = true;
           return;
         }
 
         octant->points.resize(valid_num);
-        if (octant->idx < 0 && valid_num > 0) octant->idx = octant_pts_num++;
+        if (octant->idx < 0 && valid_num > 0) octant->idx = octant_num++;
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
         for (size_t i = 0; i < valid_num; ++i) {
           std::copy(remainder_points[i], remainder_points[i] + dim,
@@ -1606,8 +1182,6 @@ class Octree {
         return;
       }
     }
-
-    // check whether child nodes are in range.
 
     for (size_t c = 0; c < 8; ++c) {
       if (octant->child[c] == 0) continue;
@@ -1622,7 +1196,7 @@ class Octree {
       valid_child++;
     }
     if (valid_child == 0) {
-      // delete octant;
+      delete octant;
       deleted = true;
       return;
     }
@@ -1659,7 +1233,6 @@ class Octree {
   }
 
   float sqrDist_point2octant(const float *query, const Octant *o) {
-    // 点到box的距离，在边界上或者内部距离为0
     float x, y, z;
     x = std::max(std::abs(query[0] - o->x) - o->extent, 0.0f);
     y = std::max(std::abs(query[1] - o->y) - o->extent, 0.0f);
