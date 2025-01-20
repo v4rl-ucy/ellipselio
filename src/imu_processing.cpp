@@ -170,7 +170,9 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 
 void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
                                      KfState &kf_state,
-                                     rclcpp::Time &lidar_end_time) {
+                                     rclcpp::Time &lidar_start_time,
+                                     rclcpp::Time &lidar_end_time,
+                                     CamProcessVec &cams) {
   int match_idx;
   boost::circular_buffer<ImuState> imu_states;
   Eigen::Isometry3d T_imu_lidar, T_world_imu_e;
@@ -179,6 +181,7 @@ void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
   imu_states = imu_states_;
   imu_mutex_.unlock();
 
+  GetMatchingImages(lidar_start_time, cams, imu_states);
   GetTimeMatch(match_idx, lidar_end_time, imu_states);
 
   kf_state = imu_states[match_idx].state;
@@ -213,10 +216,77 @@ void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
     T_world_imu_p.translation() =
         pos_imu + vel_imu * dt + 0.5 * acc_avr * dt * dt;
     T_imu_e_imu_p = T_world_imu_e.inverse() * T_world_imu_p;
+
+    ColorisePoint(pc->points[i], cams, T_world_imu_p, T_imu_lidar);
+
     pc->points[i].getVector3fMap() =
         (T_imu_lidar.inverse() * T_imu_e_imu_p * T_imu_lidar *
          pc->points[i].getVector3fMap().cast<double>())
             .cast<float>();
+  }
+}
+
+void ImuProcess::GetMatchingImages(
+    rclcpp::Time &match_time, CamProcessVec &cams,
+    boost::circular_buffer<ImuState> &imu_states) {
+#pragma omp parallel for
+  for (size_t i = 0; i < cams.size(); i++) {
+    rclcpp::Time img_time;
+    int head_idx, tail_idx;
+    Eigen::Isometry3d T_world_img;
+
+    cams[i]->GetMatchingImageTime(match_time, img_time);
+
+    GetTimeMatch(tail_idx, img_time, imu_states);
+    head_idx = max(tail_idx - 1, 0);
+
+    M3D R_imu = imu_states[head_idx].state.state.rot.toRotationMatrix();
+    V3D vel_imu = imu_states[head_idx].state.state.vel;
+    V3D pos_imu = imu_states[head_idx].state.state.pos;
+    V3D acc_avr = imu_states[tail_idx].acc_avr;
+    V3D gyr_avr = imu_states[tail_idx].gyr_avr;
+
+    double dt = (img_time - imu_states[head_idx].state.time).seconds();
+
+    T_world_img.linear() = R_imu * Exp(gyr_avr, dt);
+    T_world_img.translation() =
+        pos_imu + vel_imu * dt + 0.5 * acc_avr * dt * dt;
+
+    cams[i]->T_world_img_ = T_world_img;
+  }
+}
+
+void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
+                               Eigen::Isometry3d &T_world_pt,
+                               Eigen::Isometry3d &T_imu_lidar) {
+  float max_dist_from_ctr = FLT_MAX;
+
+  pt.r = 0;
+  pt.g = 0;
+  pt.b = 0;
+  pt.a = 0;
+  pt.has_color = false;
+
+  for (size_t i = 0; i < cams.size(); i++) {
+    float dist_from_ctr;
+    Eigen::Vector3d pt_img, pt_col;
+
+    Eigen::Isometry3d &T_cam_lidar = cams[i]->T_cam_lidar_;
+    Eigen::Isometry3d &T_world_img = cams[i]->T_world_img_;
+
+    pt_img = T_cam_lidar * T_imu_lidar.inverse() * T_world_img.inverse() *
+             T_world_pt * T_imu_lidar * pt.getVector3fMap().cast<double>();
+
+    if (cams[i]->ColorPoint(pt_img, pt_col, dist_from_ctr)) {
+      if (dist_from_ctr < max_dist_from_ctr) {
+        pt.r = pt_col(0);
+        pt.g = pt_col(1);
+        pt.b = pt_col(2);
+        pt.a = 255;
+        pt.has_color = true;
+        max_dist_from_ctr = dist_from_ctr;
+      }
+    }
   }
 }
 

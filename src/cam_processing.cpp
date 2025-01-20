@@ -1,27 +1,35 @@
 #include <cam_processing.h>
 
-CamProcess::CamProcess(int queue_size, std::string cam_topic,
-                       rclcpp::Node::SharedPtr node)
-    : node_(node), img_buffer_(queue_size) {
-  cam_sub_ = image_transport::create_subscription(
-      node_.get(), cam_topic,
-      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1), "raw",
-      rmw_qos_profile_sensor_data);
-}
+CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
+    : node_(node), params_(params), img_buffer_(params.rate)) {
+  cam_callback_group_ = node_->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive);
 
-void CamProcess::SetExtrinsicAndIntrinsic(V3D &t_cam_lidar, M3D &R_cam_lidar,
-                                          V3D &t_imu_lidar, M3D &R_imu_lidar,
-                                          M3D &cam_intrinsics) {
-  T_cam_lidar_.linear() = R_cam_lidar;
-  T_cam_lidar_.translation() = t_cam_lidar;
-  T_imu_lidar_.linear() = R_imu_lidar;
-  T_imu_lidar_.translation() = t_imu_lidar;
-  cam_intrinsics_ = cam_intrinsics;
+  rclcpp::SubscriptionOptions cam_opt;
+  cam_opt.callback_group = cam_callback_group_;
+
+  cam_sub_ = image_transport::create_subscription(
+      node_.get(), params_.topic,
+      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1), "raw",
+      rmw_qos_profile_sensor_data, cam_opt);
+
+  T_cam_lidar_.linear() = params_.r_cam_lidar;
+  T_cam_lidar_.translation() = params_.t_cam_lidar;
+  cam_intrinsics_ = params_.cam_intrinsics;
+
+  cam_has_data_ = false;
+  img_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  img_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
+  cam_mutex_.lock();
   img_buffer_.push_back(msg);
+  img_start_time_ = img_buffer_.front()->header.stamp;
+  img_end_time_ = img_buffer_.back()->header.stamp;
+  cam_has_data_ = true;
+  cam_mutex_.unlock();
 }
 
 void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail,
@@ -41,110 +49,56 @@ void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail,
   T_world_imu.translation() = pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
 }
 
-void CamProcess::MatchImageswithIMU(std::vector<Pose6D> &imu_poses,
-                                    double pcl_beg_time) {
-  double img_time, imu_time;
+void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
+                                      rclcpp::Time &img_time) {
+  int match_idx;
+  double time_diff;
+  bool match_flag = false;
 
-  matched_imgs_.clear();
-  if (img_buffer_.empty()) {
-    return;
-  }
-  for (auto img_it = img_buffer_.rbegin(); img_it != img_buffer_.rend();
-       img_it++) {
-    MatchedImg matched_img;
+  cam_mutex_.lock();
+  time_diff = (match_time - img_buffer_.front()->header.stamp).seconds();
+  match_idx = std::floor(time_diff * params_.rate);
+  match_idx = std::min(match_idx, (int)img_buffer_.size() - 1);
 
-    img_time = rclcpp::Time((*img_it)->header.stamp).seconds();
-
-    if (img_time < (imu_poses.front().offset_time + pcl_beg_time)) {
-      continue;
-    }
-    if (img_time > (imu_poses.back().offset_time + pcl_beg_time)) {
-      continue;
-    }
-
-    for (auto imu_it = imu_poses.rbegin(); imu_it != imu_poses.rend() - 1;
-         imu_it++) {
-      auto head = imu_it + 1;
-      auto tail = imu_it;
-      imu_time = head->offset_time + pcl_beg_time;
-
-      if (imu_time < img_time) {
-        matched_img.cv_img =
-            cv_bridge::toCvShare(*img_it, sensor_msgs::image_encodings::BGR8);
-        matched_img.head = *head;
-        matched_img.tail = *tail;
-        matched_imgs_.push_back(matched_img);
-        break;
+  while (!match_flag) {
+    if (img_buffer_[match_idx]->header.stamp > match_time) {
+      if (match_idx == 0) {
+        match_flag = true;
+      } else if (img_buffer_[match_idx - 1]->header.stamp > match_time) {
+        match_idx--;
+      } else {
+        match_flag = true;
       }
+    } else if (match_idx == img_buffer_.size() - 1) {
+      match_flag = true;
+    } else {
+      match_idx++;
     }
   }
 
-  if (!matched_imgs_.size()) {
-    RCLCPP_WARN(node_->get_logger(), "Matched no images with IMU poses");
-    // RCLCPP_WARN(node_->get_logger(), "Oldest img %f",
-    //             rclcpp::Time(img_buffer_.front()->header.stamp).seconds());
-    // RCLCPP_WARN(node_->get_logger(), "Newest img %f",
-    //             rclcpp::Time(img_buffer_.back()->header.stamp).seconds());
-    // RCLCPP_WARN(node_->get_logger(), "Oldest imu %f",
-    //             imu_poses.front().offset_time + pcl_beg_time);
-    // RCLCPP_WARN(node_->get_logger(), "Newest imu %f",
-    //             imu_poses.back().offset_time + pcl_beg_time);
-  }
+  img_time = img_buffer_[match_idx]->header.stamp;
+  matched_img_ = cv_bridge::toCvShare(img_buffer_[match_idx],
+                                      sensor_msgs::image_encodings::BGR8);
+  cam_mutex_.unlock();
 }
 
-void CamProcess::ColorPoint(EllipseLivoPoint &pt, Pose6D &pt_head,
-                            Pose6D &pt_tail, double pcl_beg_time) {
+bool CamProcess::ColorPoint(V3D &pt_img, V3D &pt_col, float &dist_from_ctr) {
   cv::Point2d uv;
   cv::Vec3b color;
-  V3D pt_cap, pt_img;
-  Eigen::Isometry3d T_world_img, T_world_pt, T_img_pt;
-  double img_time, matched_img_time, pt_time = pt.offset_time * 1e-3,
-                                     diff_time = DBL_MAX;
-
-  if (matched_imgs_.empty()) {
-    return;
-  }
-  auto matched_it = matched_imgs_.rbegin();
-  for (auto it = matched_imgs_.rbegin(); it != matched_imgs_.rend(); it++) {
-    img_time = rclcpp::Time(it->cv_img->header.stamp).seconds() - pcl_beg_time;
-
-    if (fabs(img_time - pt_time) < diff_time) {
-      diff_time = fabs(img_time - pt_time);
-      matched_it = it;
-    } else {
-      break;
-    }
-  }
-
-  matched_img_time =
-      rclcpp::Time(matched_it->cv_img->header.stamp).seconds() - pcl_beg_time;
-  GetTransform(pt_time, pt_head, pt_tail, T_world_pt);
-  GetTransform(matched_img_time, matched_it->head, matched_it->tail,
-               T_world_img);
-
-  pt_cap << pt.x, pt.y, pt.z;
-  T_img_pt = T_world_img.inverse() * T_world_pt;
-  pt_img =
-      T_cam_lidar_ * T_imu_lidar_.inverse() * T_img_pt * T_imu_lidar_ * pt_cap;
 
   uv.x = round((cam_intrinsics_(0, 0) * pt_img(0) / pt_img(2)) +
                cam_intrinsics_(0, 2));
   uv.y = round((cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) +
                cam_intrinsics_(1, 2));
 
-  if (uv.x >= 0 && uv.x < matched_it->cv_img->image.cols && uv.y >= 0 &&
-      uv.y < matched_it->cv_img->image.rows && pt_img(2) > 0) {
-    color = matched_it->cv_img->image.at<cv::Vec3b>(uv.y, uv.x);
+  if (uv.x >= 0 && uv.x < matched_img_->image.cols && uv.y >= 0 &&
+      uv.y < matched_img_->image.rows && pt_img(2) > 0) {
+    color = matched_img_->image.at<cv::Vec3b>(uv.y, uv.x);
+    dist_from_ctr = sqrt(pow(uv.x - matched_img_->image.cols / 2, 2) +
+                         pow(uv.y - matched_img_->image.rows / 2, 2));
 
-    if (!pt.a) {
-      pt.r = color[2];
-      pt.g = color[1];
-      pt.b = color[0];
-      pt.a = 255;
-    } else {
-      pt.r = (pt.r + color[2]) / 2;
-      pt.g = (pt.g + color[1]) / 2;
-      pt.b = (pt.b + color[0]) / 2;
-    }
+    pt_col << color[2], color[1], color[0];
+    return true;
   }
+  return false;
 }

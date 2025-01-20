@@ -19,8 +19,6 @@
 
 struct CamParams {
   int rate;
-  V3D t_imu_lidar;
-  M3D r_imu_lidar;
   V3D t_cam_lidar;
   M3D r_cam_lidar;
   M3D cam_intrinsics;
@@ -30,31 +28,26 @@ struct CamParams {
 class CamProcess {
  public:
   CamProcess(CamParams params, rclcpp::Node::SharedPtr node);
-  void MatchImageswithIMU(std::vector<Pose6D> &imu_poses, double pcl_beg_time);
-  void ColorPoint(EllipseLivoPoint &pt, Pose6D &imu_head, Pose6D &imu_tail,
-                  double pcl_beg_time);
+  void GetMatchingImageTime(rclcpp::Time &match_time, rclcpp::Time &img_time);
+  bool ColorPoint(V3D &pt_img, V3D &pt_col, float &dist_from_ctr);
 
-  boost::circular_buffer<sensor_msgs::msg::Image::ConstSharedPtr> img_buffer_;
+  bool cam_has_data_;
+  Eigen::Isometry3d T_cam_lidar_, T_world_img_;
   rclcpp::Time img_start_time_, img_end_time_;
+  boost::circular_buffer<sensor_msgs::msg::Image::ConstSharedPtr> img_buffer_;
 
  private:
-  struct MatchedImg {
-    Pose6D head;
-    Pose6D tail;
-    cv_bridge::CvImageConstPtr cv_img;
-  };
+  CamParams params_;
+  std::mutex cam_mutex_;
 
-  Eigen::Isometry3d T_cam_lidar_;
-  Eigen::Isometry3d T_imu_lidar_;
   Eigen::Matrix3d cam_intrinsics_;
+  cv_bridge::CvImageConstPtr matched_img_;
 
   rclcpp::Node::SharedPtr node_;
   image_transport::Subscriber cam_sub_;
-  std::vector<MatchedImg> matched_imgs_;
+  rclcpp::CallbackGroup::SharedPtr cam_callback_group_;
 
   void CamCallback(const sensor_msgs::msg::Image::ConstSharedPtr msg);
-  void GetTransform(double time, Pose6D &head, Pose6D &tail,
-                    Eigen::Isometry3d &T_world_imu);
 };
 
 typedef std::shared_ptr<CamProcess> CamProcessPtr;

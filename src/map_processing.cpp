@@ -564,9 +564,9 @@ MappingNode::MappingNode(
                                           vector<string>());
   this->declare_parameter<vector<double>>("cameras.cam_intrinsics",
                                           vector<double>());
-  this->declare_parameter<vector<double>>("cameras.T_cam_lidars",
+  this->declare_parameter<vector<double>>("cameras.t_cam_lidars",
                                           vector<double>());
-  this->declare_parameter<vector<double>>("cameras.R_cam_lidars",
+  this->declare_parameter<vector<double>>("cameras.r_cam_lidars",
                                           vector<double>());
 
   this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);

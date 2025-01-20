@@ -80,8 +80,6 @@ class LidarProcess {
 
   EllipseLivoPointCloudPtr ellipselivo_pc_;
 
-  rclcpp::Time last_time_;
-
   int start_bin_;
   float mean_range_;
   std::mutex lidar_mutex_;
