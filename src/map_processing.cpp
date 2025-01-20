@@ -300,6 +300,7 @@ void MappingNode::map_incremental(bool init_map) {
 
   std::cerr << "Map size: " << map_cloud->size() << std::endl;
   std::cerr << "ioctree size: " << ioctree.size() << std::endl;
+  std::cerr << "Octants size: " << ioctree.octant_size() << std::endl;
   std::cerr << "New idxs size: " << new_idxs.size() << std::endl;
 
   if (new_idxs.size() > 0) {
@@ -610,6 +611,7 @@ MappingNode::MappingNode(
   lidar_params.map_search_radius = map_search_radius;
   lidar_params.map_resolution = map_resolution;
 
+  ioctree.set_max_octants(10000000);
   ioctree.set_min_extent(map_resolution);
   ioctree.set_bucket_size(1);
 

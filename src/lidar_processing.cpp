@@ -55,6 +55,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_radius;
     octree_resolutions_[i] = octree_res;
+    bin_octrees_[i].set_max_octants(10000);
   }
 }
 
