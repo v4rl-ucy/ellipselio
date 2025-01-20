@@ -301,6 +301,7 @@ void MappingNode::map_incremental(bool init_map) {
   std::cerr << "Map size: " << map_cloud->size() << std::endl;
   std::cerr << "ioctree size: " << ioctree.size() << std::endl;
   std::cerr << "Octants size: " << ioctree.octant_size() << std::endl;
+  std::cerr << "Octants pts size: " << ioctree.octant_pts_size() << std::endl;
   std::cerr << "New idxs size: " << new_idxs.size() << std::endl;
 
   if (new_idxs.size() > 0) {

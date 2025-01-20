@@ -36,6 +36,9 @@
 
 namespace iOctree {
 
+#define DIM 4
+#define MAX_BUCKET 6
+
 template <typename T>
 struct PointType_CMP {
   T point;
@@ -306,14 +309,15 @@ class Octant {
   Octant() : x(0.0f), y(0.0f), z(0.0f), extent(0.0f) {
     child = nullptr;
     isActive = true;
+    points.reserve(MAX_BUCKET);
   }
 
   ~Octant() {
     if (child != nullptr) {
-      for (size_t i = 0; i < 8; ++i) {
-        if (child[i] != 0) delete child[i];
-      }
-      delete[] child;
+      // for (size_t i = 0; i < 8; ++i) {
+      //   if (child[i] != 0) delete child[i];
+      // }
+      // delete[] child;
       child = nullptr;
     } else {
       // delete[] points[0];
@@ -375,9 +379,6 @@ class InfoRecord {
   void clear() { octant_vec.clear(); }
 };
 
-#define DIM 4
-#define MAX_BUCKET 6
-
 class Octree {
  public:
   size_t m_bucketSize;
@@ -394,7 +395,7 @@ class Octree {
   Octree()
       : m_bucketSize(32), m_minExtent(0.01f), m_root_(0), m_downSize(false) {
     ordered = true;
-    pts_num_deleted = last_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
     dim = DIM;
     m_bucketSize = fmin(m_bucketSize, MAX_BUCKET);
   }
@@ -405,7 +406,7 @@ class Octree {
         m_root_(0),
         m_downSize(false) {
     ordered = true;
-    pts_num_deleted = last_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
     dim = DIM;
     m_bucketSize = fmin(m_bucketSize, MAX_BUCKET);
   }
@@ -416,7 +417,7 @@ class Octree {
         m_root_(0),
         m_downSize(false) {
     ordered = true;
-    pts_num_deleted = last_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
     dim = DIM;
     m_bucketSize = fmin(m_bucketSize, MAX_BUCKET);
     //  if (dim_ > 4) dim = dim_;
@@ -428,6 +429,7 @@ class Octree {
 
   void set_max_octants(int max_octants) {
     all_points = new float[max_octants * MAX_BUCKET * DIM];
+    all_octants = new Octant[max_octants];
   }
 
   void set_min_extent(float extent)  // 网格最小内接园半径
@@ -641,7 +643,7 @@ class Octree {
       float parentY = m_root_->y + factor[max[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[max[2] > m_root_->z] * parentExtent;
       // 构造父节点
-      Octant *octant = new Octant;
+      Octant *octant = all_octants + octant_num++;
       octant->x = parentX;
       octant->y = parentY;
       octant->z = parentZ;
@@ -663,7 +665,7 @@ class Octree {
       float parentY = m_root_->y + factor[min[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[min[2] > m_root_->z] * parentExtent;
       // 构造父节点
-      Octant *octant = new Octant;
+      Octant *octant = all_octants + octant_num++;
       // octant->isLeaf = false;
       octant->x = parentX;
       octant->y = parentY;
@@ -751,7 +753,7 @@ class Octree {
       float parentY = m_root_->y + factor[max[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[max[2] > m_root_->z] * parentExtent;
       // 构造父节点
-      Octant *octant = new Octant;
+      Octant *octant = all_octants + octant_num++;
       octant->x = parentX;
       octant->y = parentY;
       octant->z = parentZ;
@@ -773,7 +775,7 @@ class Octree {
       float parentY = m_root_->y + factor[min[1] > m_root_->y] * parentExtent;
       float parentZ = m_root_->z + factor[min[2] > m_root_->z] * parentExtent;
       // 构造父节点
-      Octant *octant = new Octant;
+      Octant *octant = all_octants + octant_num++;
       // octant->isLeaf = false;
       octant->x = parentX;
       octant->y = parentY;
@@ -799,9 +801,9 @@ class Octree {
   }
 
   void clear() {
-    delete m_root_;
+    // delete m_root_;
     m_root_ = 0;
-    pts_num_deleted = last_pts_num = octant_num = 0;
+    pts_num_deleted = last_pts_num = octant_pts_num = octant_num = 0;
   }
 
   template <typename PointT>
@@ -1028,6 +1030,8 @@ class Octree {
 
   size_t octant_size() { return octant_num; }
 
+  size_t octant_pts_size() { return octant_pts_num; }
+
   size_t size() { return last_pts_num - pts_num_deleted; }
 
   void get_nodes(Octant *octant, std::vector<Octant *> &nodes,
@@ -1103,9 +1107,10 @@ class Octree {
 
  protected:
   Octant *m_root_;
-  size_t last_pts_num, pts_num_deleted, octant_num;  // 主要为了确定每个点的索引
+  size_t last_pts_num, pts_num_deleted, octant_pts_num, octant_num;
   float new_points[100000][DIM];
   float *all_points;
+  Octant *all_octants;
 
   Octree(Octree &);
 
@@ -1117,7 +1122,7 @@ class Octree {
                        std::vector<int> &new_idxs) {
     // For a leaf we don't have to change anything; points are already correctly
     // linked or correctly reordered.
-    Octant *octant = new Octant;
+    Octant *octant = all_octants + octant_num++;
     const size_t size = points.size();
     octant->x = x;
     octant->y = y;
@@ -1153,7 +1158,7 @@ class Octree {
       const size_t size = std::min(points.size(), m_bucketSize);
       octant->points.resize(size);
 
-      if (octant->idx < 0 && size > 0) octant->idx = octant_num++;
+      if (octant->idx < 0 && size > 0) octant->idx = octant_pts_num++;
       const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
       for (size_t i = 0; i < size; ++i) {
         std::copy(points[i], points[i] + dim, all_points + oct_idx + (i * DIM));
@@ -1216,7 +1221,7 @@ class Octree {
                               points.begin() + dif_size);
         const size_t new_size = octant->points.size();
 
-        if (octant->idx < 0 && new_size > 0) octant->idx = octant_num++;
+        if (octant->idx < 0 && new_size > 0) octant->idx = octant_pts_num++;
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
         for (size_t i = 0; i < new_size; ++i) {
           std::copy(octant->points[i], octant->points[i] + dim,
@@ -1548,7 +1553,7 @@ class Octree {
         return;
       } else {
         pts_num_deleted += octant->size();
-        delete octant;
+        // delete octant;
         deleted = true;
         return;
       }
@@ -1585,13 +1590,13 @@ class Octree {
         }
         pts_num_deleted += size - valid_num;
         if (valid_num == 0) {
-          delete octant;
+          // delete octant;
           deleted = true;
           return;
         }
 
         octant->points.resize(valid_num);
-        if (octant->idx < 0 && valid_num > 0) octant->idx = octant_num++;
+        if (octant->idx < 0 && valid_num > 0) octant->idx = octant_pts_num++;
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
         for (size_t i = 0; i < valid_num; ++i) {
           std::copy(remainder_points[i], remainder_points[i] + dim,
@@ -1617,7 +1622,7 @@ class Octree {
       valid_child++;
     }
     if (valid_child == 0) {
-      delete octant;
+      // delete octant;
       deleted = true;
       return;
     }
