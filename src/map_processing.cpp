@@ -644,7 +644,16 @@ MappingNode::MappingNode(
       MAX_SCAN_POINTS, std::vector<int>(0.001 * MAX_SCAN_POINTS));
 
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
-  imu_params.r_imu_lidar << MAT_FROM_ARRAY(r_imu_lidar);
+  if (r_imu_lidar.size() == 9) {
+    imu_params.r_imu_lidar << MAT_FROM_ARRAY(r_imu_lidar);
+  } else if (r_imu_lidar.size() == 4) {
+    imu_params.r_imu_lidar =
+        Eigen::Quaterniond(QUAT_FROM_ARRAY(r_imu_lidar)).toRotationMatrix();
+  } else {
+    RCLCPP_ERROR(
+        this->get_logger(),
+        "Lidar to IMU rotation is not a valid quaternion or rotation matrix");
+  }
 
   double epsi[23] = {0.001};
   kf_->init_dyn_share(get_f, df_dx, df_dw,
@@ -694,7 +703,8 @@ void MappingNode::init_cam_process() {
                  "Cam translations and num cameras mismatch");
     return;
   }
-  if (r_cam_lidars.size() != num_cams * 9) {
+  if (r_cam_lidars.size() != num_cams * 9 ||
+      r_cam_lidars.size() != num_cams * 4) {
     RCLCPP_ERROR(this->get_logger(), "Cam rotations and num cameras mismatch");
     return;
   }
@@ -711,14 +721,22 @@ void MappingNode::init_cam_process() {
 
     vector<double> t_cam_lidar(t_cam_lidars.begin() + i * 3,
                                t_cam_lidars.begin() + i * 3 + 3);
-    vector<double> r_cam_lidar(r_cam_lidars.begin() + i * 9,
-                               r_cam_lidars.begin() + i * 9 + 9);
     vector<double> cam_intrinsic(cam_intrinsics.begin() + i * 9,
                                  cam_intrinsics.begin() + i * 9 + 9);
 
     cam_params.t_cam_lidar << VEC_FROM_ARRAY(t_cam_lidar);
-    cam_params.r_cam_lidar << MAT_FROM_ARRAY(r_cam_lidar);
     cam_params.cam_intrinsics << MAT_FROM_ARRAY(cam_intrinsic);
+
+    if (r_cam_lidars.size() == num_cams * 4) {
+      vector<double> r_cam_lidar(r_cam_lidars.begin() + i * 4,
+                                 r_cam_lidars.begin() + i * 4 + 4);
+      cam_params.r_cam_lidar =
+          Eigen::Quaterniond(QUAT_FROM_ARRAY(r_cam_lidar)).toRotationMatrix();
+    } else {
+      vector<double> r_cam_lidar(r_cam_lidars.begin() + i * 9,
+                                 r_cam_lidars.begin() + i * 9 + 9);
+      cam_params.r_cam_lidar << MAT_FROM_ARRAY(r_cam_lidar);
+    }
 
     cams_process.push_back(
         std::make_shared<CamProcess>(cam_params, shared_from_this()));
