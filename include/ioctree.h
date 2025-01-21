@@ -204,6 +204,10 @@ class Octree {
 
   void set_order(bool ordered_ = false) { ordered = ordered_; }
 
+  void set_max_new_points(int max_new_points) {
+    new_points = new float[max_new_points * DIM];
+  }
+
   void set_max_octants(int max_octants) {
     all_points = new float[max_octants * MAX_BUCKET * DIM];
   }
@@ -238,7 +242,7 @@ class Octree {
       const float &y = pts_[filter_idxs[i]].y;
       const float &z = pts_[filter_idxs[i]].z;
       if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
-      float *cloud_ptr = new_points[i];
+      float *cloud_ptr = new_points + cloud_index * DIM;
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
@@ -299,7 +303,7 @@ class Octree {
       const float &y = pts_[i].y;
       const float &z = pts_[i].z;
       if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
-      float *cloud_ptr = new_points[i];
+      float *cloud_ptr = new_points + cloud_index * DIM;
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
@@ -363,7 +367,7 @@ class Octree {
       const float &y = pts_[filter_idxs[i]].y;
       const float &z = pts_[filter_idxs[i]].z;
       if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
-      float *cloud_ptr = new_points[i];
+      float *cloud_ptr = new_points + cloud_index * DIM;
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
@@ -463,7 +467,7 @@ class Octree {
       const float &y = pts_[i].y;
       const float &z = pts_[i].z;
       if (std::isnan(x) || std::isnan(y) || std::isnan(z)) continue;
-      float *cloud_ptr = new_points[i];
+      float *cloud_ptr = new_points + cloud_index * DIM;
       cloud_ptr[0] = x;
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
@@ -720,6 +724,28 @@ class Octree {
     return data.size();
   }
 
+  int32_t knnNeighbors(const Eigen::Vector3f &query, int k,
+                       std::vector<int> &resultIndices,
+                       std::vector<float> &distances) {
+    if (m_root_ == 0) return 0;
+
+    float query_[3] = {query(0), query(1), query(2)};
+
+    KNNSimpleResultSet heap(k);
+    knnNeighbors(m_root_, query_, heap);
+
+    std::vector<DistanceIndex> data = heap.get_data();
+    resultIndices.resize(heap.size());
+    distances.resize(heap.size());
+
+    for (int i = 0; i < heap.size(); i++) {
+      resultIndices[i] = int(data[i].index_[3]);
+      distances[i] = data[i].dist_;
+    }
+
+    return data.size();
+  }
+
   void boxWiseDelete(const BoxDeleteType &box_range, bool clear_data) {
     if (m_root_ == 0) return;
     bool deleted = false;
@@ -800,7 +826,7 @@ class Octree {
  protected:
   Octant *m_root_;
   size_t last_pts_num, pts_num_deleted, octant_num;
-  float new_points[100000][DIM];
+  float *new_points;
   float *all_points;
   Octant *all_octants;
 

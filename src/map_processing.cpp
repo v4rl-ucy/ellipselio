@@ -149,7 +149,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     n_mean += n_cnt_bin.sum();
     n_mean /= lid_process->cnt_neighbours_[i] + n_bins.col(i).sum();
     lid_process->min_neighbours_[i] = fmax(n_mean, MIN_NEIGHBOURS);
-    lid_process->max_neighbours_[i] = 2 * lid_process->min_neighbours_[i];
+    lid_process->max_neighbours_[i] =
+        fmin(2 * lid_process->min_neighbours_[i], 0.001 * MAX_SCAN_POINTS);
     lid_process->cnt_neighbours_[i] += n_bins.col(i).sum();
   }
 
@@ -307,20 +308,24 @@ void MappingNode::map_incremental(bool init_map) {
   eigenvalues.resize(map_cloud->size(), V3F::Zero());
   eigenvectors.resize(map_cloud->size(), M3F::Zero());
 
-  std::cerr << "Map size: " << map_cloud->size() << std::endl;
-  std::cerr << "ioctree size: " << ioctree.size() << std::endl;
-  std::cerr << "Octants size: " << ioctree.octant_size() << std::endl;
-  std::cerr << "New idxs size: " << new_idxs.size() << std::endl;
+  RCLCPP_INFO_STREAM(this->get_logger(), "Map size: " << map_cloud->size());
+  RCLCPP_INFO_STREAM(this->get_logger(), "ioctree size: " << ioctree.size());
+  RCLCPP_INFO_STREAM(this->get_logger(),
+                     "Octants size: " << ioctree.octant_size());
+  RCLCPP_INFO_STREAM(this->get_logger(), "New idxs size: " << new_idxs.size());
 
   if (new_idxs.size() > 0) {
     double pass_1_start = omp_get_wtime();
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
     double pass_1_end = omp_get_wtime();
-    std::cerr << "Pass 1 time: " << pass_1_end - pass_1_start << std::endl;
-    std::cerr << "Updated idxs size: " << updated_idxs.size() << std::endl;
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Pass 1 time: " << pass_1_end - pass_1_start);
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Updated idxs size: " << updated_idxs.size());
     tensor_vote_pass_2(new_idxs, updated_idxs);
     double pass_2_end = omp_get_wtime();
-    std::cerr << "Pass 2 time: " << pass_2_end - pass_1_end << std::endl;
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Pass 2 time: " << pass_2_end - pass_1_end);
   }
 
   map_counter++;
@@ -415,8 +420,6 @@ void MappingNode::publish_markers() {
 }
 
 void MappingNode::publish_odometry() {
-  // pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
-
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_ellipselivo";
   trans.child_frame_id = "imu_ellipselivo";
@@ -433,36 +436,34 @@ void MappingNode::publish_odometry() {
 
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  Eigen::MatrixXd h(scan_cloud->size(), 1);
-  Eigen::MatrixXd h_x(scan_cloud->size(), 12);
+  double res_mean, t0, t1;
   std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
 
-  double res_mean_last = 0.0, total_residual = 0.0;
-  double match_start = omp_get_wtime();
+  ekfom_data.h.resize(scan_cloud->size(), 1);
+  ekfom_data.h_x.resize(scan_cloud->size(), 12);
+
+  t0 = omp_get_wtime();
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    int sali_idx, map_i;
     float residual;
-    V3F c, a;
-    M3F P_skew;
+    int sali_idx, map_i, feat_num;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    V3F p_lidar, p_imu, p_world;
+
+    V3F c, a;
+    V3D p_imu;
+    M3F P_skew;
+    V3F p_lidar, p_world;
     V3F sali, n_world, p_dash, q, q_dash, norm_vec, eig_vals;
 
-    EllipseLivoPoint pt = scan_cloud->points[i];
+    const EllipseLivoPoint &pt = scan_cloud->points[i];
 
     p_lidar = pt.getVector3fMap();
-    p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I)
-                .cast<float>();
-    p_world =
-        (s.rot * (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I) +
-         s.pos)
-            .cast<float>();
+    p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I);
+    p_world = (s.rot * p_imu + s.pos).cast<float>();
 
-    pt.getVector3fMap() = p_world;
-    ioctree.knnNeighbors(pt, 1, N_idxs, N_dst);
+    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst);
     map_i = N_idxs[0];
 
     const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
@@ -508,34 +509,29 @@ void MappingNode::tensor_registration(
     residual = norm_vec.norm();
     norm_vec.normalize();
 
-    P_skew << SKEW_SYM_MATRX(p_imu);
-
+    P_skew << SKEW_SYM_MATRX(p_imu.cast<float>());
     c = s.rot.conjugate().cast<float>() * norm_vec;
     a = P_skew * c;
 
-    int feat_num = ++feat_cnt;
-    h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
+    feat_num = ++feat_cnt;
+    ekfom_data.h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
         VEC_FROM_ARRAY(a), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    h(feat_num - 1) = -residual;
-
-    total_residual += residual;
+    ekfom_data.h(feat_num - 1) = -residual;
   }
 
-  h.conservativeResize(feat_cnt, 1);
-  h_x.conservativeResize(feat_cnt, 12);
+  ekfom_data.h.conservativeResize(feat_cnt, 1);
+  ekfom_data.h_x.conservativeResize(feat_cnt, 12);
 
-  ekfom_data.h = h;
-  ekfom_data.h_x = h_x;
+  res_mean = -ekfom_data.h.sum() / feat_cnt;
 
-  res_mean_last = total_residual / feat_cnt;
+  RCLCPP_INFO_STREAM(this->get_logger(), "Res mean: " << res_mean);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Num feats: " << feat_cnt);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Num planes: " << plane_cnt);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Num curves: " << curve_cnt);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Num junctions: " << junct_cnt);
 
-  std::cerr << "Res mean: " << res_mean_last << std::endl;
-  std::cerr << "Num feats: " << feat_cnt << std::endl;
-  std::cerr << "Num planes: " << plane_cnt << std::endl;
-  std::cerr << "Num curves: " << curve_cnt << std::endl;
-  std::cerr << "Num junctions: " << junct_cnt << std::endl;
-
-  match_time = omp_get_wtime() - match_start;
+  t1 = omp_get_wtime();
+  match_time += t1 - t0;
 }
 
 MappingNode::MappingNode(
@@ -624,21 +620,22 @@ MappingNode::MappingNode(
   lidar_params.map_search_radius = map_search_radius;
   lidar_params.map_resolution = map_resolution;
 
-  scan_cloud->reserve(100000);
-  map_cloud->reserve(10000000);
+  map_cloud->reserve(MAX_MAP_POINTS);
+  scan_cloud->reserve(MAX_SCAN_POINTS);
 
-  ioctree.set_max_octants(10000000);
-  ioctree.set_min_extent(map_resolution);
   ioctree.set_bucket_size(1);
+  ioctree.set_min_extent(map_resolution);
+  ioctree.set_max_octants(MAX_MAP_POINTS);
+  ioctree.set_max_new_points(MAX_SCAN_POINTS);
 
   num_bins = ceil(lidar_params.max_range / lidar_params.bin_size);
   mean_cnt = std::vector<int>(num_bins, 0);
   mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
-  new_neighbours_map_idx = std::vector<int>(100000);
-  new_neighbours_size = std::vector<std::atomic<int>>(100000);
-  new_neighbours =
-      std::vector<std::vector<int>>(100000, std::vector<int>(1000));
+  new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);
+  new_neighbours_size = std::vector<std::atomic<int>>(MAX_SCAN_POINTS);
+  new_neighbours = std::vector<std::vector<int>>(
+      MAX_SCAN_POINTS, std::vector<int>(0.001 * MAX_SCAN_POINTS));
 
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
   imu_params.r_imu_lidar << MAT_FROM_ARRAY(r_imu_lidar);
@@ -733,8 +730,9 @@ void MappingNode::timer_callback() {
   }
 
   if (sync_packages()) {
-    std::cerr << "Synced packages" << std::endl;
-    double t0, t1, t2, t3, t4, t5, t6, t7, solve_time;
+    RCLCPP_INFO(this->get_logger(), "Synced packages");
+    double t0, t1, t2, t3, t4, undistort_time, state_update_time,
+        map_update_time, total_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
     rclcpp::Time lidar_start_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
@@ -746,56 +744,58 @@ void MappingNode::timer_callback() {
                                      lidar_end_time, cams_process);
 
     t1 = omp_get_wtime();
-    imu_time = t1 - t0;
 
     if (scan_cloud->empty() || (scan_cloud == NULL)) {
-      RCLCPP_WARN(this->get_logger(), "No point, skip this scan!\n");
+      RCLCPP_WARN(this->get_logger(), "No points skipping scan");
       return;
     }
 
     if (ioctree.size() == 0) {
-      RCLCPP_INFO(this->get_logger(), "Initialize the map kdtree");
+      RCLCPP_INFO(this->get_logger(), "Initialize the map");
       map_incremental(true);
       return;
     }
 
-    std::cerr << "Scan size: " << scan_cloud->size() << std::endl;
+    RCLCPP_INFO_STREAM(this->get_logger(), "Scan size: " << scan_cloud->size());
 
     t2 = omp_get_wtime();
-    downsample_time = t2 - t1;
+    match_time = 0;
+    imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
+    t3 = omp_get_wtime();
 
-    t4 = omp_get_wtime();
-    imu_process->UpdateStatesWithLidar(solve_time, kf_state_, lidar_end_time);
-    t5 = omp_get_wtime();
-
-    state_update_time = t5 - t4;
     map_incremental(false);
-    t6 = omp_get_wtime();
-    map_update_time = t6 - t5;
-    total_time = t6 - t0;
+    t4 = omp_get_wtime();
+
+    undistort_time = t1 - t0;
+    state_update_time = t3 - t2;
+    map_update_time = t4 - t3;
+    total_time = t4 - t0;
 
     publish_odometry();
     publish_scan();
 
-    max_time_match = fmax(max_time_match, match_time);
-    max_time_solve = fmax(max_time_solve, solve_time);
-    max_imu_time = fmax(max_imu_time, imu_time);
+    max_undistort_time = fmax(max_undistort_time, undistort_time);
+    max_match_time = fmax(max_match_time, match_time);
     max_state_update_time = fmax(max_state_update_time, state_update_time);
     max_map_update_time = fmax(max_map_update_time, map_update_time);
-    max_downsample_time = fmax(max_downsample_time, downsample_time);
     max_total_time = fmax(max_total_time, total_time);
-    printf(
-        "IMU: %0.6f Downsample: %0.6f Match time: %0.6f "
-        "State update: %0.6f Map update: %0.6f "
-        "Total: %0.6f\n",
-        imu_time, downsample_time, match_time, state_update_time,
-        map_update_time, total_time);
-    printf(
-        "Max IMU: %0.6f Max downsample: %0.6f Max match time: %0.6f "
-        "Max state update: %0.6f Max map update: "
-        "%0.6f Max total time: %0.6f\n",
-        max_imu_time, max_downsample_time, max_time_match,
-        max_state_update_time, max_map_update_time, max_total_time);
+
+    RCLCPP_INFO_STREAM(this->get_logger(), "Undistort: " << undistort_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Match: " << match_time);
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "State update: " << state_update_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Map update: " << map_update_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << total_time);
+
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Max undistort: " << max_undistort_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max match: " << max_match_time);
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Max state update: " << max_state_update_time);
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Max map update: " << max_map_update_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max total: " << max_total_time);
+    RCLCPP_INFO(this->get_logger(), " ");
   }
 }
 

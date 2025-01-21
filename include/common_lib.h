@@ -16,6 +16,8 @@ using namespace std;
 
 #define MIN_NEIGHBOURS (6)
 #define MAX_NEIGHBOURS (12)
+#define MAX_SCAN_POINTS (200000)
+#define MAX_MAP_POINTS (10000000)
 
 #define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
 #define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]

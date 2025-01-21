@@ -41,7 +41,7 @@ void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
 
   if (rclcpp::Time(msg->header.stamp) < imu_end_time_) {
-    std::cerr << "Imu time out of order" << std::endl;
+    RCLCPP_INFO_STREAM(node_->get_logger(), "Imu time out of order");
     return;
   }
 
@@ -290,9 +290,10 @@ void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
   }
 }
 
-void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
+void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
                                        rclcpp::Time &lidar_end_time) {
   int match_idx;
+  double solve_time;
   IkfomSPtr kf(new Ikfom());
 
   imu_mutex_.lock();
@@ -301,7 +302,7 @@ void ImuProcess::UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
 
   kf->change_x(kf_state.state);
   kf->change_P(kf_state.cov);
-  kf->update_iterated_dyn_share_modified(0.001, solve_H_time);
+  kf->update_iterated_dyn_share_modified(LIDAR_PT_COV, solve_time);
 
   imu_mutex_.lock();
 

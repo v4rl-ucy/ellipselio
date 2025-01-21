@@ -26,15 +26,15 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   bin_pcs_sizes_ = std::vector<int>(num_bins_, 0);
   bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
   bin_octrees_ = std::vector<iOctree::Octree>(num_bins_);
-  bin_idxs_ =
-      std::vector<std::vector<int>>(num_bins_, std::vector<int>(200000));
+  bin_idxs_ = std::vector<std::vector<int>>(num_bins_,
+                                            std::vector<int>(MAX_SCAN_POINTS));
   bin_pcs_ = std::vector<EllipseLivoPointCloud>(num_bins_);
   bin_min_times_ = std::vector<rclcpp::Time>(num_bins_);
   bin_max_times_ = std::vector<rclcpp::Time>(num_bins_);
 
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
-  ellipselivo_pc_->reserve(100000);
+  ellipselivo_pc_->reserve(MAX_SCAN_POINTS);
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
   cnt_neighbours_ = std::vector<int>(num_bins_, 0);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
@@ -56,8 +56,9 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     search_radii_[i] = search_radius;
     octree_resolutions_[i] = octree_res;
 
-    bin_pcs_[i].reserve(10000);
-    bin_octrees_[i].set_max_octants(10000);
+    bin_pcs_[i].reserve(MAX_SCAN_POINTS);
+    bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);
+    bin_octrees_[i].set_max_octants(0.1 * MAX_SCAN_POINTS);
   }
 }
 
@@ -67,7 +68,7 @@ void LidarProcess::LidarCallback(
       new sensor_msgs::msg::PointCloud2(*msg_in));
 
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
-    std::cerr << "Lidar time out of order" << std::endl;
+    RCLCPP_INFO_STREAM(node_->get_logger(), "Lidar time out of order");
     return;
   }
 
@@ -76,7 +77,7 @@ void LidarProcess::LidarCallback(
   Process(msg);
   lidar_mutex_.unlock();
   double t2 = omp_get_wtime();
-  std::cerr << "Lidar processing time: " << t2 - t1 << std::endl;
+  RCLCPP_INFO_STREAM(node_->get_logger(), "Lidar proc time: " << t2 - t1);
 }
 
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -225,14 +226,15 @@ void LidarProcess::PointCloudHandler(
   pcl::PointCloud<InPtType> in_pc;
   pcl::fromROSMsg(*msg, in_pc);
 
-  out_pc->resize(in_pc.size());
+  size_t in_pc_size = fmin(in_pc.size(), MAX_SCAN_POINTS);
+  out_pc->resize(in_pc_size);
 
-  Eigen::ArrayXf ranges(in_pc.size());
-  Eigen::ArrayXf valid_range = Eigen::ArrayXf::Zero(in_pc.size());
+  Eigen::ArrayXf ranges(in_pc_size);
+  Eigen::ArrayXf valid_range = Eigen::ArrayXf::Zero(in_pc_size);
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
 #pragma omp parallel for
-  for (size_t i = 0; i < in_pc.size(); i++) {
+  for (size_t i = 0; i < in_pc_size; i++) {
     rclcpp::Time point_time = msg->header.stamp;
     ConvertPoint<InPtType>(in_pc.points[i], out_pc->points[i], point_time);
     float range = sqrt(out_pc->points[i].x * out_pc->points[i].x +

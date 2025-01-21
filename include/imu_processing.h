@@ -26,6 +26,7 @@
 #include <thread>
 
 #define G_m_s2 (9.80665)
+#define LIDAR_PT_COV (0.001)
 
 struct ImuParams {
   int rate;
@@ -46,8 +47,7 @@ class ImuProcess {
   void UndistortPointCloud(EllipseLivoPointCloudPtr pc, KfState &kf_state,
                            rclcpp::Time &lidar_start_time,
                            rclcpp::Time &lidar_end_time, CamProcessVec &cams);
-  void UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
-                             rclcpp::Time &lidar_end_time);
+  void UpdateStatesWithLidar(KfState &kf_state, rclcpp::Time &lidar_end_time);
   void GetKfState(KfState &kf_state);
 
   void set_gyr_cov(const V3D &gyr_cov);
