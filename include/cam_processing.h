@@ -25,6 +25,11 @@ struct CamParams {
   std::string topic;
 };
 
+struct Img {
+  rclcpp::Time time;
+  cv_bridge::CvImageConstPtr img;
+};
+
 class CamProcess {
  public:
   CamProcess(CamParams params, rclcpp::Node::SharedPtr node);
@@ -34,18 +39,18 @@ class CamProcess {
   bool cam_has_data_;
   Eigen::Isometry3d T_cam_lidar_, T_world_img_;
   rclcpp::Time img_start_time_, img_end_time_;
-  boost::circular_buffer<sensor_msgs::msg::Image::ConstSharedPtr> img_buffer_;
 
  private:
   CamParams params_;
   std::mutex cam_mutex_;
 
+  Img matched_img_;
   Eigen::Matrix3d cam_intrinsics_;
-  cv_bridge::CvImageConstPtr matched_img_;
 
   rclcpp::Node::SharedPtr node_;
   image_transport::Subscriber cam_sub_;
   rclcpp::CallbackGroup::SharedPtr cam_callback_group_;
+  boost::circular_buffer<Img> img_buffer_;
 
   void CamCallback(const sensor_msgs::msg::Image::ConstSharedPtr msg);
 };

@@ -1,7 +1,7 @@
 #include <cam_processing.h>
 
 CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
-    : node_(node), params_(params), img_buffer_(params.rate)) {
+    : node_(node), params_(params), img_buffer_(params.rate) {
   cam_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -24,10 +24,13 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
 
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
+  Img img;
   cam_mutex_.lock();
-  img_buffer_.push_back(msg);
-  img_start_time_ = img_buffer_.front()->header.stamp;
-  img_end_time_ = img_buffer_.back()->header.stamp;
+  img.time = msg->header.stamp;
+  img.img = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
+  img_buffer_.push_back(img);
+  img_start_time_ = img_buffer_.front().time;
+  img_end_time_ = img_buffer_.back().time;
   cam_has_data_ = true;
   cam_mutex_.unlock();
 }
@@ -39,15 +42,15 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
   bool match_flag = false;
 
   cam_mutex_.lock();
-  time_diff = (match_time - img_buffer_.front()->header.stamp).seconds();
+  time_diff = (match_time - img_buffer_.front().time).seconds();
   match_idx = std::floor(time_diff * params_.rate);
   match_idx = std::min(match_idx, (int)img_buffer_.size() - 1);
 
   while (!match_flag) {
-    if (img_buffer_[match_idx]->header.stamp > match_time) {
+    if (img_buffer_[match_idx].time > match_time) {
       if (match_idx == 0) {
         match_flag = true;
-      } else if (img_buffer_[match_idx - 1]->header.stamp > match_time) {
+      } else if (img_buffer_[match_idx - 1].time > match_time) {
         match_idx--;
       } else {
         match_flag = true;
@@ -59,9 +62,8 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
     }
   }
 
-  img_time = img_buffer_[match_idx]->header.stamp;
-  matched_img_ = cv_bridge::toCvShare(img_buffer_[match_idx],
-                                      sensor_msgs::image_encodings::BGR8);
+  img_time = img_buffer_[match_idx].time;
+  matched_img_ = img_buffer_[match_idx];
   cam_mutex_.unlock();
 }
 
@@ -74,11 +76,11 @@ bool CamProcess::ColorPoint(V3D &pt_img, V3D &pt_col, float &dist_from_ctr) {
   uv.y = round((cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) +
                cam_intrinsics_(1, 2));
 
-  if (uv.x >= 0 && uv.x < matched_img_->image.cols && uv.y >= 0 &&
-      uv.y < matched_img_->image.rows && pt_img(2) > 0) {
-    color = matched_img_->image.at<cv::Vec3b>(uv.y, uv.x);
-    dist_from_ctr = sqrt(pow(uv.x - matched_img_->image.cols / 2, 2) +
-                         pow(uv.y - matched_img_->image.rows / 2, 2));
+  if (uv.x >= 0 && uv.x < matched_img_.img->image.cols && uv.y >= 0 &&
+      uv.y < matched_img_.img->image.rows && pt_img(2) > 0) {
+    color = matched_img_.img->image.at<cv::Vec3b>(uv.y, uv.x);
+    dist_from_ctr = sqrt(pow(uv.x - matched_img_.img->image.cols / 2, 2) +
+                         pow(uv.y - matched_img_.img->image.rows / 2, 2));
 
     pt_col << color[2], color[1], color[0];
     return true;
