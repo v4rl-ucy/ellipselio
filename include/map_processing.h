@@ -98,11 +98,12 @@ class MappingNode : public rclcpp::Node {
   std::vector<vector<bool>> filters;
   std::vector<vector<int>> neighbours;
 
-  int cam_frame_rate = 20;
+  int num_cams;
   std::vector<string> cam_topics;
   std::vector<double> cam_intrinsics;
-  std::vector<double> T_cam_lidars;
-  std::vector<double> R_cam_lidars;
+  std::vector<double> t_cam_lidars;
+  std::vector<double> r_cam_lidars;
+  std::vector<long int> cam_frame_rates;
 
   std::vector<double> t_imu_lidar;
   std::vector<double> r_imu_lidar;
@@ -120,6 +121,6 @@ class MappingNode : public rclcpp::Node {
 
   std::shared_ptr<ImuProcess> imu_process;
   std::shared_ptr<LidarProcess> lid_process;
-  //  CamProcessVec p_cams;
+  CamProcessVec cams_process;
 };
 }  // namespace ellipselivo

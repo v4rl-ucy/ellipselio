@@ -149,6 +149,7 @@ void LidarProcess::ClearPointCloud() {
 }
 
 void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
+                                 rclcpp::Time &start_time,
                                  rclcpp::Time &end_time,
                                  std::vector<int> &bin_pcs_sizes,
                                  int &start_bin) {
@@ -156,6 +157,7 @@ void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
   *pc = *ellipselivo_pc_;
   start_bin = start_bin_;
   end_time = lidar_end_time_;
+  start_time = lidar_start_time_;
   bin_pcs_sizes = bin_pcs_sizes_;
   ClearBins();
   lidar_has_data_ = false;

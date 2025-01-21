@@ -265,7 +265,7 @@ void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
   pt.g = 0;
   pt.b = 0;
   pt.a = 0;
-  pt.has_color = false;
+  pt.has_rgb = false;
 
   for (size_t i = 0; i < cams.size(); i++) {
     float dist_from_ctr;
@@ -283,7 +283,7 @@ void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
         pt.g = pt_col(1);
         pt.b = pt_col(2);
         pt.a = 255;
-        pt.has_color = true;
+        pt.has_rgb = true;
         max_dist_from_ctr = dist_from_ctr;
       }
     }

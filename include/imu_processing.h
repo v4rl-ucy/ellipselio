@@ -3,6 +3,7 @@
 #ifndef IMU_PROCESSING_H
 #define IMU_PROCESSING_H
 
+#include <cam_processing.h>
 #include <common_lib.h>
 #include <common_pcl.h>
 #include <math.h>
@@ -43,7 +44,8 @@ class ImuProcess {
   ImuProcess(IkfomSPtr kf, ImuParams params, rclcpp::Node::SharedPtr node);
 
   void UndistortPointCloud(EllipseLivoPointCloudPtr pc, KfState &kf_state,
-                           rclcpp::Time &lidar_end_time);
+                           rclcpp::Time &lidar_start_time,
+                           rclcpp::Time &lidar_end_time, CamProcessVec &cams);
   void UpdateStatesWithLidar(double &solve_H_time, KfState &kf_state,
                              rclcpp::Time &lidar_end_time);
   void GetKfState(KfState &kf_state);
@@ -63,6 +65,11 @@ class ImuProcess {
   void ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   void GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
                     boost::circular_buffer<ImuState> &imu_states);
+  void GetMatchingImages(rclcpp::Time &lidar_start_time, CamProcessVec &cams,
+                         boost::circular_buffer<ImuState> &imu_states);
+  void ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
+                     Eigen::Isometry3d &T_world_pt,
+                     Eigen::Isometry3d &T_imu_lidar);
 
   IkfomSPtr kf_;
   KfState kf_state_;

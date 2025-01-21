@@ -32,23 +32,6 @@ void CamProcess::CamCallback(
   cam_mutex_.unlock();
 }
 
-void CamProcess::GetTransform(double time, Pose6D &head, Pose6D &tail,
-                              Eigen::Isometry3d &T_world_imu) {
-  M3D R_imu;
-  V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
-
-  double dt = time - head.offset_time;
-
-  R_imu << MAT_FROM_ARRAY(head.rot);
-  vel_imu << VEC_FROM_ARRAY(head.vel);
-  pos_imu << VEC_FROM_ARRAY(head.pos);
-  acc_imu << VEC_FROM_ARRAY(tail.acc);
-  angvel_avr << VEC_FROM_ARRAY(tail.gyr);
-
-  T_world_imu.linear() = R_imu * Exp(angvel_avr, dt);
-  T_world_imu.translation() = pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
-}
-
 void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
                                       rclcpp::Time &img_time) {
   int match_idx;

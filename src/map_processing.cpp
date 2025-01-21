@@ -9,13 +9,22 @@ bool MappingNode::sync_packages() {
   if (!lid_process->lidar_has_data_) {
     return false;
   }
+  for (int i = 0; i < num_cams; i++) {
+    if (!cams_process[i]->cam_has_data_) {
+      return false;
+    }
+  }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
-    std::cerr << "Lidar data is too old" << std::endl;
     lid_process->ClearPointCloud();
     return false;
+  }
+  for (int i = 0; i < num_cams; i++) {
+    if (cams_process[i]->img_end_time_ < lid_process->lidar_start_time_) {
+      return false;
+    }
   }
 
   return true;
@@ -559,7 +568,9 @@ MappingNode::MappingNode(
   this->declare_parameter<vector<double>>("lidar.r_imu_lidar",
                                           vector<double>());
 
-  this->declare_parameter<int>("cameras.frame_rate", 20);
+  this->declare_parameter<int>("cameras.num_cams", 0);
+  this->declare_parameter<vector<long int>>("cameras.frame_rates",
+                                            vector<long int>());
   this->declare_parameter<vector<string>>("cameras.cam_topics",
                                           vector<string>());
   this->declare_parameter<vector<double>>("cameras.cam_intrinsics",
@@ -598,14 +609,16 @@ MappingNode::MappingNode(
   this->get_parameter_or<vector<double>>("lidar.r_imu_lidar", r_imu_lidar,
                                          vector<double>());
 
-  this->get_parameter_or<int>("cameras.frame_rate", cam_frame_rate, 20);
+  this->get_parameter_or<int>("cameras.num_cams", num_cams, 0);
+  this->get_parameter_or<vector<long int>>("cameras.frame_rates",
+                                           cam_frame_rates, vector<long int>());
   this->get_parameter_or<vector<string>>("cameras.cam_topics", cam_topics,
                                          vector<string>());
   this->get_parameter_or<vector<double>>("cameras.cam_intrinsics",
                                          cam_intrinsics, vector<double>());
-  this->get_parameter_or<vector<double>>("cameras.T_cam_lidars", T_cam_lidars,
+  this->get_parameter_or<vector<double>>("cameras.t_cam_lidars", t_cam_lidars,
                                          vector<double>());
-  this->get_parameter_or<vector<double>>("cameras.R_cam_lidars", R_cam_lidars,
+  this->get_parameter_or<vector<double>>("cameras.r_cam_lidars", r_cam_lidars,
                                          vector<double>());
 
   lidar_params.map_search_radius = map_search_radius;
@@ -664,76 +677,73 @@ MappingNode::MappingNode(
 
 MappingNode::~MappingNode() {}
 
-// void MappingNode::init_cam_process() {
-//   if (cam_init) {
-//     return;
-//   }
-//   cam_init = true;
-//   if (cam_topics.empty()) {
-//     RCLCPP_INFO(this->get_logger(), "No camera topics, skip camera process");
-//     return;
-//   }
-//   if (cam_topics.size() * 3 != T_cam_lidars.size()) {
-//     RCLCPP_ERROR(this->get_logger(),
-//                  "The number of camera topics and T_cam_lidars are not "
-//                  "consistent, skip camera process");
-//     return;
-//   }
-//   if (cam_topics.size() * 9 != R_cam_lidars.size()) {
-//     RCLCPP_ERROR(this->get_logger(),
-//                  "The number of camera topics and R_cam_lidars are not "
-//                  "consistent, skip camera process");
-//     return;
-//   }
-//   if (cam_topics.size() * 9 != cam_intrinsics.size()) {
-//     RCLCPP_ERROR(this->get_logger(),
-//                  "The number of camera topics and cam_intrinsics are not "
-//                  "consistent, skip camera process");
-//     return;
-//   }
-//   for (int i = 0; i < cam_topics.size(); i++) {
-//     p_cams.push_back(std::make_shared<CamProcess>(cam_frame_rate,
-//     cam_topics[i],
-//                                                   shared_from_this()));
-//     V3D Lidar_T_wrt_Cam(Zero3d);
-//     M3D Lidar_R_wrt_Cam(Eye3d);
-//     M3D cam_intrinsic_mat(Eye3d);
-//     vector<double> T_cam_lidar(T_cam_lidars.begin() + i * 3,
-//                                T_cam_lidars.begin() + i * 3 + 3);
-//     vector<double> R_cam_lidar(R_cam_lidars.begin() + i * 9,
-//                                R_cam_lidars.begin() + i * 9 + 9);
-//     vector<double> cam_intrinsic(cam_intrinsics.begin() + i * 9,
-//                                  cam_intrinsics.begin() + i * 9 + 9);
-//     Lidar_T_wrt_Cam << VEC_FROM_ARRAY(T_cam_lidar);
-//     Lidar_R_wrt_Cam << MAT_FROM_ARRAY(R_cam_lidar);
-//     cam_intrinsic_mat << MAT_FROM_ARRAY(cam_intrinsic);
-//     p_cams[i]->SetExtrinsicAndIntrinsic(Lidar_T_wrt_Cam, Lidar_R_wrt_Cam,
-//                                         Lidar_T_wrt_IMU, Lidar_R_wrt_IMU,
-//                                         cam_intrinsic_mat);
-//   }
-// }
+void MappingNode::init_cam_process() {
+  if (cam_frame_rates.size() != num_cams) {
+    RCLCPP_ERROR(this->get_logger(), "Frame rates and num cameras mismatch");
+    return;
+  }
+  if (cam_topics.size() != num_cams) {
+    RCLCPP_ERROR(this->get_logger(), "Cam topics and num cameras mismatch");
+    return;
+  }
+  if (t_cam_lidars.size() != num_cams * 3) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Cam translations and num cameras mismatch");
+    return;
+  }
+  if (r_cam_lidars.size() != num_cams * 9) {
+    RCLCPP_ERROR(this->get_logger(), "Cam rotations and num cameras mismatch");
+    return;
+  }
+  if (cam_intrinsics.size() != num_cams * 9) {
+    RCLCPP_ERROR(this->get_logger(), "Cam intrinsics and num cameras mismatch");
+    return;
+  }
+
+  for (int i = 0; i < num_cams; i++) {
+    CamParams cam_params;
+
+    cam_params.topic = cam_topics[i];
+    cam_params.rate = cam_frame_rates[i];
+
+    vector<double> t_cam_lidar(t_cam_lidars.begin() + i * 3,
+                               t_cam_lidars.begin() + i * 3 + 3);
+    vector<double> r_cam_lidar(r_cam_lidars.begin() + i * 9,
+                               r_cam_lidars.begin() + i * 9 + 9);
+    vector<double> cam_intrinsic(cam_intrinsics.begin() + i * 9,
+                                 cam_intrinsics.begin() + i * 9 + 9);
+
+    cam_params.t_cam_lidar << VEC_FROM_ARRAY(t_cam_lidar);
+    cam_params.r_cam_lidar << MAT_FROM_ARRAY(r_cam_lidar);
+    cam_params.cam_intrinsics << MAT_FROM_ARRAY(cam_intrinsic);
+
+    cams_process.push_back(
+        std::make_shared<CamProcess>(cam_params, shared_from_this()));
+  }
+}
 
 void MappingNode::timer_callback() {
-  //  init_cam_process();
-
   if (!initialized) {
     initialized = true;
     imu_process =
         std::make_shared<ImuProcess>(kf_, imu_params, shared_from_this());
     lid_process =
         std::make_shared<LidarProcess>(lidar_params, shared_from_this());
+    init_cam_process();
   }
 
   if (sync_packages()) {
     std::cerr << "Synced packages" << std::endl;
     double t0, t1, t2, t3, t4, t5, t6, t7, solve_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    rclcpp::Time lidar_start_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
     t0 = omp_get_wtime();
 
-    lid_process->GetPointCloud(scan_cloud, lidar_end_time, scan_cloud_bins,
-                               start_bin);
-    imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_end_time);
+    lid_process->GetPointCloud(scan_cloud, lidar_start_time, lidar_end_time,
+                               scan_cloud_bins, start_bin);
+    imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_start_time,
+                                     lidar_end_time, cams_process);
 
     t1 = omp_get_wtime();
     imu_time = t1 - t0;
