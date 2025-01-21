@@ -7,7 +7,7 @@
 
 #include <Eigen/Core>
 
-#define SKEW_SYM_MATRX(v) 0.0, -v[2], v[1], v[2], 0.0, -v[0], -v[1], v[0], 0.0
+#define SKEW_SYM_MATRIX(v) 0.0, -v[2], v[1], v[2], 0.0, -v[0], -v[1], v[0], 0.0
 
 template <typename T>
 Eigen::Matrix<T, 3, 3> skew_sym_mat(const Eigen::Matrix<T, 3, 1> &v) {
@@ -23,7 +23,7 @@ Eigen::Matrix<T, 3, 3> Exp(const Eigen::Matrix<T, 3, 1> &&ang) {
   if (ang_norm > 0.0000001) {
     Eigen::Matrix<T, 3, 1> r_axis = ang / ang_norm;
     Eigen::Matrix<T, 3, 3> K;
-    K << SKEW_SYM_MATRX(r_axis);
+    K << SKEW_SYM_MATRIX(r_axis);
     /// Roderigous Tranformation
     return Eye3 + std::sin(ang_norm) * K + (1.0 - std::cos(ang_norm)) * K * K;
   } else {
@@ -41,7 +41,7 @@ Eigen::Matrix<T, 3, 3> Exp(const Eigen::Matrix<T, 3, 1> &ang_vel,
     Eigen::Matrix<T, 3, 1> r_axis = ang_vel / ang_vel_norm;
     Eigen::Matrix<T, 3, 3> K;
 
-    K << SKEW_SYM_MATRX(r_axis);
+    K << SKEW_SYM_MATRIX(r_axis);
 
     T r_ang = ang_vel_norm * dt;
 
@@ -59,7 +59,7 @@ Eigen::Matrix<T, 3, 3> Exp(const T &v1, const T &v2, const T &v3) {
   if (norm > 0.00001) {
     T r_ang[3] = {v1 / norm, v2 / norm, v3 / norm};
     Eigen::Matrix<T, 3, 3> K;
-    K << SKEW_SYM_MATRX(r_ang);
+    K << SKEW_SYM_MATRIX(r_ang);
 
     /// Roderigous Tranformation
     return Eye3 + std::sin(norm) * K + (1.0 - std::cos(norm)) * K * K;

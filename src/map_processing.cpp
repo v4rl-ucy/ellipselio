@@ -436,13 +436,7 @@ void MappingNode::publish_odometry() {
 
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  double res_mean, t0, t1;
   std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
-
-  ekfom_data.h.resize(scan_cloud->size(), 1);
-  ekfom_data.h_x.resize(scan_cloud->size(), 12);
-
-  t0 = omp_get_wtime();
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -451,7 +445,7 @@ void MappingNode::tensor_registration(
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
 
-    V3F c, a;
+    V3F a;
     V3D p_imu;
     M3F P_skew;
     V3F p_lidar, p_world;
@@ -509,29 +503,25 @@ void MappingNode::tensor_registration(
     residual = norm_vec.norm();
     norm_vec.normalize();
 
-    P_skew << SKEW_SYM_MATRX(p_imu.cast<float>());
-    c = s.rot.conjugate().cast<float>() * norm_vec;
-    a = P_skew * c;
+    P_skew << SKEW_SYM_MATRIX(p_imu.cast<float>());
+    a = P_skew * s.rot.conjugate().cast<float>() * norm_vec;
 
     feat_num = ++feat_cnt;
-    ekfom_data.h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
+    ekfom_data_h(feat_num - 1) = -residual;
+    ekfom_data_h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
         VEC_FROM_ARRAY(a), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-    ekfom_data.h(feat_num - 1) = -residual;
   }
 
-  ekfom_data.h.conservativeResize(feat_cnt, 1);
-  ekfom_data.h_x.conservativeResize(feat_cnt, 12);
+  ekfom_data.h = ekfom_data_h.head(int(feat_cnt));
+  ekfom_data.h_x = ekfom_data_h_x.topRows(int(feat_cnt));
 
-  res_mean = -ekfom_data.h.sum() / feat_cnt;
+  double res_mean = -ekfom_data.h.sum() / feat_cnt;
 
   RCLCPP_INFO_STREAM(this->get_logger(), "Res mean: " << res_mean);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num feats: " << feat_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num planes: " << plane_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num curves: " << curve_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num junctions: " << junct_cnt);
-
-  t1 = omp_get_wtime();
-  match_time += t1 - t0;
 }
 
 MappingNode::MappingNode(
@@ -627,6 +617,22 @@ MappingNode::MappingNode(
   ioctree.set_min_extent(map_resolution);
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_SCAN_POINTS);
+
+  ekfom_data_h = Eigen::VectorXd(MAX_SCAN_POINTS, 1);
+  ekfom_data_h_x = Eigen::MatrixXd(MAX_SCAN_POINTS, 12);
+
+  update_cnt.reserve(MAX_MAP_POINTS);
+  update_idx.reserve(MAX_MAP_POINTS);
+  updated_pt.reserve(MAX_MAP_POINTS);
+  saliency_idxs.reserve(MAX_MAP_POINTS);
+  neighbours.reserve(MAX_MAP_POINTS);
+  filters.reserve(MAX_MAP_POINTS);
+
+  tensors_p1.reserve(MAX_MAP_POINTS);
+  tensors_p2.reserve(MAX_MAP_POINTS);
+  salivalues.reserve(MAX_MAP_POINTS);
+  eigenvalues.reserve(MAX_MAP_POINTS);
+  eigenvectors.reserve(MAX_MAP_POINTS);
 
   num_bins = ceil(lidar_params.max_range / lidar_params.bin_size);
   mean_cnt = std::vector<int>(num_bins, 0);
@@ -731,8 +737,7 @@ void MappingNode::timer_callback() {
 
   if (sync_packages()) {
     RCLCPP_INFO(this->get_logger(), "Synced packages");
-    double t0, t1, t2, t3, t4, undistort_time, state_update_time,
-        map_update_time, total_time;
+    double t0, t1, t2, t3, t4, imu_time, state_time, map_time, total_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
     rclcpp::Time lidar_start_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
@@ -759,41 +764,35 @@ void MappingNode::timer_callback() {
     RCLCPP_INFO_STREAM(this->get_logger(), "Scan size: " << scan_cloud->size());
 
     t2 = omp_get_wtime();
-    match_time = 0;
     imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
+
     t3 = omp_get_wtime();
-
     map_incremental(false);
+
     t4 = omp_get_wtime();
-
-    undistort_time = t1 - t0;
-    state_update_time = t3 - t2;
-    map_update_time = t4 - t3;
-    total_time = t4 - t0;
-
     publish_odometry();
     publish_scan();
 
-    max_undistort_time = fmax(max_undistort_time, undistort_time);
-    max_match_time = fmax(max_match_time, match_time);
-    max_state_update_time = fmax(max_state_update_time, state_update_time);
-    max_map_update_time = fmax(max_map_update_time, map_update_time);
+    imu_time = t1 - t0;
+    state_time = t3 - t2;
+    map_time = t4 - t3;
+    total_time = t4 - t0;
+
+    max_imu_time = fmax(max_imu_time, imu_time);
+    max_state_time = fmax(max_state_time, state_time);
+    max_map_time = fmax(max_map_time, map_time);
     max_total_time = fmax(max_total_time, total_time);
 
-    RCLCPP_INFO_STREAM(this->get_logger(), "Undistort: " << undistort_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Match: " << match_time);
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "State update: " << state_update_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Map update: " << map_update_time);
+    RCLCPP_INFO(this->get_logger(), " ");
+    RCLCPP_INFO_STREAM(this->get_logger(), "Imu: " << imu_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "State: " << state_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Map: " << map_time);
     RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << total_time);
+    RCLCPP_INFO(this->get_logger(), " ");
 
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Max undistort: " << max_undistort_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max match: " << max_match_time);
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Max state update: " << max_state_update_time);
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Max map update: " << max_map_update_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max imu: " << max_imu_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max state: " << max_state_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max map: " << max_map_time);
     RCLCPP_INFO_STREAM(this->get_logger(), "Max total: " << max_total_time);
     RCLCPP_INFO(this->get_logger(), " ");
   }

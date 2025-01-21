@@ -65,14 +65,17 @@ class MappingNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
 
-  double match_time = 0, max_match_time = 0, max_undistort_time = 0,
-         max_state_update_time = 0, max_map_update_time = 0, max_total_time = 0;
+  double max_imu_time = 0, max_state_time = 0, max_map_time = 0,
+         max_total_time = 0;
 
   int kf_iterations, map_bucket_size, map_counter, pub_map_n_secs;
   double map_resolution, map_search_radius;
 
   int start_bin, num_bins;
   bool initialized = false;
+
+  Eigen::VectorXd ekfom_data_h;
+  Eigen::MatrixXd ekfom_data_h_x;
 
   std::vector<V3F> mean_sali;
   std::vector<M3F> tensors_p1;
