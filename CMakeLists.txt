@@ -45,10 +45,6 @@ find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 
-message(Eigen: ${EIGEN3_INCLUDE_DIR})
-message(STATUS "PCL: ${PCL_INCLUDE_DIRS}")
-
-
 ament_auto_add_library(ellipselivo_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp)
 target_include_directories(ellipselivo_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
