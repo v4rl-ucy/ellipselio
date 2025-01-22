@@ -692,25 +692,25 @@ MappingNode::~MappingNode() {}
 void MappingNode::init_cam_process() {
   if (cam_frame_rates.size() != num_cams) {
     RCLCPP_ERROR(this->get_logger(), "Frame rates and num cameras mismatch");
-    return;
+    exit(1);
   }
   if (cam_topics.size() != num_cams) {
     RCLCPP_ERROR(this->get_logger(), "Cam topics and num cameras mismatch");
-    return;
+    exit(1);
   }
   if (t_cam_lidars.size() != num_cams * 3) {
     RCLCPP_ERROR(this->get_logger(),
                  "Cam translations and num cameras mismatch");
-    return;
+    exit(1);
   }
-  if (r_cam_lidars.size() != num_cams * 9 ||
-      r_cam_lidars.size() != num_cams * 4) {
+  if (!(r_cam_lidars.size() == num_cams * 9 ||
+        r_cam_lidars.size() == num_cams * 4)) {
     RCLCPP_ERROR(this->get_logger(), "Cam rotations and num cameras mismatch");
-    return;
+    exit(1);
   }
   if (cam_intrinsics.size() != num_cams * 9) {
     RCLCPP_ERROR(this->get_logger(), "Cam intrinsics and num cameras mismatch");
-    return;
+    exit(1);
   }
 
   for (int i = 0; i < num_cams; i++) {

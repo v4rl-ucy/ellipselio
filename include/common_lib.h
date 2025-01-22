@@ -20,7 +20,7 @@ using namespace std;
 #define MAX_MAP_POINTS (10000000)
 
 #define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
-#define QUAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3]
+#define QUAT_FROM_ARRAY(v) v[3], v[0], v[1], v[2]
 #define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
 
 typedef Eigen::Vector3d V3D;
