@@ -3,30 +3,61 @@
 namespace ellipselivo {
 
 bool MappingNode::sync_packages() {
+  double inter_sync_time = omp_get_wtime() - last_sync_time;
+  if (!last_sync_time) {
+    auto &clk = *this->get_clock();
+    RCLCPP_INFO_THROTTLE(this->get_logger(), clk, 1000, "Waiting for data...");
+  }
   if (!imu_process->imu_has_data_) {
+    if (last_sync_time && inter_sync_time > fmax(1.0 / imu_params.rate, 0.01)) {
+      RCLCPP_ERROR(this->get_logger(), "IMU has no data");
+    }
     return false;
   }
   if (!lid_process->lidar_has_data_) {
+    if (last_sync_time && inter_sync_time > 1.0 / lidar_params.rate) {
+      RCLCPP_ERROR(this->get_logger(), "Lidar has no data");
+    }
     return false;
   }
-  for (int i = 0; i < num_cams; i++) {
-    if (!cams_process[i]->cam_has_data_) {
-      return false;
-    }
-  }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
+    if (last_sync_time && inter_sync_time > fmax(1.0 / imu_params.rate, 0.01)) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "IMU end time is less than lidar end time");
+    }
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
+    if (last_sync_time) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "IMU start time is greater than lidar start time");
+    }
     lid_process->ClearPointCloud();
     return false;
   }
   for (int i = 0; i < num_cams; i++) {
+    if (!cams_process[i]->cam_has_data_) {
+      if (last_sync_time && inter_sync_time > 1.0 / cam_frame_rates[i]) {
+        RCLCPP_ERROR_STREAM(this->get_logger(),
+                            "Camera " << i << " has no data");
+      }
+      return false;
+    }
+  }
+  for (int i = 0; i < num_cams; i++) {
     if (cams_process[i]->img_end_time_ < lid_process->lidar_start_time_) {
+      if (last_sync_time && inter_sync_time > 1.0 / cam_frame_rates[i]) {
+        RCLCPP_ERROR_STREAM(
+            this->get_logger(),
+            "Camera " << i << " end time is less than lidar start time");
+      }
       return false;
     }
   }
 
+  RCLCPP_INFO_STREAM(this->get_logger(),
+                     "Inter sync: " << omp_get_wtime() - last_sync_time);
+  RCLCPP_INFO(this->get_logger(), "Synced packages");
   return true;
 }
 
@@ -333,6 +364,8 @@ void MappingNode::map_incremental(bool init_map) {
 
 void MappingNode::publish_map() {
   sensor_msgs::msg::PointCloud2 map_msg;
+
+  if (!map_cloud->size()) return;
   pcl::toROSMsg(*map_cloud, map_msg);
   map_msg.header.stamp = kf_state_.time;
   map_msg.header.frame_id = "odom_ellipselivo";
@@ -351,6 +384,8 @@ void MappingNode::publish_markers() {
   std::atomic<int> marker_idx = 0;
   int start_idx, end_idx, step_idx, count_idx;
   visualization_msgs::msg::MarkerArray marker_array;
+
+  if (!map_cloud->size()) return;
 
   start_idx = 0;
   end_idx = map_cloud->points.size();
@@ -675,7 +710,8 @@ MappingNode::MappingNode(
       "/visualization_marker", 1);
 
   loop_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(10),
+      this, this->get_clock(),
+      std::chrono::milliseconds(std::max(1000 / imu_params.rate, 10)),
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
@@ -690,6 +726,8 @@ MappingNode::MappingNode(
 MappingNode::~MappingNode() {}
 
 void MappingNode::init_cam_process() {
+  if (num_cams == 0) return;
+
   if (cam_frame_rates.size() != num_cams) {
     RCLCPP_ERROR(this->get_logger(), "Frame rates and num cameras mismatch");
     exit(1);
@@ -754,7 +792,6 @@ void MappingNode::timer_callback() {
   }
 
   if (sync_packages()) {
-    RCLCPP_INFO(this->get_logger(), "Synced packages");
     double t0, t1, t2, t3, t4, imu_time, state_time, map_time, total_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
     rclcpp::Time lidar_start_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -813,6 +850,8 @@ void MappingNode::timer_callback() {
     RCLCPP_INFO_STREAM(this->get_logger(), "Max map: " << max_map_time);
     RCLCPP_INFO_STREAM(this->get_logger(), "Max total: " << max_total_time);
     RCLCPP_INFO(this->get_logger(), " ");
+
+    last_sync_time = omp_get_wtime();
   }
 }
 
