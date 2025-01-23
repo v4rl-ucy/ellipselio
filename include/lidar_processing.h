@@ -29,12 +29,12 @@ class LidarProcess {
   ~LidarProcess();
   LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &start_time,
-                     rclcpp::Time &end_time, std::vector<int> &bin_pc_sizes,
-                     int &start_bin);
+  void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &end_time,
+                     std::vector<int> &bin_pc_sizes, int &start_bin);
 
   int num_bins_;
   bool lidar_has_data_;
+  std::atomic<int> lidar_counter_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
 
   std::vector<int> bucket_sizes_;
@@ -83,6 +83,7 @@ class LidarProcess {
 
   int start_bin_;
   float mean_range_;
+  double last_lidar_time_;
   std::mutex lidar_mutex_;
   LidarParams params_;
 };

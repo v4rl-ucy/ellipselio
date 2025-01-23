@@ -7,6 +7,7 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
     : b_first_frame_(true),
       imu_need_init_(true),
       imu_has_data_(false),
+      imu_counter_(0),
       params_(params),
       kf_(kf),
       node_(node),
@@ -39,8 +40,9 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
 
 void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
+  imu_counter_++;
 
-  if (rclcpp::Time(msg->header.stamp) < imu_end_time_) {
+  if (rclcpp::Time(msg->header.stamp) <= imu_end_time_) {
     RCLCPP_INFO_STREAM(node_->get_logger(), "Imu time out of order");
     return;
   }
@@ -171,7 +173,6 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 
 void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
                                      KfState &kf_state,
-                                     rclcpp::Time &lidar_start_time,
                                      rclcpp::Time &lidar_end_time,
                                      CamProcessVec &cams) {
   int match_idx;
@@ -182,7 +183,7 @@ void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
   imu_states = imu_states_;
   imu_mutex_.unlock();
 
-  GetMatchingImages(lidar_start_time, cams, imu_states);
+  GetMatchingImages(lidar_end_time, cams, imu_states);
   GetTimeMatch(match_idx, lidar_end_time, imu_states);
 
   kf_state = imu_states[match_idx].state;

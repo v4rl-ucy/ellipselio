@@ -45,7 +45,6 @@ class ImuProcess {
   ImuProcess(IkfomSPtr kf, ImuParams params, rclcpp::Node::SharedPtr node);
 
   void UndistortPointCloud(EllipseLivoPointCloudPtr pc, KfState &kf_state,
-                           rclcpp::Time &lidar_start_time,
                            rclcpp::Time &lidar_end_time, CamProcessVec &cams);
   void UpdateStatesWithLidar(KfState &kf_state, rclcpp::Time &lidar_end_time);
   void GetKfState(KfState &kf_state);
@@ -57,6 +56,7 @@ class ImuProcess {
   void set_extrinsic(const V3D &transl, const M3D &rot);
 
   bool imu_has_data_;
+  std::atomic<int> imu_counter_;
   rclcpp::Time imu_start_time_, imu_end_time_;
 
  private:
@@ -65,7 +65,7 @@ class ImuProcess {
   void ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   void GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
                     boost::circular_buffer<ImuState> &imu_states);
-  void GetMatchingImages(rclcpp::Time &lidar_start_time, CamProcessVec &cams,
+  void GetMatchingImages(rclcpp::Time &match_time, CamProcessVec &cams,
                          boost::circular_buffer<ImuState> &imu_states);
   void ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
                      Eigen::Isometry3d &T_world_pt,
@@ -94,6 +94,7 @@ class ImuProcess {
   Eigen::Matrix<double, 12, 12> Q;
 
   int init_iter_num;
+  double last_imu_time_;
   bool b_first_frame_, imu_need_init_;
 };
 

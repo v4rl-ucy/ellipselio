@@ -1,20 +1,17 @@
 #include <cam_processing.h>
 
 CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
-    : node_(node), params_(params), img_buffer_(params.rate) {
+    : node_(node), params_(params), img_buffer_(params.rate), cam_counter_(0) {
   cam_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
   rclcpp::SubscriptionOptions cam_opt;
   cam_opt.callback_group = cam_callback_group_;
 
-  rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
-  qos_profile.depth = 1;
-
   cam_sub_ = image_transport::create_subscription(
       node_.get(), params_.topic,
       std::bind(&CamProcess::CamCallback, this, std::placeholders::_1),
-      params_.transport, qos_profile, cam_opt);
+      params_.transport, rmw_qos_profile_sensor_data, cam_opt);
 
   T_cam_lidar_.linear() = params_.r_cam_lidar;
   T_cam_lidar_.translation() = params_.t_cam_lidar;
@@ -27,6 +24,8 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
 
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
+  cam_counter_++;
+
   if (rclcpp::Time(msg->header.stamp) < img_end_time_) {
     RCLCPP_INFO_STREAM(node_->get_logger(), "Cam time out of order");
     return;
@@ -56,18 +55,18 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
   match_idx = std::min(match_idx, (int)img_buffer_.size() - 1);
 
   while (!match_flag) {
-    if (img_buffer_[match_idx].time > match_time) {
-      if (match_idx == 0) {
+    if (img_buffer_[match_idx].time < match_time) {
+      if (match_idx == img_buffer_.size() - 1) {
         match_flag = true;
-      } else if (img_buffer_[match_idx - 1].time > match_time) {
-        match_idx--;
+      } else if (img_buffer_[match_idx + 1].time < match_time) {
+        match_idx++;
       } else {
         match_flag = true;
       }
-    } else if (match_idx == img_buffer_.size() - 1) {
+    } else if (match_idx == 0) {
       match_flag = true;
     } else {
-      match_idx++;
+      match_idx--;
     }
   }
 

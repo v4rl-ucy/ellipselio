@@ -38,6 +38,7 @@ class CamProcess {
   bool ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col);
 
   bool cam_has_data_;
+  std::atomic<int> cam_counter_;
   Eigen::Isometry3d T_cam_lidar_, T_world_img_;
   rclcpp::Time img_start_time_, img_end_time_;
 
@@ -52,6 +53,8 @@ class CamProcess {
   image_transport::Subscriber cam_sub_;
   rclcpp::CallbackGroup::SharedPtr cam_callback_group_;
   boost::circular_buffer<Img> img_buffer_;
+
+  double last_cam_time_;
 
   void CamCallback(const sensor_msgs::msg::Image::ConstSharedPtr msg);
 };

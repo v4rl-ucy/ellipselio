@@ -4,31 +4,33 @@ namespace ellipselivo {
 
 bool MappingNode::sync_packages() {
   double inter_sync_time = omp_get_wtime() - last_sync_time;
+
   if (!last_sync_time) {
-    auto &clk = *this->get_clock();
-    RCLCPP_INFO_THROTTLE(this->get_logger(), clk, 1000, "Waiting for data...");
+    if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
+      RCLCPP_INFO(this->get_logger(), "Waiting for data...");
+    }
   }
   if (!imu_process->imu_has_data_) {
-    if (last_sync_time && inter_sync_time > fmax(1.0 / imu_params.rate, 0.01)) {
+    if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
       RCLCPP_ERROR(this->get_logger(), "IMU has no data");
     }
     return false;
   }
   if (!lid_process->lidar_has_data_) {
-    if (last_sync_time && inter_sync_time > 1.0 / lidar_params.rate) {
+    if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
       RCLCPP_ERROR(this->get_logger(), "Lidar has no data");
     }
     return false;
   }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
-    if (last_sync_time && inter_sync_time > fmax(1.0 / imu_params.rate, 0.01)) {
+    if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU end time is less than lidar end time");
     }
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
-    if (last_sync_time) {
+    if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU start time is greater than lidar start time");
     }
@@ -37,7 +39,7 @@ bool MappingNode::sync_packages() {
   }
   for (int i = 0; i < num_cams; i++) {
     if (!cams_process[i]->cam_has_data_) {
-      if (last_sync_time && inter_sync_time > 1.0 / cam_frame_rates[i]) {
+      if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
         RCLCPP_ERROR_STREAM(this->get_logger(),
                             "Camera " << i << " has no data");
       }
@@ -45,19 +47,36 @@ bool MappingNode::sync_packages() {
     }
   }
   for (int i = 0; i < num_cams; i++) {
-    if (cams_process[i]->img_end_time_ < lid_process->lidar_start_time_) {
-      if (last_sync_time && inter_sync_time > 1.0 / cam_frame_rates[i]) {
+    if (cams_process[i]->img_end_time_ < imu_process->imu_start_time_) {
+      if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
         RCLCPP_ERROR_STREAM(
             this->get_logger(),
-            "Camera " << i << " end time is less than lidar start time");
+            "Camera " << i << " end time is less than imu start time");
       }
       return false;
     }
   }
 
-  RCLCPP_INFO_STREAM(this->get_logger(),
-                     "Inter sync: " << omp_get_wtime() - last_sync_time);
+  int cur_imu_freq = round(imu_process->imu_counter_ / inter_sync_time);
+  int cur_lid_freq = round(lid_process->lidar_counter_ / inter_sync_time);
+  imu_process->imu_counter_ = 0;
+  lid_process->lidar_counter_ = 0;
+
+  RCLCPP_INFO_STREAM(this->get_logger(), "Imu freq: " << cur_imu_freq);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Lid freq: " << cur_lid_freq);
+
+  for (int i = 0; i < num_cams; i++) {
+    int cur_cam_freq = round(cams_process[i]->cam_counter_ / inter_sync_time);
+    cams_process[i]->cam_counter_ = 0;
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Cam " << i << " freq: " << cur_cam_freq);
+  }
+
+  int cur_odom_freq = round(1.0 / inter_sync_time);
+  RCLCPP_INFO_STREAM(this->get_logger(), "Odom freq: " << cur_odom_freq);
+
   RCLCPP_INFO(this->get_logger(), "Synced packages");
+  last_sync_time = omp_get_wtime();
   return true;
 }
 
@@ -339,25 +358,15 @@ void MappingNode::map_incremental(bool init_map) {
   eigenvalues.resize(map_cloud->size(), V3F::Zero());
   eigenvectors.resize(map_cloud->size(), M3F::Zero());
 
-  RCLCPP_INFO_STREAM(this->get_logger(), "Map size: " << map_cloud->size());
-  RCLCPP_INFO_STREAM(this->get_logger(), "ioctree size: " << ioctree.size());
-  RCLCPP_INFO_STREAM(this->get_logger(),
-                     "Octants size: " << ioctree.octant_size());
-  RCLCPP_INFO_STREAM(this->get_logger(), "New idxs size: " << new_idxs.size());
-
   if (new_idxs.size() > 0) {
-    double pass_1_start = omp_get_wtime();
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
-    double pass_1_end = omp_get_wtime();
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Pass 1 time: " << pass_1_end - pass_1_start);
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Updated idxs size: " << updated_idxs.size());
     tensor_vote_pass_2(new_idxs, updated_idxs);
-    double pass_2_end = omp_get_wtime();
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Pass 2 time: " << pass_2_end - pass_1_end);
   }
+
+  RCLCPP_INFO_STREAM(this->get_logger(), "Map size: " << map_cloud->size());
+  RCLCPP_INFO_STREAM(this->get_logger(), "Oct num: " << ioctree.octant_size());
+  RCLCPP_INFO_STREAM(this->get_logger(), "New idxs: " << new_idxs.size());
+  RCLCPP_INFO_STREAM(this->get_logger(), "Upd idxs: " << updated_idxs.size());
 
   map_counter++;
 }
@@ -552,11 +561,12 @@ void MappingNode::tensor_registration(
 
   double res_mean = -ekfom_data.h.sum() / feat_cnt;
 
-  RCLCPP_INFO_STREAM(this->get_logger(), "Res mean: " << res_mean);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num feats: " << feat_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num planes: " << plane_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num curves: " << curve_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num junctions: " << junct_cnt);
+  RCLCPP_INFO_STREAM(this->get_logger(),
+                     "Res mean: " << std::setprecision(2) << res_mean);
 }
 
 MappingNode::MappingNode(
@@ -712,8 +722,7 @@ MappingNode::MappingNode(
       "/visualization_marker", 1);
 
   loop_timer_ = rclcpp::create_timer(
-      this, this->get_clock(),
-      std::chrono::milliseconds(std::max(1000 / imu_params.rate, 10)),
+      this, this->get_clock(), std::chrono::milliseconds(10),
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
@@ -797,14 +806,13 @@ void MappingNode::timer_callback() {
   if (sync_packages()) {
     double t0, t1, t2, t3, t4, imu_time, state_time, map_time, total_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
-    rclcpp::Time lidar_start_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
     t0 = omp_get_wtime();
 
-    lid_process->GetPointCloud(scan_cloud, lidar_start_time, lidar_end_time,
-                               scan_cloud_bins, start_bin);
-    imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_start_time,
-                                     lidar_end_time, cams_process);
+    lid_process->GetPointCloud(scan_cloud, lidar_end_time, scan_cloud_bins,
+                               start_bin);
+    imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_end_time,
+                                     cams_process);
 
     t1 = omp_get_wtime();
 
@@ -842,19 +850,33 @@ void MappingNode::timer_callback() {
     max_total_time = fmax(max_total_time, total_time);
 
     RCLCPP_INFO(this->get_logger(), " ");
-    RCLCPP_INFO_STREAM(this->get_logger(), "Imu: " << imu_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "State: " << state_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Map: " << map_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << total_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Imu: " << std::fixed
+                                                   << std::setprecision(3)
+                                                   << imu_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "State: " << std::fixed
+                                                     << std::setprecision(3)
+                                                     << state_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Map: " << std::fixed
+                                                   << std::setprecision(3)
+                                                   << map_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << std::fixed
+                                                     << std::setprecision(3)
+                                                     << total_time);
     RCLCPP_INFO(this->get_logger(), " ");
 
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max imu: " << max_imu_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max state: " << max_state_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max map: " << max_map_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max total: " << max_total_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max imu: " << std::fixed
+                                                       << std::setprecision(3)
+                                                       << max_imu_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max state: " << std::fixed
+                                                         << std::setprecision(3)
+                                                         << max_state_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max map: " << std::fixed
+                                                       << std::setprecision(3)
+                                                       << max_map_time);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Max total: " << std::fixed
+                                                         << std::setprecision(3)
+                                                         << max_total_time);
     RCLCPP_INFO(this->get_logger(), " ");
-
-    last_sync_time = omp_get_wtime();
   }
 }
 

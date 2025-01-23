@@ -5,6 +5,7 @@ LidarProcess::~LidarProcess() {}
 LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     : params_(params),
       node_(node),
+      lidar_counter_(0),
       ellipselivo_pc_(new EllipseLivoPointCloud()) {
   lidar_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -67,17 +68,16 @@ void LidarProcess::LidarCallback(
   sensor_msgs::msg::PointCloud2::SharedPtr msg(
       new sensor_msgs::msg::PointCloud2(*msg_in));
 
+  lidar_counter_++;
+
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
     RCLCPP_INFO_STREAM(node_->get_logger(), "Lidar time out of order");
     return;
   }
 
-  double t1 = omp_get_wtime();
   lidar_mutex_.lock();
   Process(msg);
   lidar_mutex_.unlock();
-  double t2 = omp_get_wtime();
-  RCLCPP_INFO_STREAM(node_->get_logger(), "Lidar proc time: " << t2 - t1);
 }
 
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -150,7 +150,6 @@ void LidarProcess::ClearPointCloud() {
 }
 
 void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
-                                 rclcpp::Time &start_time,
                                  rclcpp::Time &end_time,
                                  std::vector<int> &bin_pcs_sizes,
                                  int &start_bin) {
@@ -158,7 +157,6 @@ void LidarProcess::GetPointCloud(EllipseLivoPointCloudPtr pc,
   *pc = *ellipselivo_pc_;
   start_bin = start_bin_;
   end_time = lidar_end_time_;
-  start_time = lidar_start_time_;
   bin_pcs_sizes = bin_pcs_sizes_;
   ClearBins();
   lidar_has_data_ = false;
