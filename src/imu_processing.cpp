@@ -149,6 +149,7 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 
   time_diff = (match_time - imu_states.front().state.time).seconds();
   match_idx = std::floor(time_diff * params_.rate);
+  match_idx = std::max(match_idx, 0);
   match_idx = std::min(match_idx, (int)imu_states.size() - 1);
 
   while (!match_flag) {
@@ -259,7 +260,7 @@ void ImuProcess::GetMatchingImages(
 void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
                                Eigen::Isometry3d &T_world_pt,
                                Eigen::Isometry3d &T_imu_lidar) {
-  float max_dist_from_ctr = FLT_MAX;
+  int min_pt_col = 765;
 
   pt.r = 0;
   pt.g = 0;
@@ -268,8 +269,8 @@ void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
   pt.has_rgb = false;
 
   for (size_t i = 0; i < cams.size(); i++) {
-    float dist_from_ctr;
-    Eigen::Vector3d pt_img, pt_col;
+    Eigen::Vector3i pt_col;
+    Eigen::Vector3d pt_img;
 
     Eigen::Isometry3d &T_cam_lidar = cams[i]->T_cam_lidar_;
     Eigen::Isometry3d &T_world_img = cams[i]->T_world_img_;
@@ -277,14 +278,14 @@ void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
     pt_img = T_cam_lidar * T_imu_lidar.inverse() * T_world_img.inverse() *
              T_world_pt * T_imu_lidar * pt.getVector3fMap().cast<double>();
 
-    if (cams[i]->ColorPoint(pt_img, pt_col, dist_from_ctr)) {
-      if (dist_from_ctr < max_dist_from_ctr) {
+    if (cams[i]->ColorPoint(pt_img, pt_col)) {
+      if (pt_col.sum() < min_pt_col) {
         pt.r = pt_col(0);
         pt.g = pt_col(1);
         pt.b = pt_col(2);
         pt.a = 255;
         pt.has_rgb = true;
-        max_dist_from_ctr = dist_from_ctr;
+        min_pt_col = pt_col.sum();
       }
     }
   }

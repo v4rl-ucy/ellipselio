@@ -98,6 +98,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<vector<int>> neighbours;
 
   int num_cams;
+  string cam_transport;
   std::vector<string> cam_topics;
   std::vector<double> cam_intrinsics;
   std::vector<double> t_cam_lidars;

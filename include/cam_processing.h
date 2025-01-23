@@ -23,6 +23,7 @@ struct CamParams {
   M3D r_cam_lidar;
   M3D cam_intrinsics;
   std::string topic;
+  std::string transport;
 };
 
 struct Img {
@@ -34,7 +35,7 @@ class CamProcess {
  public:
   CamProcess(CamParams params, rclcpp::Node::SharedPtr node);
   void GetMatchingImageTime(rclcpp::Time &match_time, rclcpp::Time &img_time);
-  bool ColorPoint(V3D &pt_img, V3D &pt_col, float &dist_from_ctr);
+  bool ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col);
 
   bool cam_has_data_;
   Eigen::Isometry3d T_cam_lidar_, T_world_img_;

@@ -590,6 +590,7 @@ MappingNode::MappingNode(
                                           vector<double>());
 
   this->declare_parameter<int>("cameras.num_cams", 0);
+  this->declare_parameter<string>("cameras.transport", "raw");
   this->declare_parameter<vector<long int>>("cameras.frame_rates",
                                             vector<long int>());
   this->declare_parameter<vector<string>>("cameras.cam_topics",
@@ -631,6 +632,7 @@ MappingNode::MappingNode(
                                          vector<double>());
 
   this->get_parameter_or<int>("cameras.num_cams", num_cams, 0);
+  this->get_parameter_or<string>("cameras.transport", cam_transport, "raw");
   this->get_parameter_or<vector<long int>>("cameras.frame_rates",
                                            cam_frame_rates, vector<long int>());
   this->get_parameter_or<vector<string>>("cameras.cam_topics", cam_topics,
@@ -756,6 +758,7 @@ void MappingNode::init_cam_process() {
 
     cam_params.topic = cam_topics[i];
     cam_params.rate = cam_frame_rates[i];
+    cam_params.transport = cam_transport;
 
     vector<double> t_cam_lidar(t_cam_lidars.begin() + i * 3,
                                t_cam_lidars.begin() + i * 3 + 3);
