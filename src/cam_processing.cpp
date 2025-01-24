@@ -76,25 +76,31 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
 }
 
 bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
+  float x, y;
   cv::Vec3b color;
   Eigen::Vector3i tmp_col;
-  int min_pt_col = 765;
-  int x, y, x_d, y_d, cols, rows;
+  Eigen::Vector2i x_vals, y_vals;
+  int x_i, y_j, cols, rows, min_pt_col;
+
+  if (pt_img(2) <= 0) return false;
 
   cols = matched_img_.img->image.cols;
   rows = matched_img_.img->image.rows;
 
-  x = round((cam_intrinsics_(0, 0) * pt_img(0) / pt_img(2)) +
-            cam_intrinsics_(0, 2));
-  y = round((cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) +
-            cam_intrinsics_(1, 2));
+  x = (cam_intrinsics_(0, 0) * pt_img(0) / pt_img(2)) + cam_intrinsics_(0, 2);
+  y = (cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) + cam_intrinsics_(1, 2);
 
-  if (x >= 0 && x < cols && y >= 0 && y < rows && pt_img(2) > 0) {
-    for (int i = -1; i < 2; i++) {
-      for (int j = -1; j < 2; j++) {
-        x_d = std::min(std::max(x + i, 0), cols - 1);
-        y_d = std::min(std::max(y + j, 0), rows - 1);
-        color = matched_img_.img->image.at<cv::Vec3b>(y_d, x_d);
+  x_vals << std::floor(x), std::ceil(x);
+  y_vals << std::floor(y), std::ceil(y);
+
+  min_pt_col = 765;
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      x_i = x_vals(i);
+      y_j = y_vals(j);
+
+      if (x_i >= 0 && x_i < cols && y_j >= 0 && y_j < rows) {
+        color = matched_img_.img->image.at<cv::Vec3b>(y_j, x_i);
         tmp_col << color[2], color[1], color[0];
         if (tmp_col.sum() > 0 && tmp_col.sum() < min_pt_col) {
           pt_col = tmp_col;
@@ -102,10 +108,9 @@ bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
         }
       }
     }
-
-    if (min_pt_col < 765) {
-      return true;
-    }
   }
+
+  if (min_pt_col > 0 && min_pt_col < 765) return true;
+
   return false;
 }
