@@ -2,6 +2,7 @@
 
 namespace ellipselivo {
 
+// Sync lida, imu, and camera data
 bool MappingNode::sync_packages() {
   double inter_sync_time = omp_get_wtime() - last_sync_time;
 
@@ -80,6 +81,7 @@ bool MappingNode::sync_packages() {
   return true;
 }
 
+// Compute tensor voting matrix for point i and j
 void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
@@ -96,6 +98,7 @@ void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   A_j = c_ij * R_ij * K_j * Rp_ij;
 }
 
+// Compute tensor eigenvalues and eigenvectors for point i
 void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   V3F eig_val, sali_val;
   M3F eig_vec, tensor_i2;
@@ -129,6 +132,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   }
 }
 
+// Compute first pass tensor voting for new points and find neighbours
 void MappingNode::tensor_vote_pass_1(int old_map_size,
                                      std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
@@ -261,6 +265,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
   updated_idxs.resize(upd_idx);
 }
 
+// Compute second pass tensor voting for new and existing points
 void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
   std::vector<Eigen::MatrixXf> sali_vals;
@@ -325,6 +330,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
   }
 }
 
+// Add new points to the map and update geometric primitives
 void MappingNode::map_incremental(bool init_map) {
   int start_idx, end_idx, old_map_size;
   std::vector<int> new_idxs, updated_idxs, added_idxs_i, new_idxs_i;
@@ -383,6 +389,7 @@ void MappingNode::map_incremental(bool init_map) {
   map_counter++;
 }
 
+// Publish map point cloud
 void MappingNode::publish_map() {
   sensor_msgs::msg::PointCloud2 map_msg;
 
@@ -393,6 +400,7 @@ void MappingNode::publish_map() {
   pub_map_->publish(map_msg);
 }
 
+// Publish scan point cloud
 void MappingNode::publish_scan() {
   sensor_msgs::msg::PointCloud2 scan_msg;
   pcl::toROSMsg(*scan_cloud, scan_msg);
@@ -401,6 +409,7 @@ void MappingNode::publish_scan() {
   pub_scan_->publish(scan_msg);
 }
 
+// Publish geometric primitive markers
 void MappingNode::publish_markers() {
   std::atomic<int> marker_idx = 0;
   int start_idx, end_idx, step_idx, count_idx;
@@ -475,6 +484,7 @@ void MappingNode::publish_markers() {
   pub_mark_->publish(marker_array);
 }
 
+// Publish odometry transform
 void MappingNode::publish_odometry() {
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_ellipselivo";
@@ -490,6 +500,7 @@ void MappingNode::publish_odometry() {
   tf_br_->sendTransform(trans);
 }
 
+// Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
@@ -518,15 +529,6 @@ void MappingNode::tensor_registration(
 
     const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
     const float &scan_search_radius = lid_process->search_radii_[scan_bin_idx];
-    // if (sqrt(N_dst[0]) > scan_search_radius) {
-    //   std::cerr << scan_search_radius << std::endl;
-    //   std::cerr << "here 1" << std::endl;
-    //   continue;
-    // }
-    // if (!filters[map_i][1]) {
-    //   std::cerr << "here 2" << std::endl;
-    //   continue;
-    // };
 
     if (sqrt(N_dst[0]) > scan_search_radius || !filters[map_i][1]) continue;
 
@@ -591,6 +593,7 @@ void MappingNode::tensor_registration(
                      "Res mean: " << std::setprecision(2) << res_mean);
 }
 
+// Main mapping node
 MappingNode::MappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
     : Node("mapping_node", options),
@@ -762,6 +765,7 @@ MappingNode::MappingNode(
 
 MappingNode::~MappingNode() {}
 
+// Initialize camera processes
 void MappingNode::init_cam_process() {
   if (num_cams == 0) return;
 
@@ -819,6 +823,7 @@ void MappingNode::init_cam_process() {
   }
 }
 
+// Main mapping loop
 void MappingNode::timer_callback() {
   if (!initialized) {
     initialized = true;

@@ -1,5 +1,6 @@
 #include <cam_processing.h>
 
+// Setup the camera process
 CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
     : node_(node), params_(params), img_buffer_(params.rate), cam_counter_(0) {
   cam_callback_group_ = node_->create_callback_group(
@@ -22,6 +23,7 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
   img_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
+// Callback for camera messages
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
   cam_counter_++;
@@ -42,6 +44,7 @@ void CamProcess::CamCallback(
   cam_mutex_.unlock();
 }
 
+// Get the closest image time less than the input match time
 void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
                                       rclcpp::Time &img_time) {
   int match_idx;
@@ -75,6 +78,7 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
   cam_mutex_.unlock();
 }
 
+// Project the lidar point to the camera image and get the color
 bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
   float x, y;
   cv::Vec3b color;
