@@ -15,7 +15,10 @@
 using namespace std;
 
 #define MIN_NEIGHBOURS (6)
-#define MAX_NEIGHBOURS (12)
+#define MAX_NEIGHBOURS (60)
+#define MIN_BIN_SIZE (1.0)
+#define MIN_RESOLUTION (0.1)
+#define MIN_SEARCH_RADIUS (1.0)
 #define MAX_SCAN_POINTS (200000)
 #define MAX_MAP_POINTS (10000000)
 

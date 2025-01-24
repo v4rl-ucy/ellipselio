@@ -139,17 +139,13 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
-    int map_i, loop_cnt;
-    Eigen::MatrixXf K;
+    int map_i;
     std::vector<int> N_idxs;
-    M3F tensor_i1;
 
     map_i = added_idxs[i];
     map_cloud->points[map_i].intensity = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
-    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
-    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
     const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
     const float &search_rad = lid_process->search_radii_[bin_idx];
 
@@ -158,6 +154,34 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     neighbours[map_i] = N_idxs;
     n_cnt(i) = N_idxs.size();
     n_bins(i, bin_idx) = 1;
+  }
+
+#pragma omp parallel for
+  for (int i = 0; i < num_bins; i++) {
+    Eigen::ArrayXi n_cnt_bin = n_cnt * n_bins.col(i);
+    if (!n_cnt_bin.sum()) continue;
+    int n_mean = lid_process->min_neighbours_[i];
+    n_mean *= lid_process->cnt_neighbours_[i];
+    n_mean += n_cnt_bin.sum();
+    n_mean /= lid_process->cnt_neighbours_[i] + n_bins.col(i).sum();
+    lid_process->min_neighbours_[i] =
+        fmin(fmax(n_mean, MIN_NEIGHBOURS), MAX_NEIGHBOURS);
+    lid_process->max_neighbours_[i] =
+        fmin(2 * lid_process->min_neighbours_[i], MAX_NEIGHBOURS);
+    lid_process->cnt_neighbours_[i] += n_bins.col(i).sum();
+  }
+
+#pragma omp parallel for
+  for (int i = 0; i < added_idxs.size(); i++) {
+    int map_i, loop_cnt;
+    Eigen::MatrixXf K;
+    M3F tensor_i1;
+
+    map_i = added_idxs[i];
+
+    const int &bin_idx = map_cloud->points[map_i].bin_idx;
+    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
 
     loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
@@ -175,7 +199,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
         new_neighbours_size[update_idx[map_j]] = 0;
         new_neighbours[update_idx[map_j]]
                       [new_neighbours_size[update_idx[map_j]]++] = map_i;
-      } else if (map_j < old_map_size) {
+      } else if (map_j < old_map_size &&
+                 new_neighbours_size[update_idx[map_j]] < MAX_NEIGHBOURS) {
         new_neighbours[update_idx[map_j]]
                       [new_neighbours_size[update_idx[map_j]]++] = map_i;
       }
@@ -188,21 +213,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     tensor_i1 = tensors_p1[map_i] / float(loop_cnt);
     compute_tensor_eigen(map_i, tensor_i1, true);
   }
-  updated_idxs.resize(new_neighbours_idx);
 
-#pragma omp parallel for
-  for (int i = 0; i < num_bins; i++) {
-    Eigen::ArrayXi n_cnt_bin = n_cnt * n_bins.col(i);
-    if (!n_cnt_bin.sum()) continue;
-    int n_mean = lid_process->min_neighbours_[i];
-    n_mean *= lid_process->cnt_neighbours_[i];
-    n_mean += n_cnt_bin.sum();
-    n_mean /= lid_process->cnt_neighbours_[i] + n_bins.col(i).sum();
-    lid_process->min_neighbours_[i] = fmax(n_mean, MIN_NEIGHBOURS);
-    lid_process->max_neighbours_[i] =
-        fmin(2 * lid_process->min_neighbours_[i], 0.001 * MAX_SCAN_POINTS);
-    lid_process->cnt_neighbours_[i] += n_bins.col(i).sum();
-  }
+  updated_idxs.resize(new_neighbours_idx);
 
 #pragma omp parallel for
   for (int i = 0; i < new_neighbours_idx; i++) {
@@ -506,6 +518,16 @@ void MappingNode::tensor_registration(
 
     const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
     const float &scan_search_radius = lid_process->search_radii_[scan_bin_idx];
+    // if (sqrt(N_dst[0]) > scan_search_radius) {
+    //   std::cerr << scan_search_radius << std::endl;
+    //   std::cerr << "here 1" << std::endl;
+    //   continue;
+    // }
+    // if (!filters[map_i][1]) {
+    //   std::cerr << "here 2" << std::endl;
+    //   continue;
+    // };
+
     if (sqrt(N_dst[0]) > scan_search_radius || !filters[map_i][1]) continue;
 
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
@@ -654,6 +676,10 @@ MappingNode::MappingNode(
   this->get_parameter_or<vector<double>>("cameras.r_cam_lidars", r_cam_lidars,
                                          vector<double>());
 
+  map_resolution = fmax(map_resolution, MIN_RESOLUTION);
+  map_search_radius = fmax(map_search_radius, MIN_SEARCH_RADIUS);
+
+  lidar_params.bin_size = fmax(lidar_params.bin_size, MIN_BIN_SIZE);
   lidar_params.map_search_radius = map_search_radius;
   lidar_params.map_resolution = map_resolution;
 
@@ -688,7 +714,7 @@ MappingNode::MappingNode(
   new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);
   new_neighbours_size = std::vector<std::atomic<int>>(MAX_SCAN_POINTS);
   new_neighbours = std::vector<std::vector<int>>(
-      MAX_SCAN_POINTS, std::vector<int>(0.001 * MAX_SCAN_POINTS));
+      MAX_SCAN_POINTS, std::vector<int>(MAX_NEIGHBOURS));
 
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
   if (r_imu_lidar.size() == 9) {
