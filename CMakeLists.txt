@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(ellipse_livo)
+project(ellipse_lio)
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
@@ -45,10 +45,10 @@ find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 
-ament_auto_add_library(ellipselivo_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp)
-target_include_directories(ellipselivo_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+ament_auto_add_library(ellipselio_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp)
+target_include_directories(ellipselio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
-target_include_directories(ellipselivo_mapping PUBLIC
+target_include_directories(ellipselio_mapping PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${EIGEN3_INCLUDE_DIR}
@@ -56,13 +56,13 @@ target_include_directories(ellipselivo_mapping PUBLIC
   ${OpenCV_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
 )
-target_link_libraries(ellipselivo_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES})
+target_link_libraries(ellipselio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES})
 
-ament_target_dependencies(ellipselivo_mapping ${dependencies})
+ament_target_dependencies(ellipselio_mapping ${dependencies})
 
-rclcpp_components_register_node(ellipselivo_mapping
-PLUGIN "ellipselivo::MappingNode"
-EXECUTABLE ellipselivo_mapping_node
+rclcpp_components_register_node(ellipselio_mapping
+PLUGIN "ellipselio::MappingNode"
+EXECUTABLE ellipselio_mapping_node
 )
 
 ament_auto_package(INSTALL_TO_SHARE

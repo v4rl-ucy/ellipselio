@@ -23,7 +23,7 @@
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-namespace ellipselivo {
+namespace ellipselio {
 
 class MappingNode : public rclcpp::Node {
  public:
@@ -108,8 +108,8 @@ class MappingNode : public rclcpp::Node {
   std::vector<double> t_imu_lidar;
   std::vector<double> r_imu_lidar;
 
-  EllipseLivoPointCloudPtr map_cloud;
-  EllipseLivoPointCloudPtr scan_cloud;
+  EllipseLioPointCloudPtr map_cloud;
+  EllipseLioPointCloudPtr scan_cloud;
 
   iOctree::Octree ioctree;
 
@@ -123,4 +123,4 @@ class MappingNode : public rclcpp::Node {
   std::shared_ptr<LidarProcess> lid_process;
   CamProcessVec cams_process;
 };
-}  // namespace ellipselivo
+}  // namespace ellipselio

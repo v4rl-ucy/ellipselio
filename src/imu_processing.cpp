@@ -177,7 +177,7 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 }
 
 // Undistort the lidar point cloud using the kalman filter imu states
-void ImuProcess::UndistortPointCloud(EllipseLivoPointCloudPtr pc,
+void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
                                      KfState &kf_state,
                                      rclcpp::Time &lidar_end_time,
                                      CamProcessVec &cams) {
@@ -266,7 +266,7 @@ void ImuProcess::GetMatchingImages(
 }
 
 // Colorise a lidar point using the camera images
-void ImuProcess::ColorisePoint(EllipseLivoPoint &pt, CamProcessVec &cams,
+void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
                                Eigen::Isometry3d &T_world_pt,
                                Eigen::Isometry3d &T_imu_lidar) {
   int min_pt_col = 765;

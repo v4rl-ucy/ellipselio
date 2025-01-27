@@ -12,10 +12,10 @@ from launch_ros.descriptions import ComposableNode
 
 
 def generate_launch_description():
-    package_path = get_package_share_directory('ellipse_livo')
+    package_path = get_package_share_directory('ellipse_lio')
     default_config_path = os.path.join(package_path, 'config')
     default_rviz_config_path = os.path.join(
-        package_path, 'rviz', 'ellipselivo.rviz')
+        package_path, 'rviz', 'ellipselio.rviz')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     config_path = LaunchConfiguration('config_path')
@@ -44,20 +44,20 @@ def generate_launch_description():
         description='RViz config file path'
     )
 
-    ellipse_livo_node = ComposableNode(
-        package='ellipse_livo',
-        plugin='ellipselivo::MappingNode',
-        name='ellipse_livo_node',
+    ellipse_lio_node = ComposableNode(
+        package='ellipse_lio',
+        plugin='ellipselio::MappingNode',
+        name='ellipse_lio_node',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
         extra_arguments=[{'use_intra_process_comms': True}],
     )
-    ellipse_livo_container = ComposableNodeContainer(
+    ellipse_lio_container = ComposableNodeContainer(
         namespace='',
         package='rclcpp_components',
-        name='ellipse_livo_container',
+        name='ellipse_lio_container',
         executable='component_container_mt',
-        composable_node_descriptions=[ellipse_livo_node],
+        composable_node_descriptions=[ellipse_lio_node],
         output='screen'
     )
 
@@ -71,12 +71,12 @@ def generate_launch_description():
     odom_tf_node = Node(
         package = "tf2_ros", 
         executable = "static_transform_publisher",
-        arguments = "-0.010 0.005 0.080 0.001 -0.001 0.701 0.713 odom_vilens odom_ellipselivo".split(' ')
+        arguments = "-0.010 0.005 0.080 0.001 -0.001 0.701 0.713 odom_vilens odom_ellipselio".split(' ')
     )
     base_tf_node = Node(
         package = "tf2_ros", 
         executable = "static_transform_publisher",
-        arguments = "-0.005 -0.010 -0.080 -0.001 0.001 -0.701 0.713 imu_ellipselivo base_ellipselivo".split(' ')
+        arguments = "-0.005 -0.010 -0.080 -0.001 0.001 -0.701 0.713 imu_ellipselio base_ellipselio".split(' ')
     )
 
     ld = LaunchDescription()
@@ -86,7 +86,7 @@ def generate_launch_description():
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_rviz_config_path_cmd)
 
-    ld.add_action(ellipse_livo_container)
+    ld.add_action(ellipse_lio_container)
     ld.add_action(rviz_node)
     ld.add_action(odom_tf_node)
     ld.add_action(base_tf_node)

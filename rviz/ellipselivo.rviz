@@ -36,11 +36,11 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
-        base_ellipselivo:
+        base_ellipselio:
           Value: true
-        imu_ellipselivo:
+        imu_ellipselio:
           Value: false
-        odom_ellipselivo:
+        odom_ellipselio:
           Value: true
         odom_vilens:
           Value: true
@@ -51,9 +51,9 @@ Visualization Manager:
       Show Names: true
       Tree:
         odom_vilens:
-          odom_ellipselivo:
-            imu_ellipselivo:
-              base_ellipselivo:
+          odom_ellipselio:
+            imu_ellipselio:
+              base_ellipselio:
                 {}
       Update Interval: 0
       Value: true
@@ -243,7 +243,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
-    Fixed Frame: odom_ellipselivo
+    Fixed Frame: odom_ellipselio
     Frame Rate: 30
   Name: root
   Tools:

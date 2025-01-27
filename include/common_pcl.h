@@ -41,9 +41,9 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
                                                      intensity)(
         uint32_t, time_secs, time_secs)(uint32_t, time_nsecs, time_nsecs))
 
-typedef PointXYZNRGBIT EllipseLivoPoint;
-typedef pcl::PointCloud<EllipseLivoPoint> EllipseLivoPointCloud;
-typedef pcl::PointCloud<EllipseLivoPoint>::Ptr EllipseLivoPointCloudPtr;
+typedef PointXYZNRGBIT EllipseLioPoint;
+typedef pcl::PointCloud<EllipseLioPoint> EllipseLioPointCloud;
+typedef pcl::PointCloud<EllipseLioPoint>::Ptr EllipseLioPointCloudPtr;
 
 struct EIGEN_ALIGN16 LivoxPoint {
   float x;

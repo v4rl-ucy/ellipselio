@@ -1,6 +1,6 @@
 #include <map_processing.h>
 
-namespace ellipselivo {
+namespace ellipselio {
 
 // Sync lida, imu, and camera data
 bool MappingNode::sync_packages() {
@@ -358,7 +358,7 @@ void MappingNode::map_incremental(bool init_map) {
     ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
     ioctree.update(*scan_cloud, added_idxs_i, new_idxs_i, true, start_idx,
                    end_idx);
-    *map_cloud += EllipseLivoPointCloud(*scan_cloud, added_idxs_i);
+    *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs_i);
     new_idxs.insert(new_idxs.end(), new_idxs_i.begin(), new_idxs_i.end());
     start_idx = end_idx;
   }
@@ -396,7 +396,7 @@ void MappingNode::publish_map() {
   if (!map_cloud->size()) return;
   pcl::toROSMsg(*map_cloud, map_msg);
   map_msg.header.stamp = kf_state_.time;
-  map_msg.header.frame_id = "odom_ellipselivo";
+  map_msg.header.frame_id = "odom_ellipselio";
   pub_map_->publish(map_msg);
 }
 
@@ -405,7 +405,7 @@ void MappingNode::publish_scan() {
   sensor_msgs::msg::PointCloud2 scan_msg;
   pcl::toROSMsg(*scan_cloud, scan_msg);
   scan_msg.header.stamp = kf_state_.time;
-  scan_msg.header.frame_id = "odom_ellipselivo";
+  scan_msg.header.frame_id = "odom_ellipselio";
   pub_scan_->publish(scan_msg);
 }
 
@@ -435,7 +435,7 @@ void MappingNode::publish_markers() {
     marker.frame_locked = true;
     marker.ns = "map_primitives";
     marker.lifetime = rclcpp::Duration(0, 0);
-    marker.header.frame_id = "odom_ellipselivo";
+    marker.header.frame_id = "odom_ellipselio";
     marker.header.stamp = kf_state_.time;
     marker.action = visualization_msgs::msg::Marker::ADD;
 
@@ -487,8 +487,8 @@ void MappingNode::publish_markers() {
 // Publish odometry transform
 void MappingNode::publish_odometry() {
   geometry_msgs::msg::TransformStamped trans;
-  trans.header.frame_id = "odom_ellipselivo";
-  trans.child_frame_id = "imu_ellipselivo";
+  trans.header.frame_id = "odom_ellipselio";
+  trans.child_frame_id = "imu_ellipselio";
   trans.header.stamp = kf_state_.time;
   trans.transform.translation.x = kf_state_.state.pos(0);
   trans.transform.translation.y = kf_state_.state.pos(1);
@@ -518,7 +518,7 @@ void MappingNode::tensor_registration(
     V3F p_lidar, p_world;
     V3F sali, n_world, p_dash, q, q_dash, norm_vec, eig_vals;
 
-    const EllipseLivoPoint &pt = scan_cloud->points[i];
+    const EllipseLioPoint &pt = scan_cloud->points[i];
 
     p_lidar = pt.getVector3fMap();
     p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I);
@@ -597,8 +597,8 @@ void MappingNode::tensor_registration(
 MappingNode::MappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
     : Node("mapping_node", options),
-      map_cloud(new EllipseLivoPointCloud()),
-      scan_cloud(new EllipseLivoPointCloud()),
+      map_cloud(new EllipseLioPointCloud()),
+      scan_cloud(new EllipseLioPointCloud()),
       kf_(new Ikfom()) {
   this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
@@ -610,7 +610,7 @@ MappingNode::MappingNode(
   this->declare_parameter<double>("imu.acc_noise", 0.1);
   this->declare_parameter<double>("imu.gyr_bias", 0.0001);
   this->declare_parameter<double>("imu.acc_bias", 0.0001);
-  this->declare_parameter<string>("imu.topic", "/livox/imu");
+  this->declare_parameter<string>("imu.topic", "");
 
   this->declare_parameter<int>("lidar.type", 0);
   this->declare_parameter<int>("lidar.rate", 10);
@@ -618,7 +618,7 @@ MappingNode::MappingNode(
   this->declare_parameter<double>("lidar.max_range", 100.0);
   this->declare_parameter<double>("lidar.bin_size", 1.0);
   this->declare_parameter<double>("lidar.downsample_factor", 0.01);
-  this->declare_parameter<string>("lidar.topic", "/livox/lidar");
+  this->declare_parameter<string>("lidar.topic", "");
   this->declare_parameter<vector<double>>("lidar.t_imu_lidar",
                                           vector<double>());
   this->declare_parameter<vector<double>>("lidar.r_imu_lidar",
@@ -648,12 +648,11 @@ MappingNode::MappingNode(
   this->get_parameter_or<double>("imu.acc_noise", imu_params.acc_noise, 0.1);
   this->get_parameter_or<double>("imu.gyr_bias", imu_params.gyr_bias, 0.0001);
   this->get_parameter_or<double>("imu.acc_bias", imu_params.acc_bias, 0.0001);
-  this->get_parameter_or<string>("imu.topic", imu_params.topic, "/livox/imu");
+  this->get_parameter_or<string>("imu.topic", imu_params.topic, "");
 
   this->get_parameter_or<int>("lidar.type", lidar_params.type, 0);
   this->get_parameter_or<int>("lidar.rate", lidar_params.rate, 10);
-  this->get_parameter_or<string>("lidar.topic", lidar_params.topic,
-                                 "/livox/lidar");
+  this->get_parameter_or<string>("lidar.topic", lidar_params.topic, "");
   this->get_parameter_or<double>("lidar.min_range", lidar_params.min_range,
                                  1.0);
   this->get_parameter_or<double>("lidar.max_range", lidar_params.max_range,
@@ -911,8 +910,8 @@ void MappingNode::timer_callback() {
   }
 }
 
-}  // namespace ellipselivo
+}  // namespace ellipselio
 
 #include "rclcpp_components/register_node_macro.hpp"
 
-RCLCPP_COMPONENTS_REGISTER_NODE(ellipselivo::MappingNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(ellipselio::MappingNode)

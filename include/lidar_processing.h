@@ -29,7 +29,7 @@ class LidarProcess {
   ~LidarProcess();
   LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  void GetPointCloud(EllipseLivoPointCloudPtr pc, rclcpp::Time &end_time,
+  void GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &end_time,
                      std::vector<int> &bin_pc_sizes, int &start_bin);
 
   int num_bins_;
@@ -50,21 +50,21 @@ class LidarProcess {
   void SetMinMaxTime(int bin_idx);
   void ClearBins();
 
-  void SetPoint(LivoxPoint &in_pt, EllipseLivoPoint &out_pt,
+  void SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
                 rclcpp::Time &point_time);
-  void SetPoint(VelodynePoint &in_pt, EllipseLivoPoint &out_pt,
+  void SetPoint(VelodynePoint &in_pt, EllipseLioPoint &out_pt,
                 rclcpp::Time &point_time);
-  void SetPoint(OusterPoint &in_pt, EllipseLivoPoint &out_pt,
+  void SetPoint(OusterPoint &in_pt, EllipseLioPoint &out_pt,
                 rclcpp::Time &point_time);
-  void SetPoint(HesaiPoint &in_pt, EllipseLivoPoint &out_pt,
+  void SetPoint(HesaiPoint &in_pt, EllipseLioPoint &out_pt,
                 rclcpp::Time &point_time);
 
   template <typename InPtType>
-  void ConvertPoint(InPtType &in_pt, EllipseLivoPoint &out_pt,
+  void ConvertPoint(InPtType &in_pt, EllipseLioPoint &out_pt,
                     rclcpp::Time &point_time);
   template <typename InPtType>
   void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                         EllipseLivoPointCloudPtr new_pc);
+                         EllipseLioPointCloudPtr new_pc);
 
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
@@ -74,12 +74,12 @@ class LidarProcess {
   std::vector<std::vector<int>> bin_idxs_;
   std::vector<std::atomic<int>> bin_sizes_;
   std::vector<iOctree::Octree> bin_octrees_;
-  std::vector<EllipseLivoPointCloud> bin_pcs_;
+  std::vector<EllipseLioPointCloud> bin_pcs_;
 
   std::vector<rclcpp::Time> bin_min_times_;
   std::vector<rclcpp::Time> bin_max_times_;
 
-  EllipseLivoPointCloudPtr ellipselivo_pc_;
+  EllipseLioPointCloudPtr ellipselio_pc_;
 
   int start_bin_;
   float mean_range_;

@@ -11,10 +11,10 @@ from launch_ros.actions import ComposableNodeContainer, Node, LoadComposableNode
 from launch_ros.descriptions import ComposableNode
 
 def generate_launch_description():
-    package_path = get_package_share_directory('ellipse_livo')
+    package_path = get_package_share_directory('ellipse_lio')
     default_config_path = os.path.join(package_path, 'config')
     default_rviz_config_path = os.path.join(
-        package_path, 'rviz', 'ellipselivo.rviz')
+        package_path, 'rviz', 'ellipselio.rviz')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     config_path = LaunchConfiguration('config_path')
@@ -56,20 +56,20 @@ def generate_launch_description():
         output='log'
     )
 
-    ellipse_livo_node = Node(
-        package='ellipse_livo',
-        executable='ellipselivo_mapping_node',
-        name='ellipse_livo',
+    ellipse_lio_node = Node(
+        package='ellipse_lio',
+        executable='ellipselio_mapping_node',
+        name='ellipse_lio',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
         output='screen',
         prefix=['gdbserver localhost:3000'],
     )
 
-    ellipse_livo_comp = ComposableNode(
-        package='ellipse_livo',
-        plugin='ellipselivo::MappingNode',
-        name='ellipse_livo',
+    ellipse_lio_comp = ComposableNode(
+        package='ellipse_lio',
+        plugin='ellipselio::MappingNode',
+        name='ellipse_lio',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
         extra_arguments=[{'use_intra_process_comms': True}],
@@ -78,7 +78,7 @@ def generate_launch_description():
     composable_node = LoadComposableNodes(
         target_container=container_name,
         composable_node_descriptions=[
-            ellipse_livo_comp,
+            ellipse_lio_comp,
         ],
     )
 
@@ -91,6 +91,6 @@ def generate_launch_description():
     ld.add_action(container_name_arg)
     ld.add_action(rviz_node)
     ld.add_action(composable_node)
-    # ld.add_action(ellipse_livo_node)
+    # ld.add_action(ellipse_lio_node)
 
     return ld
