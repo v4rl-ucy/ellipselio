@@ -746,6 +746,29 @@ class Octree {
     return data.size();
   }
 
+  int32_t knnNeighbors(const Eigen::Vector3f &query, int k,
+                       std::vector<int> &resultIndices,
+                       std::vector<float> &distances,
+                       std::vector<vector<bool>> &filters) {
+    if (m_root_ == 0) return 0;
+
+    float query_[3] = {query(0), query(1), query(2)};
+
+    KNNSimpleResultSet heap(k);
+    knnNeighbors(m_root_, query_, heap, filters);
+
+    std::vector<DistanceIndex> data = heap.get_data();
+    resultIndices.resize(heap.size());
+    distances.resize(heap.size());
+
+    for (int i = 0; i < heap.size(); i++) {
+      resultIndices[i] = int(data[i].index_[3]);
+      distances[i] = data[i].dist_;
+    }
+
+    return data.size();
+  }
+
   void boxWiseDelete(const BoxDeleteType &box_range, bool clear_data) {
     if (m_root_ == 0) return;
     bool deleted = false;
@@ -1131,6 +1154,46 @@ class Octree {
       if (heap.full() && !overlaps(query, heap.worstDist(), octant->child[c]))
         continue;
       if (knnNeighbors(octant->child[c], query, heap)) return true;
+    }
+    return heap.full() && inside(query, heap.worstDist(), octant);
+  }
+
+  bool knnNeighbors(const Octant *octant, const float *query,
+                    KNNSimpleResultSet &heap,
+                    std::vector<vector<bool>> &filters) {
+    if (!octant->isActive) return false;
+    if (octant->child == nullptr) {
+      const size_t size = octant->points.size();
+
+      for (int i = 0; i < size; ++i) {
+        const float *p = octant->points[i];
+        float dist = 0, diff = 0;
+
+        for (int j = 0; j < 3; ++j) {
+          diff = p[j] - query[j];
+          dist += diff * diff;
+        }
+        if (dist > 0 && dist < heap.worstDist() && filters[p[3]][1])
+          heap.addPoint(dist, octant->points[i]);
+      }
+
+      return heap.full() && inside(query, heap.worstDist(), octant);
+    }
+    size_t mortonCode = 0;
+    if (query[0] > octant->x) mortonCode |= 1;
+    if (query[1] > octant->y) mortonCode |= 2;
+    if (query[2] > octant->z) mortonCode |= 4;
+    if (octant->child[mortonCode] != 0) {
+      if (knnNeighbors(octant->child[mortonCode], query, heap, filters))
+        return true;
+    }
+
+    for (int i = 0; i < 7; ++i) {
+      int c = ordered_indies[mortonCode][i];
+      if (octant->child[c] == 0) continue;
+      if (heap.full() && !overlaps(query, heap.worstDist(), octant->child[c]))
+        continue;
+      if (knnNeighbors(octant->child[c], query, heap, filters)) return true;
     }
     return heap.full() && inside(query, heap.worstDist(), octant);
   }

@@ -92,7 +92,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<int> scan_cloud_bins;
   std::vector<int> update_cnt;
   std::vector<int> update_idx;
-  std::vector<int> updated_pt;
+  std::vector<std::atomic<int>> updated_pt;
   std::vector<int> saliency_idxs;
   std::vector<vector<bool>> filters;
   std::vector<vector<int>> neighbours;
