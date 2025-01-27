@@ -25,7 +25,7 @@ EllipseLio is a lidar-inertial odometry approach that uses spectral decompositio
 ## Post installation testing
 - Download a rosbag2 sequence from the Oxford Spires dataset (e.g., observatory-quarter-01) 
     - https://ori-drs.github.io/datasets/oxford-spires/
-- Modify the dataset_name path argument in dataset_tools/launch/spires_dataset_{cam/no_cam}.launch.py
+- Modify the dataset_name and results_folder path arguments in dataset_tools/launch/spires_dataset_{cam/no_cam}.launch.py
 - Run one of the following commands to start EllipseLio
     - ros2 launch dataset_tools spires_dataset_cam.launch.py
     - ros2 launch dataset_tools spires_dataset_no_cam.launch.py
