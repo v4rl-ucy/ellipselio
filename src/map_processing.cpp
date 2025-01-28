@@ -536,16 +536,14 @@ void MappingNode::tensor_registration(
     p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I);
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
-    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, filters);
+    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
+    const float &search_rad = lid_process->search_radii_[scan_bin_idx];
+
+    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, filters, search_rad);
+    if (N_idxs.size() == 0) continue;
     map_i = N_idxs[0];
 
-    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
-    const float &scan_search_radius = lid_process->search_radii_[scan_bin_idx];
-
-    if (sqrt(N_dst[0]) > scan_search_radius) continue;
-
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
-    const float &map_search_radius = lid_process->search_radii_[map_bin_idx];
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
