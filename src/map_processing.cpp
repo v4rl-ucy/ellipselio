@@ -688,7 +688,7 @@ MappingNode::MappingNode(
   this->get_parameter_or<vector<double>>("cameras.r_cam_lidars", r_cam_lidars,
                                          vector<double>());
 
-  map_resolution = fmax(map_resolution, MIN_RESOLUTION);
+  map_resolution = fmax(map_resolution, MIN_MAP_RESOLUTION);
   map_search_radius = fmax(map_search_radius, MIN_SEARCH_RADIUS);
 
   lidar_params.bin_size = fmax(lidar_params.bin_size, MIN_BIN_SIZE);

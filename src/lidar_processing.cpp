@@ -47,11 +47,10 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
     float octree_res =
-        fmin(fmax((i + 1) * params_.bin_size * params_.downsample_factor, 0.01),
+        fmin(fmax((i + 1) * params_.bin_size * params_.downsample_factor,
+                  MIN_BIN_RESOLUTION),
              params_.map_resolution);
-    float search_radius = fmin(
-        fmax(10.0 * octree_res, (i + 1) * params_.bin_size * MIN_SEARCH_RADIUS),
-        params_.map_search_radius);
+    float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
     int bucket_size = fmax(
         ceil((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
         1);
