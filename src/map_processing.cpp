@@ -263,7 +263,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
       M3F A_j;
       int map_j = new_neighbours[i][j];
       neighbours[map_i][old_size + j] = map_j;
-      compute_tensor_vote(map_i, map_j, A_j, false);
+      compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
     }
 
