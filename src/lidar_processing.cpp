@@ -15,7 +15,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_opt.callback_group = lidar_callback_group_;
 
   sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-      params.topic, rclcpp::SensorDataQoS(),
+      params.topic, rclcpp::ServicesQoS(),
       std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
       lidar_opt);
 
@@ -263,5 +263,5 @@ void LidarProcess::PointCloudHandler(
     out_pc->points[i].bin_idx = bin_idx;
   }
 
-  start_bin_ = floor(ranges.mean() / params_.bin_size);
+  start_bin_ = round(ranges.mean() / params_.bin_size);
 }

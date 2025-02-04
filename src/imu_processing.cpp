@@ -20,7 +20,7 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
   imu_opt.callback_group = imu_callback_group_;
 
   sub_imu_ = node_->create_subscription<sensor_msgs::msg::Imu>(
-      params.topic, rclcpp::SensorDataQoS(),
+      params.topic, rclcpp::ServicesQoS(),
       std::bind(&ImuProcess::ImuCallback, this, std::placeholders::_1),
       imu_opt);
 
