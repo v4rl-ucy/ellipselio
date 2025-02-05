@@ -202,7 +202,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
       if (map_j >= old_map_size) continue;
 
       const int &bin_idx_j = map_cloud->points[map_j].bin_idx;
-      const float &search_rad_j = lid_process->search_radii_[bin_idx];
+      const float &search_rad_j = lid_process->search_radii_[bin_idx_j];
       EllipseLioPoint &pt_i = map_cloud->points[map_i];
       EllipseLioPoint &pt_j = map_cloud->points[map_j];
       float d_ij = (pt_i.getVector3fMap() - pt_j.getVector3fMap()).norm();
