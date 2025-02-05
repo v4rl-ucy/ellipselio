@@ -148,7 +148,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     updated_pt[map_i] = 0;
-    map_cloud->points[map_i].upd_cnt = 0;
     map_cloud->points[map_i].intensity = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
@@ -244,9 +243,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     const int &min_neigh = lid_process->min_neighbours_[bin_idx];
     const int &max_neigh = lid_process->max_neighbours_[bin_idx];
     if (neighbours[map_i].size() >= max_neigh) continue;
-
-    update_cnt[map_i]++;
-    map_cloud->points[i].upd_cnt = update_cnt[map_i];
 
     updated_idxs[upd_idx++] = map_i;
 
@@ -376,7 +372,6 @@ void MappingNode::map_incremental(bool init_map) {
     start_idx = end_idx;
   }
 
-  update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
   neighbours.resize(map_cloud->size(), std::vector<int>());
@@ -539,9 +534,11 @@ void MappingNode::tensor_registration(
     const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
     const float &search_rad = lid_process->search_radii_[scan_bin_idx];
 
-    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, filters, search_rad);
+    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
     if (N_idxs.size() == 0) continue;
     map_i = N_idxs[0];
+
+    if (!filters[map_i][1]) continue;
 
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
 
@@ -706,7 +703,6 @@ MappingNode::MappingNode(
   ekfom_data_h = Eigen::VectorXd(MAX_SCAN_POINTS, 1);
   ekfom_data_h_x = Eigen::MatrixXd(MAX_SCAN_POINTS, 12);
 
-  update_cnt.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);
   saliency_idxs.reserve(MAX_MAP_POINTS);
   neighbours.reserve(MAX_MAP_POINTS);

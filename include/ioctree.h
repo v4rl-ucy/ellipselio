@@ -748,16 +748,14 @@ class Octree {
 
   int32_t knnNeighbors(const Eigen::Vector3f &query, int k,
                        std::vector<int> &resultIndices,
-                       std::vector<float> &distances,
-                       std::vector<vector<bool>> &filters,
-                       const float &search_rad) {
+                       std::vector<float> &distances, const float &search_rad) {
     if (m_root_ == 0) return 0;
 
     float sqrRadius = search_rad * search_rad;
     float query_[3] = {query(0), query(1), query(2)};
 
     KNNSimpleResultSet heap(k);
-    knnNeighbors(m_root_, query_, heap, filters, sqrRadius);
+    knnNeighbors(m_root_, query_, heap, sqrRadius);
 
     std::vector<DistanceIndex> data = heap.get_data();
     resultIndices.resize(heap.size());
@@ -1161,8 +1159,7 @@ class Octree {
   }
 
   bool knnNeighbors(const Octant *octant, const float *query,
-                    KNNSimpleResultSet &heap,
-                    std::vector<vector<bool>> &filters, float &sqrRadius) {
+                    KNNSimpleResultSet &heap, float &sqrRadius) {
     if (!octant->isActive) return false;
     if (octant->child == nullptr) {
       const size_t size = octant->points.size();
@@ -1175,7 +1172,7 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (!filters[p[3]][1] || dist > sqrRadius) continue;
+        if (dist > sqrRadius) continue;
         if (dist > 0 && dist < heap.worstDist())
           heap.addPoint(dist, octant->points[i]);
       }
@@ -1187,8 +1184,7 @@ class Octree {
     if (query[1] > octant->y) mortonCode |= 2;
     if (query[2] > octant->z) mortonCode |= 4;
     if (octant->child[mortonCode] != 0) {
-      if (knnNeighbors(octant->child[mortonCode], query, heap, filters,
-                       sqrRadius))
+      if (knnNeighbors(octant->child[mortonCode], query, heap, sqrRadius))
         return true;
     }
 
@@ -1198,8 +1194,7 @@ class Octree {
       if (heap.full() && !overlaps(query, heap.worstDist(), octant->child[c]))
         continue;
       if (!overlaps(query, sqrRadius, octant->child[c])) continue;
-      if (knnNeighbors(octant->child[c], query, heap, filters, sqrRadius))
-        return true;
+      if (knnNeighbors(octant->child[c], query, heap, sqrRadius)) return true;
     }
     return heap.full() && inside(query, heap.worstDist(), octant);
   }
