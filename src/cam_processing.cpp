@@ -12,7 +12,7 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
   cam_sub_ = image_transport::create_subscription(
       node_.get(), params_.topic,
       std::bind(&CamProcess::CamCallback, this, std::placeholders::_1),
-      params_.transport, rmw_qos_profile_sensor_data, cam_opt);
+      params_.transport, rmw_qos_profile_services_default, cam_opt);
 
   T_cam_lidar_.linear() = params_.r_cam_lidar;
   T_cam_lidar_.translation() = params_.t_cam_lidar;

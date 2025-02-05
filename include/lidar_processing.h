@@ -82,7 +82,6 @@ class LidarProcess {
   EllipseLioPointCloudPtr ellipselio_pc_;
 
   int start_bin_;
-  float mean_range_;
   double last_lidar_time_;
   std::mutex lidar_mutex_;
   LidarParams params_;

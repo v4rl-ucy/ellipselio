@@ -147,6 +147,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     std::vector<int> N_idxs;
 
     map_i = added_idxs[i];
+    updated_pt[map_i] = 0;
     map_cloud->points[map_i].intensity = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
@@ -197,14 +198,23 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
       compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
 
+      if (map_j >= old_map_size) continue;
+
+      const int &bin_idx_j = map_cloud->points[map_j].bin_idx;
+      const float &search_rad_j = lid_process->search_radii_[bin_idx_j];
+      EllipseLioPoint &pt_i = map_cloud->points[map_i];
+      EllipseLioPoint &pt_j = map_cloud->points[map_j];
+      float d_ij = (pt_i.getVector3fMap() - pt_j.getVector3fMap()).norm();
+
+      if (d_ij > search_rad_j) continue;
+
       if (!(updated_pt[map_j]++)) {
         update_idx[map_j] = new_neighbours_idx++;
         new_neighbours_map_idx[update_idx[map_j]] = map_j;
         new_neighbours_size[update_idx[map_j]] = 0;
         new_neighbours[update_idx[map_j]]
                       [new_neighbours_size[update_idx[map_j]]++] = map_i;
-      } else if (map_j < old_map_size &&
-                 new_neighbours_size[update_idx[map_j]] < MAX_NEIGHBOURS) {
+      } else if (new_neighbours_size[update_idx[map_j]] < MAX_NEIGHBOURS) {
         new_neighbours[update_idx[map_j]]
                       [new_neighbours_size[update_idx[map_j]]++] = map_i;
       }
@@ -227,7 +237,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     int map_i, loop_cnt, max_loop, old_size;
 
     map_i = new_neighbours_map_idx[i];
-    if (!updated_pt[map_i]) continue;
     updated_pt[map_i] = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
@@ -250,7 +259,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
       M3F A_j;
       int map_j = new_neighbours[i][j];
       neighbours[map_i][old_size + j] = map_j;
-      compute_tensor_vote(map_i, map_j, A_j, false);
+      compute_tensor_vote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
     }
 
@@ -363,9 +372,7 @@ void MappingNode::map_incremental(bool init_map) {
     start_idx = end_idx;
   }
 
-  update_cnt.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
-  updated_pt.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(2, false));
@@ -524,16 +531,16 @@ void MappingNode::tensor_registration(
     p_imu = (s.offset_R_L_I * p_lidar.cast<double>() + s.offset_T_L_I);
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
-    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst);
+    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
+    const float &search_rad = lid_process->search_radii_[scan_bin_idx];
+
+    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
+    if (N_idxs.size() == 0) continue;
     map_i = N_idxs[0];
 
-    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
-    const float &scan_search_radius = lid_process->search_radii_[scan_bin_idx];
-
-    if (sqrt(N_dst[0]) > scan_search_radius || !filters[map_i][1]) continue;
+    if (!filters[map_i][1]) continue;
 
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
-    const float &map_search_radius = lid_process->search_radii_[map_bin_idx];
 
     sali_idx = saliency_idxs[map_i];
     if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
@@ -678,7 +685,7 @@ MappingNode::MappingNode(
   this->get_parameter_or<vector<double>>("cameras.r_cam_lidars", r_cam_lidars,
                                          vector<double>());
 
-  map_resolution = fmax(map_resolution, MIN_RESOLUTION);
+  map_resolution = fmax(map_resolution, MIN_MAP_RESOLUTION);
   map_search_radius = fmax(map_search_radius, MIN_SEARCH_RADIUS);
 
   lidar_params.bin_size = fmax(lidar_params.bin_size, MIN_BIN_SIZE);
@@ -696,9 +703,7 @@ MappingNode::MappingNode(
   ekfom_data_h = Eigen::VectorXd(MAX_SCAN_POINTS, 1);
   ekfom_data_h_x = Eigen::MatrixXd(MAX_SCAN_POINTS, 12);
 
-  update_cnt.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);
-  updated_pt.reserve(MAX_MAP_POINTS);
   saliency_idxs.reserve(MAX_MAP_POINTS);
   neighbours.reserve(MAX_MAP_POINTS);
   filters.reserve(MAX_MAP_POINTS);
@@ -713,6 +718,7 @@ MappingNode::MappingNode(
   mean_cnt = std::vector<int>(num_bins, 0);
   mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
+  updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);
   new_neighbours_size = std::vector<std::atomic<int>>(MAX_SCAN_POINTS);
   new_neighbours = std::vector<std::vector<int>>(

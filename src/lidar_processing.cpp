@@ -15,7 +15,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_opt.callback_group = lidar_callback_group_;
 
   sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-      params.topic, rclcpp::SensorDataQoS(),
+      params.topic, rclcpp::ServicesQoS(),
       std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
       lidar_opt);
 
@@ -47,11 +47,10 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
     float octree_res =
-        fmin(fmax((i + 1) * params_.bin_size * params_.downsample_factor, 0.01),
+        fmin(fmax((i + 1) * params_.bin_size * params_.downsample_factor,
+                  MIN_BIN_RESOLUTION),
              params_.map_resolution);
-    float search_radius = fmin(
-        fmax(10.0 * octree_res, (i + 1) * params_.bin_size * MIN_SEARCH_RADIUS),
-        params_.map_search_radius);
+    float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
     int bucket_size = fmax(
         ceil((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
         1);
@@ -243,7 +242,6 @@ void LidarProcess::PointCloudHandler(
   out_pc->resize(in_pc_size);
 
   Eigen::ArrayXf ranges(in_pc_size);
-  Eigen::ArrayXf valid_range = Eigen::ArrayXf::Zero(in_pc_size);
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
 #pragma omp parallel for
@@ -258,7 +256,6 @@ void LidarProcess::PointCloudHandler(
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
-    valid_range(i) = 1;
 
     int bin_idx = floor(range / params_.bin_size);
     bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
@@ -266,6 +263,5 @@ void LidarProcess::PointCloudHandler(
     out_pc->points[i].bin_idx = bin_idx;
   }
 
-  mean_range_ = (ranges * valid_range).sum() / valid_range.sum();
-  start_bin_ = floor(mean_range_ / params_.bin_size);
+  start_bin_ = round(ranges.mean() / params_.bin_size);
 }
