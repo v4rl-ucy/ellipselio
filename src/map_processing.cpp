@@ -885,6 +885,11 @@ void MappingNode::timer_callback() {
     max_map_time = fmax(max_map_time, map_time);
     max_total_time = fmax(max_total_time, total_time);
 
+    mean_imu_time += imu_time;
+    mean_state_time += state_time;
+    mean_map_time += map_time;
+    mean_total_time += total_time;
+
     RCLCPP_INFO(this->get_logger(), " ");
     RCLCPP_INFO_STREAM(this->get_logger(), "Imu: " << std::fixed
                                                    << std::setprecision(3)
@@ -898,6 +903,20 @@ void MappingNode::timer_callback() {
     RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << std::fixed
                                                      << std::setprecision(3)
                                                      << total_time);
+    RCLCPP_INFO(this->get_logger(), " ");
+
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Mean Imu: " << std::fixed << std::setprecision(3)
+                                    << mean_imu_time / (map_counter - 1));
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Mean State: " << std::fixed << std::setprecision(3)
+                                      << mean_state_time / (map_counter - 1));
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Mean Map: " << std::fixed << std::setprecision(3)
+                                    << mean_map_time / (map_counter - 1));
+    RCLCPP_INFO_STREAM(this->get_logger(),
+                       "Mean Total: " << std::fixed << std::setprecision(3)
+                                      << mean_total_time / (map_counter - 1));
     RCLCPP_INFO(this->get_logger(), " ");
 
     RCLCPP_INFO_STREAM(this->get_logger(), "Max imu: " << std::fixed
