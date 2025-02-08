@@ -517,6 +517,15 @@ void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
 
+  if (ekfom_iter_cnt > 0) {
+    if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt) {
+      ekfom_data.valid = false;
+      return;
+    }
+  }
+
+  double t0 = omp_get_wtime();
+
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
     float residual;
@@ -548,7 +557,7 @@ void MappingNode::tensor_registration(
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
 
     sali_idx = saliency_idxs[map_i];
-    if (salivalues[map_i](sali_idx) < 0.5 * mean_sali[map_bin_idx](sali_idx))
+    if (salivalues[map_i](sali_idx) < 0.9 * mean_sali[map_bin_idx](sali_idx))
       continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
@@ -596,6 +605,10 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x = ekfom_data_h_x.topRows(int(feat_cnt));
 
   double res_mean = -ekfom_data.h.sum() / feat_cnt;
+  double t1 = omp_get_wtime();
+
+  ekfom_iter_cnt++;
+  ekfom_iter_time += t1 - t0;
 
   RCLCPP_INFO_STREAM(this->get_logger(), "Num feats: " << feat_cnt);
   RCLCPP_INFO_STREAM(this->get_logger(), "Num planes: " << plane_cnt);
@@ -705,6 +718,7 @@ MappingNode::MappingNode(
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_SCAN_POINTS);
 
+  max_ekfom_time = 0.5 * (1.0 / lidar_params.rate);
   ekfom_data_h = Eigen::VectorXd(MAX_SCAN_POINTS, 1);
   ekfom_data_h_x = Eigen::MatrixXd(MAX_SCAN_POINTS, 12);
 
@@ -870,6 +884,8 @@ void MappingNode::timer_callback() {
 
     RCLCPP_INFO_STREAM(this->get_logger(), "Scan size: " << scan_cloud->size());
 
+    ekfom_iter_cnt = 0;
+    ekfom_iter_time = 0;
     t2 = omp_get_wtime();
     imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
 

@@ -75,6 +75,9 @@ class MappingNode : public rclcpp::Node {
   int start_bin, num_bins;
   bool initialized = false;
 
+  int ekfom_iter_cnt;
+  double max_ekfom_time;
+  double ekfom_iter_time;
   Eigen::VectorXd ekfom_data_h;
   Eigen::MatrixXd ekfom_data_h_x;
 

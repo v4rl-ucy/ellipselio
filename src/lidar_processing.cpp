@@ -49,7 +49,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     float octree_res =
         fmin(fmax((i + 1) * params_.bin_size * params_.downsample_factor,
                   MIN_BIN_RESOLUTION),
-             2 * params_.map_resolution);
+             params_.map_resolution);
     float search_radius =
         fmin(fmax((i + 1) * params_.bin_size * 0.1, MIN_MAP_RESOLUTION),
              params_.map_search_radius);
