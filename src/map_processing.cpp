@@ -289,6 +289,8 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 
 #pragma omp parallel for
   for (int i = 0; i < total_size; i++) {
+    V3F old_sali;
+    bool old_filter;
     Eigen::MatrixXf K;
     Eigen::VectorXi K_filter;
     M3F tensor_i2;
@@ -321,18 +323,21 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     filter_cnt = K_filter.sum();
     if (filter_cnt < min_neigh) continue;
 
+    old_sali = salivalues[map_i];
+    old_filter = filters[map_i][1];
+
     tensor_i2 = K.colwise().sum().reshaped(3, 3);
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
 
-    sali_filter[bin_idx](i) = filters[map_i][1];
-    sali_vals[bin_idx].row(i) = salivalues[map_i];
+    sali_filter[bin_idx](i) = filters[map_i][1] && !old_filter;
+    sali_vals[bin_idx].row(i) = salivalues[map_i] - old_sali;
   }
 
 #pragma omp parallel for
   for (int i = 0; i < num_bins; i++) {
-    if (sali_filter[i].sum() == 0) continue;
     Eigen::Vector3f sali_vals_sum = sali_vals[i].colwise().sum();
+    if (sali_vals_sum.sum() == 0) continue;
     mean_sali[i] = ((mean_cnt[i] * mean_sali[i]) + sali_vals_sum) /
                    (mean_cnt[i] + sali_filter[i].sum());
     mean_cnt[i] += sali_filter[i].sum();
@@ -543,7 +548,7 @@ void MappingNode::tensor_registration(
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
 
     sali_idx = saliency_idxs[map_i];
-    if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
+    if (salivalues[map_i](sali_idx) < 0.5 * mean_sali[map_bin_idx](sali_idx))
       continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
@@ -715,7 +720,7 @@ MappingNode::MappingNode(
   eigenvectors.reserve(MAX_MAP_POINTS);
 
   num_bins = ceil(lidar_params.max_range / lidar_params.bin_size);
-  mean_cnt = std::vector<int>(num_bins, 0);
+  mean_cnt = std::vector<int>(num_bins, 1);
   mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);

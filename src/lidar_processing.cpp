@@ -38,7 +38,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
   ellipselio_pc_->reserve(MAX_SCAN_POINTS);
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
-  cnt_neighbours_ = std::vector<int>(num_bins_, 0);
+  cnt_neighbours_ = std::vector<int>(num_bins_, 1);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
   max_neighbours_ = std::vector<int>(num_bins_, MAX_NEIGHBOURS);
   search_radii_ = std::vector<float>(num_bins_, params_.map_search_radius);
@@ -52,7 +52,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
              params_.map_resolution);
     float search_radius = fmin(10.0 * octree_res, params_.map_search_radius);
     int bucket_size = fmax(
-        ceil((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
+        round((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
         1);
 
     bucket_sizes_[i] = bucket_size;
