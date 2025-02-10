@@ -528,7 +528,7 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    float residual;
+    float residual, score;
     int sali_idx, map_i, feat_num;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
@@ -557,8 +557,8 @@ void MappingNode::tensor_registration(
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
 
     sali_idx = saliency_idxs[map_i];
-    if (salivalues[map_i](sali_idx) < 0.9 * mean_sali[map_bin_idx](sali_idx))
-      continue;
+    // if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
+    //   continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
     eig_vals = eigenvalues[map_i];
@@ -570,7 +570,10 @@ void MappingNode::tensor_registration(
       p_dash = p_world - q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
+      score = 1.0 - (eig_vals(2) / eig_vals.sum());
+      // std::cerr << "Plane score: " << score << std::endl;
+      if (score < 0.9) continue;
+      // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       plane_cnt++;
     } else if (sali_idx == 1) {
       //  Point to line
@@ -579,13 +582,19 @@ void MappingNode::tensor_registration(
       p_dash = n_world + q_dash;
       norm_vec = p_world - p_dash;
       p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
+      score = (eig_vals(0) - eig_vals(1)) / eig_vals(0);
+      // std::cerr << "Line score: " << score << std::endl;
+      if (score < 0.9) continue;
+      // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       curve_cnt++;
     } else if (sali_idx == 2) {
       //  Point to point
       norm_vec = p_world - n_world;
       p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
-      if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
+      score = 1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum());
+      // std::cerr << "Point score: " << score << std::endl;
+      if (score < 0.9) continue;
+      // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
       junct_cnt++;
     }
 
