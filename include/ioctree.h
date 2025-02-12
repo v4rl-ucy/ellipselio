@@ -209,6 +209,7 @@ class Octree {
   }
 
   void set_max_octants(int max_octants) {
+    octant_max = max_octants;
     all_points = new float[max_octants * MAX_BUCKET * DIM];
   }
 
@@ -848,7 +849,7 @@ class Octree {
 
  protected:
   Octant *m_root_;
-  size_t last_pts_num, pts_num_deleted, octant_num;
+  size_t last_pts_num, pts_num_deleted, octant_num, octant_max;
   float *new_points;
   float *all_points;
   Octant *all_octants;
@@ -896,6 +897,10 @@ class Octree {
       octant->points.resize(size);
 
       if (octant->idx < 0 && size > 0) octant->idx = octant_num++;
+      if (octant_num >= octant_max) {
+        std::cerr << "Octant overflow" << std::endl;
+        exit(1);
+      }
       const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
       for (size_t i = 0; i < size; ++i) {
         std::copy(points[i], points[i] + dim, all_points + oct_idx + (i * DIM));
@@ -955,6 +960,10 @@ class Octree {
         const size_t new_size = octant->points.size();
 
         if (octant->idx < 0 && new_size > 0) octant->idx = octant_num++;
+        if (octant_num >= octant_max) {
+          std::cerr << "Octant overflow" << std::endl;
+          exit(1);
+        }
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
         for (size_t i = 0; i < new_size; ++i) {
           std::copy(octant->points[i], octant->points[i] + dim,
@@ -1263,6 +1272,10 @@ class Octree {
 
         octant->points.resize(valid_num);
         if (octant->idx < 0 && valid_num > 0) octant->idx = octant_num++;
+        if (octant_num >= octant_max) {
+          std::cerr << "Octant overflow" << std::endl;
+          exit(1);
+        }
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
         for (size_t i = 0; i < valid_num; ++i) {
           std::copy(remainder_points[i], remainder_points[i] + dim,
