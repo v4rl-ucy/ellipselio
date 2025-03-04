@@ -346,7 +346,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 
 // Add new points to the map and update geometric primitives
 void MappingNode::map_incremental(bool init_map) {
-  int start_idx, end_idx, old_map_size;
+  int start_idx, end_idx;
   std::vector<int> new_idxs, updated_idxs, added_idxs_i, new_idxs_i;
 
 #pragma omp parallel for
@@ -376,6 +376,7 @@ void MappingNode::map_incremental(bool init_map) {
     new_idxs.insert(new_idxs.end(), new_idxs_i.begin(), new_idxs_i.end());
     start_idx = end_idx;
   }
+  new_map_size = map_cloud->size();
 
   update_idx.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
@@ -424,23 +425,19 @@ void MappingNode::publish_scan() {
 // Publish geometric primitive markers
 void MappingNode::publish_markers() {
   std::atomic<int> marker_idx = 0;
-  int start_idx, end_idx, step_idx, count_idx;
   visualization_msgs::msg::MarkerArray marker_array;
 
   if (!map_cloud->size()) return;
 
-  start_idx = 0;
-  end_idx = map_cloud->points.size();
-  step_idx = ceil(1e-2 * (end_idx - start_idx));
-  count_idx = (end_idx - start_idx) / step_idx;
+  int count_idx = std::floor(0.01 * (new_map_size - last_map_size));
 
   marker_array.markers.resize(count_idx);
 #pragma omp parallel for
-  for (int i = 0; i < count_idx; i++) {
+  for (int i = last_map_size; i < new_map_size; i += 100) {
     Eigen::Quaternionf quat;
     visualization_msgs::msg::Marker marker;
 
-    int map_idx = start_idx + (i * step_idx);
+    int map_idx = i;
     if (!filters[map_idx][1]) continue;
 
     marker.id = map_idx;
@@ -492,6 +489,7 @@ void MappingNode::publish_markers() {
     }
     marker_array.markers[marker_idx++] = marker;
   }
+  last_map_size = new_map_size;
   marker_array.markers.resize(marker_idx);
   pub_mark_->publish(marker_array);
 }
