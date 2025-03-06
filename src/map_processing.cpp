@@ -429,7 +429,7 @@ void MappingNode::publish_markers() {
 
   if (!map_cloud->size()) return;
 
-  int count_idx = std::floor(0.01 * (new_map_size - last_map_size));
+  int count_idx = std::ceil(0.01 * (new_map_size - last_map_size));
 
   marker_array.markers.resize(count_idx);
 #pragma omp parallel for
