@@ -193,8 +193,10 @@ void LidarProcess::SetMinMaxTime(int bin_idx) {
 void LidarProcess::SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
                             rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.reflectivity;
-  RCLCPP_ERROR_STREAM("Livox point offset time: " << in_pt.offset_time);
-  RCLCPP_ERROR_STREAM("Livox point base time: " << point_time.nanoseconds());
+  RCLCPP_ERROR_STREAM(node_->get_logger(),
+                      "Livox point offset time: " << in_pt.offset_time);
+  RCLCPP_ERROR_STREAM(node_->get_logger(),
+                      "Livox point base time: " << point_time.nanoseconds());
   point_time += rclcpp::Duration(0, in_pt.offset_time);
 }
 
