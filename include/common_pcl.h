@@ -100,8 +100,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
         double, timestamp, timestamp)(uint16_t, ring, ring))
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     LivoxPoint,
-    (float, x, x)(float, y, y)(float, z, z)(uint8_t, reflectivity,
-                                            reflectivity)(uint8_t, tag, tag)(
-        uint8_t, line, line)(uint32_t, offset_time, offset_time))
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
+        uint8_t, tag, tag)(uint8_t, line, line)(double, timestamp, timestamp))
 
 #endif  // COMMON_PCL_H
