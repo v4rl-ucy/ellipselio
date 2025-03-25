@@ -76,6 +76,12 @@ void LidarProcess::LidarCallback(
   lidar_counter_++;
 
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
+    RCLCPP_ERROR_STREAM(
+        node_->get_logger(),
+        "New message time: " << rclcpp::Time(msg->header.stamp).nanoseconds());
+    RCLCPP_ERROR_STREAM(
+        node_->get_logger(),
+        "Last lidar end time: " << lidar_end_time_.nanoseconds());
     RCLCPP_INFO_STREAM(node_->get_logger(), "Lidar time out of order");
     return;
   }
@@ -193,10 +199,6 @@ void LidarProcess::SetMinMaxTime(int bin_idx) {
 void LidarProcess::SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
                             rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.reflectivity;
-  RCLCPP_ERROR_STREAM(node_->get_logger(),
-                      "Livox point offset time: " << in_pt.offset_time);
-  RCLCPP_ERROR_STREAM(node_->get_logger(),
-                      "Livox point base time: " << point_time.nanoseconds());
   point_time += rclcpp::Duration(0, in_pt.offset_time);
 }
 
@@ -250,7 +252,7 @@ void LidarProcess::PointCloudHandler(
   Eigen::ArrayXf ranges(in_pc_size);
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
-  // #pragma omp parallel for
+#pragma omp parallel for
   for (size_t i = 0; i < in_pc_size; i++) {
     rclcpp::Time point_time = msg->header.stamp;
     ConvertPoint<InPtType>(in_pc.points[i], out_pc->points[i], point_time);
