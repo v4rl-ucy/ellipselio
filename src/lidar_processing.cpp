@@ -198,8 +198,8 @@ void LidarProcess::SetMinMaxTime(int bin_idx) {
 // Set the point intensity and time for livox points
 void LidarProcess::SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
                             rclcpp::Time &point_time) {
-  out_pt.intensity = in_pt.reflectivity;
-  point_time += rclcpp::Duration(0, in_pt.offset_time);
+  out_pt.intensity = in_pt.intensity;
+  point_time += rclcpp::Duration(in_pt.timestamp, RCL_ROS_TIME);
 }
 
 // Set the point intensity and time for velodyne points

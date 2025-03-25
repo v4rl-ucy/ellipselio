@@ -49,10 +49,10 @@ struct EIGEN_ALIGN16 LivoxPoint {
   float x;
   float y;
   float z;
-  uint8_t reflectivity;
+  float intensity;
   uint8_t tag;
   uint8_t line;
-  uint32_t offset_time;
+  double timestamp;
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
