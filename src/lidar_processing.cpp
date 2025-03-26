@@ -63,7 +63,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
     bin_pcs_[i].reserve(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);
-    bin_octrees_[i].set_max_octants(0.1 * MAX_SCAN_POINTS);
+    bin_octrees_[i].set_max_octants(0.2 * MAX_SCAN_POINTS);
   }
 }
 
