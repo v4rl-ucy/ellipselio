@@ -793,8 +793,7 @@ MappingNode::MappingNode(
   pub_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
-  tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(
-      *this, rclcpp::SensorDataQoS());
+  tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
   pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_map", rclcpp::SensorDataQoS());
   pub_scan_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
