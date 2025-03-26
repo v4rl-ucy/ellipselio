@@ -791,15 +791,16 @@ MappingNode::MappingNode(
   loop_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   pub_callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
-  tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
-  pub_map_ =
-      this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_map", 1);
-  pub_scan_ =
-      this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_scan", 1);
+  tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(
+      *this, rmw_qos_profile_sensor_data);
+  pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      "/cloud_map", rmw_qos_profile_sensor_data);
+  pub_scan_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      "/cloud_scan", rmw_qos_profile_sensor_data);
   pub_mark_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-      "/visualization_marker", 1);
+      "/visualization_marker", rmw_qos_profile_sensor_data);
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
