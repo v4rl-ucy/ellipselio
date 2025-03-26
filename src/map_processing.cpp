@@ -806,7 +806,7 @@ MappingNode::MappingNode(
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
   pub_odo_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
-      std::chrono::milliseconds((1.0 / lidar_params.rate) * 1000),
+      std::chrono::milliseconds(1000 / lidar_params.rate),
       std::bind(&MappingNode::publish_odometry, this), pub_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
