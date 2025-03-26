@@ -59,6 +59,7 @@ class MappingNode : public rclcpp::Node {
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
 
   rclcpp::TimerBase::SharedPtr loop_timer_;
+  rclcpp::TimerBase::SharedPtr pub_odo_timer_;
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
   rclcpp::TimerBase::SharedPtr pub_marker_timer_;
   rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
@@ -114,6 +115,7 @@ class MappingNode : public rclcpp::Node {
 
   EllipseLioPointCloudPtr map_cloud;
   EllipseLioPointCloudPtr scan_cloud;
+  EllipseLioPointCloudPtr scan_cloud_pub;
 
   iOctree::Octree ioctree;
 
@@ -121,7 +123,9 @@ class MappingNode : public rclcpp::Node {
   LidarParams lidar_params;
 
   IkfomSPtr kf_;
-  KfState kf_state_;
+  KfState kf_state_, kf_state_pub_;
+
+  rclcpp::Time last_pub_time;
 
   std::shared_ptr<ImuProcess> imu_process;
   std::shared_ptr<LidarProcess> lid_process;

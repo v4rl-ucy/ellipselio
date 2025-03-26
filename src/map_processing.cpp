@@ -428,8 +428,8 @@ void MappingNode::publish_map() {
 // Publish scan point cloud
 void MappingNode::publish_scan() {
   sensor_msgs::msg::PointCloud2 scan_msg;
-  pcl::toROSMsg(*scan_cloud, scan_msg);
-  scan_msg.header.stamp = kf_state_.time;
+  pcl::toROSMsg(*scan_cloud_pub, scan_msg);
+  scan_msg.header.stamp = kf_state_pub_.time;
   scan_msg.header.frame_id = "odom_ellipselio";
   pub_scan_->publish(scan_msg);
 }
@@ -508,18 +508,23 @@ void MappingNode::publish_markers() {
 
 // Publish odometry transform
 void MappingNode::publish_odometry() {
+  if (last_pub_time == kf_state_pub_.time) return;
+  last_pub_time = kf_state_pub_.time;
+
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_ellipselio";
   trans.child_frame_id = "imu_ellipselio";
-  trans.header.stamp = kf_state_.time;
-  trans.transform.translation.x = kf_state_.state.pos(0);
-  trans.transform.translation.y = kf_state_.state.pos(1);
-  trans.transform.translation.z = kf_state_.state.pos(2);
-  trans.transform.rotation.x = kf_state_.state.rot.coeffs()[0];
-  trans.transform.rotation.y = kf_state_.state.rot.coeffs()[1];
-  trans.transform.rotation.z = kf_state_.state.rot.coeffs()[2];
-  trans.transform.rotation.w = kf_state_.state.rot.coeffs()[3];
+  trans.header.stamp = kf_state_pub_.time;
+  trans.transform.translation.x = kf_state_pub_.state.pos(0);
+  trans.transform.translation.y = kf_state_pub_.state.pos(1);
+  trans.transform.translation.z = kf_state_pub_.state.pos(2);
+  trans.transform.rotation.x = kf_state_pub_.state.rot.coeffs()[0];
+  trans.transform.rotation.y = kf_state_pub_.state.rot.coeffs()[1];
+  trans.transform.rotation.z = kf_state_pub_.state.rot.coeffs()[2];
+  trans.transform.rotation.w = kf_state_pub_.state.rot.coeffs()[3];
   tf_br_->sendTransform(trans);
+
+  publish_scan();
 }
 
 // Register new scan points to the map using tensor registration
@@ -643,6 +648,7 @@ MappingNode::MappingNode(
     : Node("mapping_node", options),
       map_cloud(new EllipseLioPointCloud()),
       scan_cloud(new EllipseLioPointCloud()),
+      scan_cloud_pub(new EllipseLioPointCloud()),
       kf_(new Ikfom()) {
   this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
@@ -780,6 +786,8 @@ MappingNode::MappingNode(
                                 std::placeholders::_1, std::placeholders::_2),
                       kf_iterations, epsi);
 
+  last_pub_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
   loop_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   pub_callback_group_ =
@@ -796,6 +804,10 @@ MappingNode::MappingNode(
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
+  pub_odo_timer_ = rclcpp::create_timer(
+      this, this->get_clock(),
+      std::chrono::milliseconds((1.0 / lidar_params.rate) * 1000),
+      std::bind(&MappingNode::publish_odometry, this), pub_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&MappingNode::publish_map, this), pub_callback_group_);
@@ -878,8 +890,7 @@ void MappingNode::timer_callback() {
   }
 
   if (sync_packages()) {
-    double t0, t1, t2, t3, t4, t5, imu_time, state_time, map_time, pub_time,
-        total_time;
+    double t0, t1, t2, t3, t4, imu_time, state_time, map_time, total_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
     t0 = omp_get_wtime();
@@ -911,17 +922,15 @@ void MappingNode::timer_callback() {
 
     t3 = omp_get_wtime();
     map_incremental(false);
-
     t4 = omp_get_wtime();
-    publish_odometry();
-    publish_scan();
-    t5 = omp_get_wtime();
+
+    kf_state_pub_ = kf_state_;
+    *scan_cloud_pub = *scan_cloud;
 
     imu_time = t1 - t0;
     state_time = t3 - t2;
     map_time = t4 - t3;
-    pub_time = t5 - t4;
-    total_time = t5 - t0;
+    total_time = t4 - t0;
 
     max_imu_time = fmax(max_imu_time, imu_time);
     max_state_time = fmax(max_state_time, state_time);
@@ -943,9 +952,6 @@ void MappingNode::timer_callback() {
     RCLCPP_INFO_STREAM(this->get_logger(), "Map: " << std::fixed
                                                    << std::setprecision(3)
                                                    << map_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Pub: " << std::fixed
-                                                   << std::setprecision(3)
-                                                   << pub_time);
     RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << std::fixed
                                                      << std::setprecision(3)
                                                      << total_time);

@@ -63,7 +63,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
     bin_pcs_[i].reserve(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);
-    bin_octrees_[i].set_max_octants(0.2 * MAX_SCAN_POINTS);
+    bin_octrees_[i].set_max_octants(0.1 * MAX_SCAN_POINTS);
   }
 }
 
@@ -115,8 +115,6 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     std::vector<int> new_idxs, added_idxs;
     if (!bin_sizes_[i]) continue;
 
-    RCLCPP_ERROR_STREAM(node_->get_logger(),
-                        "Octant num:  " << bin_octrees_[i].octant_size());
     bin_octrees_[i].set_bucket_size(1);
     bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
     bin_octrees_[i].update(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
