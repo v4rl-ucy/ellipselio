@@ -898,7 +898,8 @@ class Octree {
 
       if (octant->idx < 0 && size > 0) octant->idx = octant_num++;
       if (octant_num >= octant_max) {
-        std::cerr << "Octant overflow" << std::endl;
+        std::cerr << "Octant overflow max: " << octant_max
+                  << " num: " << octant_num << std::endl;
         exit(1);
       }
       const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
@@ -961,7 +962,8 @@ class Octree {
 
         if (octant->idx < 0 && new_size > 0) octant->idx = octant_num++;
         if (octant_num >= octant_max) {
-          std::cerr << "Octant overflow" << std::endl;
+          std::cerr << "Octant overflow max: " << octant_max
+                    << " num: " << octant_num << std::endl;
           exit(1);
         }
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
@@ -1273,7 +1275,8 @@ class Octree {
         octant->points.resize(valid_num);
         if (octant->idx < 0 && valid_num > 0) octant->idx = octant_num++;
         if (octant_num >= octant_max) {
-          std::cerr << "Octant overflow" << std::endl;
+          std::cerr << "Octant overflow max: " << octant_max
+                    << " num: " << octant_num << std::endl;
           exit(1);
         }
         const size_t oct_idx = octant->idx * MAX_BUCKET * DIM;
