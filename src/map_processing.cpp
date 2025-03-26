@@ -794,7 +794,7 @@ MappingNode::MappingNode(
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(
-      *this, rmw_qos_profile_sensor_data);
+      *this, rclcpp::SensorDataQoS());
   pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_map", rmw_qos_profile_sensor_data);
   pub_scan_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
