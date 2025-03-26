@@ -796,11 +796,11 @@ MappingNode::MappingNode(
   tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(
       *this, rclcpp::SensorDataQoS());
   pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/cloud_map", rmw_qos_profile_sensor_data);
+      "/cloud_map", rclcpp::SensorDataQoS());
   pub_scan_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-      "/cloud_scan", rmw_qos_profile_sensor_data);
+      "/cloud_scan", rclcpp::SensorDataQoS());
   pub_mark_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
-      "/visualization_marker", rmw_qos_profile_sensor_data);
+      "/visualization_marker", rclcpp::SensorDataQoS());
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(10),
