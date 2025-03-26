@@ -15,7 +15,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_opt.callback_group = lidar_callback_group_;
 
   sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-      params.topic, rclcpp::ServicesQoS(),
+      params.topic, rclcpp::SensorDataQoS(),
       std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
       lidar_opt);
 
