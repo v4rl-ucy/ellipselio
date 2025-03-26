@@ -416,7 +416,11 @@ void MappingNode::map_incremental(bool init_map) {
 
 // Publish map point cloud
 void MappingNode::publish_map() {
+  bool pub_to_rviz;
   sensor_msgs::msg::PointCloud2 map_msg;
+
+  this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
+  if (!pub_to_rviz) return;
 
   if (!map_cloud->size()) return;
   pcl::toROSMsg(*map_cloud, map_msg);
@@ -510,6 +514,11 @@ void MappingNode::publish_markers() {
 
 // Publish odometry transform
 void MappingNode::publish_odometry() {
+  bool pub_to_rviz;
+
+  this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
+  if (!pub_to_rviz) return;
+
   if (last_pub_time == kf_state_pub_.time) return;
   last_pub_time = kf_state_pub_.time;
 
@@ -654,6 +663,7 @@ MappingNode::MappingNode(
       kf_(new Ikfom()) {
   this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
+  this->declare_parameter<bool>("mapping.pub_to_rviz", true);
   this->declare_parameter<double>("mapping.map_resolution", 0.1);
   this->declare_parameter<double>("mapping.map_search_radius", 1.0);
 
