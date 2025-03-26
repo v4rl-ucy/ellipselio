@@ -27,6 +27,10 @@ bool MappingNode::sync_packages() {
     if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU end time is less than lidar end time");
+      RCLCPP_ERROR_STREAM(this->get_logger(),
+                          "IMU end time: " << imu_process->imu_end_time_);
+      RCLCPP_ERROR_STREAM(this->get_logger(),
+                          "Lidar end time: " << lid_process->lidar_end_time_);
     }
     return false;
   }
@@ -34,6 +38,11 @@ bool MappingNode::sync_packages() {
     if (int(floor(inter_sync_time / 0.01)) % 10 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU start time is greater than lidar start time");
+      RCLCPP_ERROR_STREAM(this->get_logger(),
+                          "IMU start time: " << imu_process->imu_start_time_);
+      RCLCPP_ERROR_STREAM(
+          this->get_logger(),
+          "Lidar start time: " << lid_process->lidar_start_time_);
     }
     lid_process->ClearPointCloud();
     return false;
