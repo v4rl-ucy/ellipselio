@@ -61,8 +61,8 @@ class MappingNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr loop_timer_;
   rclcpp::TimerBase::SharedPtr pub_odo_timer_;
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
-  rclcpp::TimerBase::SharedPtr pub_marker_timer_;
-  rclcpp::CallbackGroup::SharedPtr pub_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr pub_map_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr pub_odo_callback_group_;
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
 

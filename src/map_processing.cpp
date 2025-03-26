@@ -423,6 +423,8 @@ void MappingNode::publish_map() {
   map_msg.header.stamp = kf_state_.time;
   map_msg.header.frame_id = "odom_ellipselio";
   pub_map_->publish(map_msg);
+
+  publish_markers();
 }
 
 // Publish scan point cloud
@@ -790,7 +792,9 @@ MappingNode::MappingNode(
 
   loop_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  pub_callback_group_ =
+  pub_map_callback_group_ =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  pub_odo_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
@@ -807,13 +811,10 @@ MappingNode::MappingNode(
   pub_odo_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
       std::chrono::milliseconds(1000 / lidar_params.rate),
-      std::bind(&MappingNode::publish_odometry, this), pub_callback_group_);
+      std::bind(&MappingNode::publish_odometry, this), pub_odo_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
-      std::bind(&MappingNode::publish_map, this), pub_callback_group_);
-  pub_marker_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
-      std::bind(&MappingNode::publish_markers, this), pub_callback_group_);
+      std::bind(&MappingNode::publish_map, this), pub_map_callback_group_);
 
   RCLCPP_INFO(this->get_logger(), "Node init finished.");
 }
