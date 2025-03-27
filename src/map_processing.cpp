@@ -419,6 +419,8 @@ void MappingNode::publish_map() {
   bool pub_to_rviz;
   sensor_msgs::msg::PointCloud2 map_msg;
 
+  double t0 = omp_get_wtime();
+
   this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
   if (!pub_to_rviz) return;
 
@@ -429,6 +431,10 @@ void MappingNode::publish_map() {
   pub_map_->publish(map_msg);
 
   publish_markers();
+
+  double t1 = omp_get_wtime();
+  RCLCPP_INFO_STREAM(this->get_logger(),
+                     "Map publish time: " << std::setprecision(2) << t1 - t0);
 }
 
 // Publish scan point cloud
@@ -516,6 +522,8 @@ void MappingNode::publish_markers() {
 void MappingNode::publish_odometry() {
   bool pub_to_rviz;
 
+  double t0 = omp_get_wtime();
+
   this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
   if (!pub_to_rviz) return;
 
@@ -536,6 +544,11 @@ void MappingNode::publish_odometry() {
   tf_br_->sendTransform(trans);
 
   publish_scan();
+
+  double t1 = omp_get_wtime();
+  RCLCPP_INFO_STREAM(
+      this->get_logger(),
+      "Odometry publish time: " << std::setprecision(2) << t1 - t0);
 }
 
 // Register new scan points to the map using tensor registration
