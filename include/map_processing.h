@@ -76,6 +76,7 @@ class MappingNode : public rclcpp::Node {
 
   int start_bin, num_bins;
   bool initialized = false;
+  bool pub_to_rviz = true;
 
   int ekfom_iter_cnt;
   double max_ekfom_time;

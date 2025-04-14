@@ -54,7 +54,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
         fmin(fmax((i + 1) * params_.bin_size * 0.1, MIN_MAP_RESOLUTION),
              params_.map_search_radius);
     int bucket_size = fmax(
-        round((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
+        ceil((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
         1);
 
     bucket_sizes_[i] = bucket_size;
@@ -271,5 +271,5 @@ void LidarProcess::PointCloudHandler(
     out_pc->points[i].bin_idx = bin_idx;
   }
 
-  start_bin_ = round(ranges.mean() / params_.bin_size);
+  start_bin_ = floor(ranges.mean() / params_.bin_size);
 }

@@ -137,7 +137,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
 
     filters[i][1] = true;
     salivalues[i] = sali_val;
-    eigenvalues[i] = (1.0 / (eig_val.array() + 1e-3)).matrix().normalized();
+    eigenvalues[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
     eigenvalues[i] *= lid_process->search_radii_[bin_idx];
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].intensity = (saliency_idxs[i] + 1) * 85;
@@ -416,15 +416,12 @@ void MappingNode::map_incremental(bool init_map) {
 
 // Publish map point cloud
 void MappingNode::publish_map() {
-  bool pub_to_rviz;
-  sensor_msgs::msg::PointCloud2 map_msg;
+  if (!pub_to_rviz) return;
+  if (!map_cloud->size()) return;
 
   double t0 = omp_get_wtime();
 
-  this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
-  if (!pub_to_rviz) return;
-
-  if (!map_cloud->size()) return;
+  sensor_msgs::msg::PointCloud2 map_msg;
   pcl::toROSMsg(*map_cloud, map_msg);
   map_msg.header.stamp = kf_state_.time;
   map_msg.header.frame_id = "odom_ellipselio";
@@ -433,6 +430,7 @@ void MappingNode::publish_map() {
   publish_markers();
 
   double t1 = omp_get_wtime();
+
   RCLCPP_INFO_STREAM(this->get_logger(),
                      "Map publish time: " << std::setprecision(2) << t1 - t0);
 }
@@ -520,14 +518,11 @@ void MappingNode::publish_markers() {
 
 // Publish odometry transform
 void MappingNode::publish_odometry() {
-  bool pub_to_rviz;
+  if (!pub_to_rviz) return;
+  if (last_pub_time == kf_state_pub_.time) return;
 
   double t0 = omp_get_wtime();
 
-  this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
-  if (!pub_to_rviz) return;
-
-  if (last_pub_time == kf_state_pub_.time) return;
   last_pub_time = kf_state_pub_.time;
 
   geometry_msgs::msg::TransformStamped trans;
@@ -546,6 +541,7 @@ void MappingNode::publish_odometry() {
   publish_scan();
 
   double t1 = omp_get_wtime();
+
   RCLCPP_INFO_STREAM(
       this->get_logger(),
       "Odometry publish time: " << std::setprecision(2) << t1 - t0);
@@ -567,7 +563,7 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    float residual, score;
+    float residual, score, score_sum;
     int sali_idx, map_i, feat_num;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
@@ -596,46 +592,53 @@ void MappingNode::tensor_registration(
     const int &map_bin_idx = map_cloud->points[map_i].bin_idx;
 
     sali_idx = saliency_idxs[map_i];
+    sali = salivalues[map_i].normalized();
     // if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
     //   continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
     eig_vals = eigenvalues[map_i];
 
-    if (sali_idx == 0) {
-      // Point to plane
-      q = p_world - n_world;
-      q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
-      p_dash = p_world - q_dash;
-      norm_vec = p_world - p_dash;
-      p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      score = 1.0 - (eig_vals(2) / eig_vals.sum());
-      // std::cerr << "Plane score: " << score << std::endl;
-      if (score < 0.9) continue;
-      // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
-      plane_cnt++;
-    } else if (sali_idx == 1) {
-      //  Point to line
-      q = p_world - n_world;
-      q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
-      p_dash = n_world + q_dash;
-      norm_vec = p_world - p_dash;
-      p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-      score = (eig_vals(0) - eig_vals(1)) / eig_vals(0);
-      // std::cerr << "Line score: " << score << std::endl;
-      if (score < 0.9) continue;
-      // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
-      curve_cnt++;
-    } else if (sali_idx == 2) {
-      //  Point to point
-      norm_vec = p_world - n_world;
-      p_dash = eigenvectors[map_i].transpose() * (p_world - n_world);
-      score = 1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum());
-      // std::cerr << "Point score: " << score << std::endl;
-      if (score < 0.9) continue;
-      // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0) continue;
-      junct_cnt++;
-    }
+    // if (sali_idx == 0) {
+    // Point to plane
+    score = sali(0) * (1.0 - (eig_vals(2) / eig_vals.sum()));
+    score_sum = score;
+    // std::cerr << "Plane score: " << score << std::endl;
+    q = p_world - n_world;
+    q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
+    p_dash = score * (p_world - q_dash);
+    //   norm_vec = p_world - p_dash;
+    //   p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+    //   if (score < 0.9) continue;
+    //   // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0)
+    //   continue; plane_cnt++;
+    // } else if (sali_idx == 1) {
+    //  Point to line
+    score = sali(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
+    score_sum += score;
+    // std::cerr << "Line score: " << score << std::endl;
+    q = p_world - n_world;
+    q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
+    p_dash += score * (n_world + q_dash);
+    //   norm_vec = p_world - p_dash;
+    //   p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+
+    //   if (score < 0.9) continue;
+    //   // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0)
+    //   continue; curve_cnt++;
+    // } else if (sali_idx == 2) {
+    //  Point to point
+    score = sali(2) * (1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum()));
+    score_sum += score;
+    // std::cerr << "Point score: " << score << std::endl;
+    p_dash += score * n_world;
+    p_dash *= (1.0 / score_sum);
+    norm_vec = p_world - p_dash;
+    p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+    // if (score < 0.9) continue;
+    if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 0.01) continue;
+    // junct_cnt++;
+    // }
 
     residual = norm_vec.norm();
     norm_vec.normalize();
@@ -714,6 +717,7 @@ MappingNode::MappingNode(
 
   this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);
   this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs, 1);
+  this->get_parameter_or<bool>("mapping.pub_to_rviz", pub_to_rviz, true);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution, 0.1);
   this->get_parameter_or<double>("mapping.map_search_radius", map_search_radius,
                                  1.0);
