@@ -18,7 +18,7 @@ bool MappingNode::sync_packages() {
     return false;
   }
   if (!lid_process->lidar_has_data_) {
-    if (int(ceil(inter_sync_time / 0.01)) % 10 == 0) {
+    if (int(ceil(inter_sync_time / 0.01)) % 20 == 0) {
       RCLCPP_ERROR(this->get_logger(), "Lidar has no data");
     }
     return false;
