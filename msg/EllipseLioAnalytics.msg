@@ -5,7 +5,7 @@ int64[] cams_freq
 
 int64 map_size
 int64 oct_num
-int64 num_idxs
+int64 new_idxs
 int64 upd_idxs
 int64 scan_size
 int64 num_feats

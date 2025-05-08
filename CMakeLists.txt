@@ -25,6 +25,18 @@ find_package(pcl_conversions REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(image_transport REQUIRED)
 
+find_package(OpenCV REQUIRED)
+find_package(Boost REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(PCL REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/EllipseLioAnalytics.msg"
+  DEPENDENCIES std_msgs
+)
+ament_export_dependencies(rosidl_default_runtime)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
 set(dependencies
   cv_bridge
   rclcpp
@@ -40,11 +52,6 @@ set(dependencies
   image_transport
 )
 
-find_package(OpenCV REQUIRED)
-find_package(Boost REQUIRED)
-find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED)
-
 ament_auto_add_library(ellipselio_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp)
 target_include_directories(ellipselio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
@@ -56,7 +63,7 @@ target_include_directories(ellipselio_mapping PUBLIC
   ${OpenCV_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
 )
-target_link_libraries(ellipselio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES})
+target_link_libraries(ellipselio_mapping ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${EIGEN3_LIBRARIES} ${OpenCV_LIBS} ${Boost_LIBRARIES} ${cpp_typesupport_target})
 
 ament_target_dependencies(ellipselio_mapping ${dependencies})
 

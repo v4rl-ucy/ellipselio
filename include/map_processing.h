@@ -23,6 +23,8 @@
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include "ellipse_lio/msg/ellipse_lio_analytics.hpp"
+
 namespace ellipselio {
 
 class MappingNode : public rclcpp::Node {
@@ -57,6 +59,8 @@ class MappingNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
+  rclcpp::Publisher<ellipse_lio::msg::EllipseLioAnalytics>::SharedPtr
+      pub_analytics_;
 
   rclcpp::TimerBase::SharedPtr loop_timer_;
   rclcpp::TimerBase::SharedPtr pub_odo_timer_;
@@ -125,6 +129,11 @@ class MappingNode : public rclcpp::Node {
 
   IkfomSPtr kf_;
   KfState kf_state_, kf_state_pub_;
+
+  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_ =
+      ellipse_lio::msg::EllipseLioAnalytics();
+  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_ =
+      ellipse_lio::msg::EllipseLioAnalytics();
 
   rclcpp::Time last_pub_time;
 

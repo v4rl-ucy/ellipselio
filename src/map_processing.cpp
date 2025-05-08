@@ -75,20 +75,18 @@ bool MappingNode::sync_packages() {
   imu_process->imu_counter_ = 0;
   lid_process->lidar_counter_ = 0;
 
-  RCLCPP_INFO_STREAM(this->get_logger(), "Imu freq: " << cur_imu_freq);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Lid freq: " << cur_lid_freq);
+  analytics_msg_.imu_freq = cur_imu_freq;
+  analytics_msg_.lid_freq = cur_lid_freq;
 
   for (int i = 0; i < num_cams; i++) {
     int cur_cam_freq = round(cams_process[i]->cam_counter_ / inter_sync_time);
     cams_process[i]->cam_counter_ = 0;
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Cam " << i << " freq: " << cur_cam_freq);
+    analytics_msg_.cams_freq.push_back(cur_cam_freq);
   }
 
   int cur_odom_freq = round(1.0 / inter_sync_time);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Odom freq: " << cur_odom_freq);
+  analytics_msg_.odom_freq = cur_odom_freq;
 
-  RCLCPP_INFO(this->get_logger(), "Synced packages");
   last_sync_time = omp_get_wtime();
   return true;
 }
@@ -406,10 +404,10 @@ void MappingNode::map_incremental(bool init_map) {
     tensor_vote_pass_2(new_idxs, updated_idxs);
   }
 
-  RCLCPP_INFO_STREAM(this->get_logger(), "Map size: " << map_cloud->size());
-  RCLCPP_INFO_STREAM(this->get_logger(), "Oct num: " << ioctree.octant_size());
-  RCLCPP_INFO_STREAM(this->get_logger(), "New idxs: " << new_idxs.size());
-  RCLCPP_INFO_STREAM(this->get_logger(), "Upd idxs: " << updated_idxs.size());
+  analytics_msg_.map_size = map_cloud->size();
+  analytics_msg_.oct_num = ioctree.octant_size();
+  analytics_msg_.new_idxs = new_idxs.size();
+  analytics_msg_.upd_idxs = updated_idxs.size();
 
   map_counter++;
 }
@@ -419,8 +417,6 @@ void MappingNode::publish_map() {
   if (!pub_to_rviz) return;
   if (!map_cloud->size()) return;
 
-  double t0 = omp_get_wtime();
-
   sensor_msgs::msg::PointCloud2 map_msg;
   pcl::toROSMsg(*map_cloud, map_msg);
   map_msg.header.stamp = kf_state_.time;
@@ -428,11 +424,6 @@ void MappingNode::publish_map() {
   pub_map_->publish(map_msg);
 
   publish_markers();
-
-  double t1 = omp_get_wtime();
-
-  RCLCPP_INFO_STREAM(this->get_logger(),
-                     "Map publish time: " << std::setprecision(2) << t1 - t0);
 }
 
 // Publish scan point cloud
@@ -521,8 +512,6 @@ void MappingNode::publish_odometry() {
   if (!pub_to_rviz) return;
   if (last_pub_time == kf_state_pub_.time) return;
 
-  double t0 = omp_get_wtime();
-
   last_pub_time = kf_state_pub_.time;
 
   geometry_msgs::msg::TransformStamped trans;
@@ -538,13 +527,8 @@ void MappingNode::publish_odometry() {
   trans.transform.rotation.w = kf_state_pub_.state.rot.coeffs()[3];
   tf_br_->sendTransform(trans);
 
+  pub_analytics_->publish(analytics_msg_pub_);
   publish_scan();
-
-  double t1 = omp_get_wtime();
-
-  RCLCPP_INFO_STREAM(
-      this->get_logger(),
-      "Odometry publish time: " << std::setprecision(2) << t1 - t0);
 }
 
 // Register new scan points to the map using tensor registration
@@ -661,12 +645,8 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   ekfom_iter_time += t1 - t0;
 
-  RCLCPP_INFO_STREAM(this->get_logger(), "Num feats: " << feat_cnt);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Num planes: " << plane_cnt);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Num curves: " << curve_cnt);
-  RCLCPP_INFO_STREAM(this->get_logger(), "Num junctions: " << junct_cnt);
-  RCLCPP_INFO_STREAM(this->get_logger(),
-                     "Res mean: " << std::setprecision(2) << res_mean);
+  analytics_msg_.num_feats = feat_cnt;
+  analytics_msg_.res_mean = res_mean;
 }
 
 // Main mapping node
@@ -825,6 +805,10 @@ MappingNode::MappingNode(
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+
+  pub_analytics_ =
+      this->create_publisher<ellipse_lio::msg::EllipseLioAnalytics>(
+          "/analytics", rclcpp::SensorDataQoS());
   pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       "/cloud_map", rclcpp::SensorDataQoS());
   pub_scan_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
@@ -941,7 +925,7 @@ void MappingNode::timer_callback() {
       return;
     }
 
-    RCLCPP_INFO_STREAM(this->get_logger(), "Scan size: " << scan_cloud->size());
+    analytics_msg_.scan_size = scan_cloud->size();
 
     ekfom_iter_cnt = 0;
     ekfom_iter_time = 0;
@@ -970,48 +954,22 @@ void MappingNode::timer_callback() {
     mean_map_time += map_time;
     mean_total_time += total_time;
 
-    RCLCPP_INFO(this->get_logger(), " ");
-    RCLCPP_INFO_STREAM(this->get_logger(), "Imu: " << std::fixed
-                                                   << std::setprecision(3)
-                                                   << imu_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "State: " << std::fixed
-                                                     << std::setprecision(3)
-                                                     << state_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Map: " << std::fixed
-                                                   << std::setprecision(3)
-                                                   << map_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Total: " << std::fixed
-                                                     << std::setprecision(3)
-                                                     << total_time);
-    RCLCPP_INFO(this->get_logger(), " ");
+    analytics_msg_.imu_time = imu_time;
+    analytics_msg_.state_time = state_time;
+    analytics_msg_.map_time = map_time;
+    analytics_msg_.total_time = total_time;
 
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Mean Imu: " << std::fixed << std::setprecision(3)
-                                    << mean_imu_time / (map_counter - 1));
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Mean State: " << std::fixed << std::setprecision(3)
-                                      << mean_state_time / (map_counter - 1));
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Mean Map: " << std::fixed << std::setprecision(3)
-                                    << mean_map_time / (map_counter - 1));
-    RCLCPP_INFO_STREAM(this->get_logger(),
-                       "Mean Total: " << std::fixed << std::setprecision(3)
-                                      << mean_total_time / (map_counter - 1));
-    RCLCPP_INFO(this->get_logger(), " ");
+    analytics_msg_.imu_mean = mean_imu_time / (map_counter - 1);
+    analytics_msg_.state_mean = mean_state_time / (map_counter - 1);
+    analytics_msg_.map_mean = mean_map_time / (map_counter - 1);
+    analytics_msg_.total_mean = mean_total_time / (map_counter - 1);
 
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max imu: " << std::fixed
-                                                       << std::setprecision(3)
-                                                       << max_imu_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max state: " << std::fixed
-                                                         << std::setprecision(3)
-                                                         << max_state_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max map: " << std::fixed
-                                                       << std::setprecision(3)
-                                                       << max_map_time);
-    RCLCPP_INFO_STREAM(this->get_logger(), "Max total: " << std::fixed
-                                                         << std::setprecision(3)
-                                                         << max_total_time);
-    RCLCPP_INFO(this->get_logger(), " ");
+    analytics_msg_.imu_max = max_imu_time;
+    analytics_msg_.state_max = max_state_time;
+    analytics_msg_.map_max = max_map_time;
+    analytics_msg_.total_max = max_total_time;
+
+    analytics_msg_pub_ = analytics_msg_;
   }
 }
 
