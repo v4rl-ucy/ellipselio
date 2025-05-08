@@ -12,19 +12,19 @@ bool MappingNode::sync_packages() {
     }
   }
   if (!imu_process->imu_has_data_) {
-    if (int(floor(inter_sync_time / 0.01)) % 20 == 0) {
+    if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
       RCLCPP_ERROR(this->get_logger(), "IMU has no data");
     }
     return false;
   }
   if (!lid_process->lidar_has_data_) {
-    if (int(floor(inter_sync_time / 0.01)) % 20 == 0) {
+    if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
       RCLCPP_ERROR(this->get_logger(), "Lidar has no data");
     }
     return false;
   }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
-    if (int(floor(inter_sync_time / 0.01)) % 20 == 0) {
+    if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU end time is less than lidar end time");
       RCLCPP_ERROR_STREAM(
@@ -37,7 +37,7 @@ bool MappingNode::sync_packages() {
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
-    if (int(floor(inter_sync_time / 0.01)) % 20 == 0) {
+    if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU start time is greater than lidar start time");
       RCLCPP_ERROR_STREAM(
@@ -52,7 +52,7 @@ bool MappingNode::sync_packages() {
   }
   for (int i = 0; i < num_cams; i++) {
     if (!cams_process[i]->cam_has_data_) {
-      if (int(floor(inter_sync_time / 0.01)) % 20 == 0) {
+      if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
         RCLCPP_ERROR_STREAM(this->get_logger(),
                             "Camera " << i << " has no data");
       }
@@ -61,7 +61,7 @@ bool MappingNode::sync_packages() {
   }
   for (int i = 0; i < num_cams; i++) {
     if (cams_process[i]->img_end_time_ < imu_process->imu_start_time_) {
-      if (int(floor(inter_sync_time / 0.01)) % 20 == 0) {
+      if (int(floor(inter_sync_time / 0.01)) % 100 == 0) {
         RCLCPP_ERROR_STREAM(
             this->get_logger(),
             "Camera " << i << " end time is less than imu start time");
