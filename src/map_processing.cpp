@@ -412,17 +412,52 @@ void MappingNode::map_incremental(bool init_map) {
   map_counter++;
 }
 
+void split_map(const sensor_msgs::msg::PointCloud2 &input,
+               std::vector<sensor_msgs::msg::PointCloud2> &clouds, size_t n) {
+  const size_t total_points = input.width * input.height;
+  const size_t point_step = input.point_step;
+  const size_t chunk_size = (total_points + n - 1) / n;
+
+  for (size_t i = 0; i < n && i * chunk_size < total_points; ++i) {
+    size_t start_point = i * chunk_size;
+    size_t end_point = std::min(start_point + chunk_size, total_points);
+    size_t num_points = end_point - start_point;
+
+    sensor_msgs::msg::PointCloud2 part;
+    part.header = input.header;
+    part.fields = input.fields;
+    part.is_bigendian = input.is_bigendian;
+    part.point_step = input.point_step;
+    part.height = 1;
+    part.width = static_cast<uint32_t>(num_points);
+    part.is_dense = input.is_dense;
+    part.row_step = part.point_step * part.width;
+    part.data.resize(part.row_step);
+
+    std::copy(input.data.begin() + start_point * point_step,
+              input.data.begin() + end_point * point_step, part.data.begin());
+
+    clouds.push_back(std::move(part));
+  }
+}
+
 // Publish map point cloud
 void MappingNode::publish_map() {
-  if (!map_cloud->size()) return;
-
   sensor_msgs::msg::PointCloud2 map_msg;
+  std::vector<sensor_msgs::msg::PointCloud2> map_parts;
+
+  publish_markers();
+
+  if (!map_cloud->size()) return;
   pcl::toROSMsg(*map_cloud, map_msg);
   map_msg.header.stamp = kf_state_.time;
   map_msg.header.frame_id = "odom_ellipselio";
-  pub_map_->publish(map_msg);
 
-  publish_markers();
+  split_map(map_msg, map_parts, (1000 * pub_map_n_secs) / 100);
+  for (auto &part : map_parts) {
+    pub_map_->publish(part);
+    rclcpp::sleep_for(std::chrono::milliseconds(100));
+  }
 }
 
 // Publish scan point cloud

@@ -44,6 +44,8 @@ class MappingNode : public rclcpp::Node {
   void compute_geometric_primitive(int map_i, int sali_idx, V3F &p_world,
                                    V3F &norm_vec);
 
+  void split_map(const sensor_msgs::msg::PointCloud2 &input,
+                 std::vector<sensor_msgs::msg::PointCloud2> &clouds, size_t n);
   void publish_map();
   void publish_scan();
   void publish_markers();
