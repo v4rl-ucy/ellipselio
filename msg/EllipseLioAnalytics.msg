@@ -9,6 +9,7 @@ int64 new_idxs
 int64 upd_idxs
 int64 scan_size
 int64 num_feats
+int64 num_reject
 float64 res_mean
 
 float64 imu_time

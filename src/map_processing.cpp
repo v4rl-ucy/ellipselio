@@ -569,7 +569,7 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  std::atomic<int> feat_cnt = 0, plane_cnt = 0, curve_cnt = 0, junct_cnt = 0;
+  std::atomic<int> feat_cnt = 0, reject_cnt = 0;
 
   if (ekfom_iter_cnt > 0) {
     if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt) {
@@ -612,52 +612,40 @@ void MappingNode::tensor_registration(
 
     sali_idx = saliency_idxs[map_i];
     sali = salivalues[map_i].normalized();
-    // if (salivalues[map_i](sali_idx) < mean_sali[map_bin_idx](sali_idx))
-    //   continue;
 
     n_world = map_cloud->points[map_i].getVector3fMap();
     eig_vals = eigenvalues[map_i];
 
-    // if (sali_idx == 0) {
     // Point to plane
     score = sali(0) * (1.0 - (eig_vals(2) / eig_vals.sum()));
     score_sum = score;
-    // std::cerr << "Plane score: " << score << std::endl;
+
     q = p_world - n_world;
     q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
     p_dash = score * (p_world - q_dash);
-    //   norm_vec = p_world - p_dash;
-    //   p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-    //   if (score < 0.9) continue;
-    //   // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0)
-    //   continue; plane_cnt++;
-    // } else if (sali_idx == 1) {
+
     //  Point to line
     score = sali(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
     score_sum += score;
-    // std::cerr << "Line score: " << score << std::endl;
+
     q = p_world - n_world;
     q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
     p_dash += score * (n_world + q_dash);
-    //   norm_vec = p_world - p_dash;
-    //   p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    //   if (score < 0.9) continue;
-    //   // if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1.0)
-    //   continue; curve_cnt++;
-    // } else if (sali_idx == 2) {
     //  Point to point
     score = sali(2) * (1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum()));
     score_sum += score;
-    // std::cerr << "Point score: " << score << std::endl;
+
     p_dash += score * n_world;
     p_dash *= (1.0 / score_sum);
+
     norm_vec = p_world - p_dash;
     p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-    // if (score < 0.9) continue;
-    if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 0.01) continue;
-    // junct_cnt++;
-    // }
+
+    if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1) {
+      reject_cnt++;
+      continue;
+    }
 
     residual = norm_vec.norm();
     norm_vec.normalize();
@@ -680,8 +668,9 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   ekfom_iter_time += t1 - t0;
 
-  analytics_msg_.num_feats = feat_cnt;
   analytics_msg_.res_mean = res_mean;
+  analytics_msg_.num_feats = feat_cnt;
+  analytics_msg_.num_reject = reject_cnt;
 }
 
 // Main mapping node
