@@ -642,7 +642,7 @@ void MappingNode::tensor_registration(
     norm_vec = p_world - p_dash;
     p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 1) {
+    if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > 0.01) {
       reject_cnt++;
       continue;
     }
