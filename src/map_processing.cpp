@@ -582,12 +582,12 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    double pt_time_diff;
     float residual, score, score_sum;
     int sali_idx, map_i, feat_num;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    rclcpp::Time map_pt_time, scan_pt_time;
+    double pt_time_diff, init_time_diff;
+    rclcpp::Time map_pt_time, scan_pt_time, init_pt_time;
 
     V3F a;
     V3D p_imu;
@@ -610,6 +610,8 @@ void MappingNode::tensor_registration(
 
     if (!filters[map_i][1]) continue;
 
+    init_pt_time = rclcpp::Time(map_cloud->points[0].time_secs,
+                                map_cloud->points[0].time_nsecs, RCL_ROS_TIME);
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
                      map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
@@ -649,7 +651,10 @@ void MappingNode::tensor_registration(
     p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
     pt_time_diff = (scan_pt_time - map_pt_time).seconds();
-    pt_time_diff = fmin(1.0, 1e-3 * ceil(pt_time_diff));
+    init_time_diff = (scan_pt_time - init_pt_time).seconds();
+    pt_time_diff = fmin(ceil(init_time_diff) / ceil(pt_time_diff), 1e3);
+    pt_time_diff = fmax(1e-3, pow(2, 1 - pt_time_diff));
+
     if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > pt_time_diff) {
       reject_cnt++;
       continue;
