@@ -12,7 +12,7 @@ bool MappingNode::sync_packages() {
     }
   }
   if (!imu_process->imu_has_data_) {
-    if (int(ceil(inter_sync_time / 0.01)) % 10 == 0) {
+    if (int(ceil(inter_sync_time / 0.01)) % 20 == 0) {
       RCLCPP_ERROR(this->get_logger(), "IMU has no data");
     }
     return false;
@@ -24,7 +24,7 @@ bool MappingNode::sync_packages() {
     return false;
   }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_) {
-    if (int(ceil(inter_sync_time / 0.01)) % 10 == 0) {
+    if (int(ceil(inter_sync_time / 0.01)) % 20 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU end time is less than lidar end time");
       RCLCPP_ERROR_STREAM(
@@ -37,7 +37,7 @@ bool MappingNode::sync_packages() {
     return false;
   }
   if (imu_process->imu_start_time_ > lid_process->lidar_start_time_) {
-    if (int(ceil(inter_sync_time / 0.01)) % 10 == 0) {
+    if (int(ceil(inter_sync_time / 0.01)) % 20 == 0) {
       RCLCPP_ERROR(this->get_logger(),
                    "IMU start time is greater than lidar start time");
       RCLCPP_ERROR_STREAM(
@@ -52,7 +52,7 @@ bool MappingNode::sync_packages() {
   }
   for (int i = 0; i < num_cams; i++) {
     if (!cams_process[i]->cam_has_data_) {
-      if (int(ceil(inter_sync_time / 0.01)) % 10 == 0) {
+      if (int(ceil(inter_sync_time / 0.01)) % 20 == 0) {
         RCLCPP_ERROR_STREAM(this->get_logger(),
                             "Camera " << i << " has no data");
       }
@@ -61,7 +61,7 @@ bool MappingNode::sync_packages() {
   }
   for (int i = 0; i < num_cams; i++) {
     if (cams_process[i]->img_end_time_ < imu_process->imu_start_time_) {
-      if (int(ceil(inter_sync_time / 0.01)) % 10 == 0) {
+      if (int(ceil(inter_sync_time / 0.01)) % 20 == 0) {
         RCLCPP_ERROR_STREAM(
             this->get_logger(),
             "Camera " << i << " end time is less than imu start time");
@@ -569,25 +569,29 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  std::atomic<int> feat_cnt = 0, reject_cnt = 0;
+  std::atomic<long> time_score = 0;
+  std::atomic<int> feat_cnt = 0, reject_cnt = 0, score_cnt = 0, line_score = 0,
+                   plane_score = 0, point_score = 0;
 
-  if (ekfom_iter_cnt > 0) {
-    if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt) {
-      ekfom_data.valid = false;
-      return;
-    }
-  }
+  // if (ekfom_iter_cnt > 0) {
+  //   if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt)
+  //   {
+  //     ekfom_data.valid = false;
+  //     return;
+  //   }
+  // }
 
   double t0 = omp_get_wtime();
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    float residual, score, score_sum;
-    int sali_idx, map_i, feat_num;
+    bool time_check = false;
+    double pt_time_diff, time_scale;
+    rclcpp::Time map_pt_time, scan_pt_time;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    double pt_time_diff, init_time_diff;
-    rclcpp::Time map_pt_time, scan_pt_time, init_pt_time;
+    int sali_idx, map_i, feat_num, score_check;
+    float residual, pl_score, ln_score, pt_score, score_sum, ellipse_check;
 
     V3F a;
     V3D p_imu;
@@ -610,14 +614,6 @@ void MappingNode::tensor_registration(
 
     if (!filters[map_i][1]) continue;
 
-    init_pt_time = rclcpp::Time(map_cloud->points[0].time_secs,
-                                map_cloud->points[0].time_nsecs, RCL_ROS_TIME);
-    map_pt_time =
-        rclcpp::Time(map_cloud->points[map_i].time_secs,
-                     map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
-    scan_pt_time = rclcpp::Time(scan_cloud->points[i].time_secs,
-                                scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
-
     sali_idx = saliency_idxs[map_i];
     sali = salivalues[map_i].normalized();
 
@@ -625,37 +621,55 @@ void MappingNode::tensor_registration(
     eig_vals = eigenvalues[map_i];
 
     // Point to plane
-    score = sali(0) * (1.0 - (eig_vals(2) / eig_vals.sum()));
-    score_sum = score;
+    pl_score = sali(0) * (1.0 - (eig_vals(2) / eig_vals.sum()));
+    score_sum = pl_score;
+    plane_score += round(1e3 * pl_score);
 
     q = p_world - n_world;
     q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
-    p_dash = score * (p_world - q_dash);
+    p_dash = pl_score * (p_world - q_dash);
 
     //  Point to line
-    score = sali(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
-    score_sum += score;
+    ln_score = sali(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
+    score_sum += ln_score;
+    line_score += round(1e3 * ln_score);
 
     q = p_world - n_world;
     q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
-    p_dash += score * (n_world + q_dash);
+    p_dash += ln_score * (n_world + q_dash);
 
     //  Point to point
-    score = sali(2) * (1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum()));
-    score_sum += score;
+    pt_score = sali(2) * (1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum()));
+    score_sum += pt_score;
+    point_score += round(1e3 * pt_score);
 
-    p_dash += score * n_world;
+    p_dash += pt_score * n_world;
     p_dash *= (1.0 / score_sum);
 
     norm_vec = p_world - p_dash;
     p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+    ellipse_check = p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum();
+
+    score_cnt++;
+
+    score_check = pl_score > mean_pl_score;
+    score_check += ln_score > mean_ln_score;
+    score_check += pt_score > mean_pt_score;
+
+    map_pt_time =
+        rclcpp::Time(map_cloud->points[map_i].time_secs,
+                     map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
+    scan_pt_time = rclcpp::Time(scan_cloud->points[i].time_secs,
+                                scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
 
     pt_time_diff = (scan_pt_time - map_pt_time).seconds();
-    init_time_diff = (scan_pt_time - init_pt_time).seconds();
-    pt_time_diff = fmin(ceil(init_time_diff) / ceil(pt_time_diff), 1e3);
-    pt_time_diff = fmax(1e-3, pow(2, 1 - pt_time_diff));
+    time_score += round(1e3 * pt_time_diff);
 
-    if (p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum() > pt_time_diff) {
+    if (start_bin > 1) {
+      time_check = pt_time_diff < mean_time_score;
+    }
+
+    if (ellipse_check > 1.0 || score_check != 1 || time_check) {
       reject_cnt++;
       continue;
     }
@@ -672,6 +686,20 @@ void MappingNode::tensor_registration(
         VEC_FROM_ARRAY(a), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
   }
 
+  mean_time_score = (1e-3 * time_score) / score_cnt;
+
+  mean_pl_score = (map_counter - 1) * mean_pl_score;
+  mean_pl_score += (1e-3 * plane_score) / score_cnt;
+  mean_pl_score /= map_counter;
+
+  mean_ln_score = (map_counter - 1) * mean_ln_score;
+  mean_ln_score += (1e-3 * line_score) / score_cnt;
+  mean_ln_score /= map_counter;
+
+  mean_pt_score = (map_counter - 1) * mean_pt_score;
+  mean_pt_score += (1e-3 * point_score) / score_cnt;
+  mean_pt_score /= map_counter;
+
   ekfom_data.h = ekfom_data_h.head(int(feat_cnt));
   ekfom_data.h_x = ekfom_data_h_x.topRows(int(feat_cnt));
 
@@ -684,6 +712,7 @@ void MappingNode::tensor_registration(
   analytics_msg_.res_mean = res_mean;
   analytics_msg_.num_feats = feat_cnt;
   analytics_msg_.num_reject = reject_cnt;
+  analytics_msg_.off_mean = mean_time_score;
 }
 
 // Main mapping node

@@ -36,7 +36,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
-  ellipselio_pc_->reserve(MAX_SCAN_POINTS);
+  ellipselio_pc_->reserve(0.2 * MAX_SCAN_POINTS);
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
   cnt_neighbours_ = std::vector<int>(num_bins_, 1);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
@@ -130,6 +130,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   bool init_time = true;
   for (size_t i = 0; i < num_bins_; i++) {
     if (!bin_pcs_sizes_[i]) continue;
+    if (ellipselio_pc_->size() > 0.1 * MAX_SCAN_POINTS) break;
+
     *ellipselio_pc_ += bin_pcs_[i];
 
     if (init_time) {

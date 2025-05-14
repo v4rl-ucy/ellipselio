@@ -11,6 +11,7 @@ int64 scan_size
 int64 num_feats
 int64 num_reject
 float64 res_mean
+float64 off_mean
 
 float64 imu_time
 float64 state_time

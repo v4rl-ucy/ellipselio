@@ -86,6 +86,10 @@ class MappingNode : public rclcpp::Node {
   int ekfom_iter_cnt;
   double max_ekfom_time;
   double ekfom_iter_time;
+
+  float mean_pl_score = 0, mean_ln_score = FLT_MAX, mean_pt_score = FLT_MAX,
+        mean_time_score = 0;
+
   Eigen::VectorXd ekfom_data_h;
   Eigen::MatrixXd ekfom_data_h_x;
 
