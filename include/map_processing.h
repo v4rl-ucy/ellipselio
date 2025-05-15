@@ -56,7 +56,7 @@ class MappingNode : public rclcpp::Node {
 
   void timer_callback();
   void init_cam_process();
-  void map_incremental(bool init_map);
+  void map_incremental();
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;

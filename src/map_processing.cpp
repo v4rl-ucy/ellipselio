@@ -356,7 +356,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 }
 
 // Add new points to the map and update geometric primitives
-void MappingNode::map_incremental(bool init_map) {
+void MappingNode::map_incremental() {
   int start_idx, end_idx;
   std::vector<int> new_idxs, updated_idxs, added_idxs_i, new_idxs_i;
 
@@ -376,6 +376,7 @@ void MappingNode::map_incremental(bool init_map) {
   start_idx = 0;
   end_idx = 0;
   old_map_size = map_cloud->size();
+
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
     if (!scan_cloud_bins[i]) continue;
 
@@ -669,7 +670,7 @@ void MappingNode::tensor_registration(
       time_check = pt_time_diff < mean_time_score;
     }
 
-    if (ellipse_check > 1.0 || score_check != 1 || time_check) {
+    if (ellipse_check > 1.0 || score_check != 1) {
       reject_cnt++;
       continue;
     }
@@ -985,7 +986,7 @@ void MappingNode::timer_callback() {
 
     if (ioctree.size() == 0) {
       RCLCPP_INFO(this->get_logger(), "Initialize the map");
-      map_incremental(true);
+      map_incremental();
       return;
     }
 
@@ -997,7 +998,7 @@ void MappingNode::timer_callback() {
     imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
 
     t3 = omp_get_wtime();
-    map_incremental(false);
+    map_incremental();
     t4 = omp_get_wtime();
 
     kf_state_pub_ = kf_state_;
