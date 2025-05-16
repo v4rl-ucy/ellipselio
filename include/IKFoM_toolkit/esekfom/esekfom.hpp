@@ -334,7 +334,7 @@ class esekf {
       }
       MTK::SO3<scalar_type> res;
       res.w() =
-          MTK::exp<scalar_type, 3>(res.vec(), seg_SO3, scalar_type(1 / 2));
+          MTK::exp<scalar_type, 3>(res.vec(), seg_SO3, scalar_type(1.0 / 2.0));
 #ifdef USE_sparse
       res_temp_SO3 = res.toRotationMatrix();
       for (int i = 0; i < 3; i++) {
@@ -368,7 +368,8 @@ class esekf {
       }
       MTK::vect<2, scalar_type> vec = MTK::vect<2, scalar_type>::Zero();
       MTK::SO3<scalar_type> res;
-      res.w() = MTK::exp<scalar_type, 3>(res.vec(), seg_S2, scalar_type(1 / 2));
+      res.w() =
+          MTK::exp<scalar_type, 3>(res.vec(), seg_S2, scalar_type(1.0 / 2.0));
       Eigen::Matrix<scalar_type, 2, 3> Nx;
       Eigen::Matrix<scalar_type, 3, 2> Mx;
       x_.S2_Nx_yy(Nx, idx);
@@ -1771,7 +1772,6 @@ class esekf {
         continue;
       }
 
-// Matrix<scalar_type, Eigen::Dynamic, 1> h = h_dyn_share(x_, dyn_share);
 #ifdef USE_sparse
       spMt h_x_ = dyn_share.h_x.sparseView();
 #else
@@ -1834,47 +1834,12 @@ class esekf {
               (P_.template block<1, 2>(i, idx)) * res_temp_S2.transpose();
         }
       }
-      // Matrix<scalar_type, n, Eigen::Dynamic> K_;
-      // Matrix<scalar_type, n, 1> K_h;
-      // Matrix<scalar_type, n, n> K_x;
-
-      /*
-      if(n > dof_Measurement)
-      {
-              K_= P_ * h_x_.transpose() * (h_x_ * P_ * h_x_.transpose()/R +
-      Eigen::Matrix<double, Dynamic, Dynamic>::Identity(dof_Measurement,
-      dof_Measurement)).inverse()/R;
-      }
-      else
-      {
-              K_= (h_x_.transpose() * h_x_ +
-      (P_/R).inverse()).inverse()*h_x_.transpose();
-      }
-      */
 
       if (n > dof_Measurement) {
-        // #ifdef USE_sparse
-        // Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> K_temp = h_x * P_
-        // * h_x.transpose(); spMt R_temp = h_v * R_ * h_v.transpose(); K_temp
-        // += R_temp;
         Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> h_x_cur =
             Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>::Zero(
                 dof_Measurement, n);
         h_x_cur.topLeftCorner(dof_Measurement, 12) = h_x_;
-        /*
-        h_x_cur.col(0) = h_x_.col(0);
-        h_x_cur.col(1) = h_x_.col(1);
-        h_x_cur.col(2) = h_x_.col(2);
-        h_x_cur.col(3) = h_x_.col(3);
-        h_x_cur.col(4) = h_x_.col(4);
-        h_x_cur.col(5) = h_x_.col(5);
-        h_x_cur.col(6) = h_x_.col(6);
-        h_x_cur.col(7) = h_x_.col(7);
-        h_x_cur.col(8) = h_x_.col(8);
-        h_x_cur.col(9) = h_x_.col(9);
-        h_x_cur.col(10) = h_x_.col(10);
-        h_x_cur.col(11) = h_x_.col(11);
-        */
 
         Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> K_ =
             P_ * h_x_cur.transpose() *
@@ -1885,85 +1850,34 @@ class esekf {
             R;
         K_h = K_ * dyn_share.h;
         K_x = K_ * h_x_cur;
-        // #else
-        //	K_= P_ * h_x.transpose() * (h_x * P_ * h_x.transpose() + h_v * R
-        //* h_v.transpose()).inverse(); #endif
+
       } else {
 #ifdef USE_sparse
-        // Eigen::Matrix<scalar_type, n, n> b = Eigen::Matrix<scalar_type, n,
-        // n>::Identity(); Eigen::SparseQR<Eigen::SparseMatrix<scalar_type>,
-        // Eigen::COLAMDOrdering<int>> solver;
         spMt A = h_x_.transpose() * h_x_;
         cov P_temp = (P_ / R).inverse();
         P_temp.template block<12, 12>(0, 0) += A;
         P_temp = P_temp.inverse();
-        /*
-        Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> h_x_cur =
-        Eigen::Matrix<scalar_type, Eigen::Dynamic,
-        Eigen::Dynamic>::Zero(dof_Measurement, n); h_x_cur.col(0) = h_x_.col(0);
-        h_x_cur.col(1) = h_x_.col(1);
-        h_x_cur.col(2) = h_x_.col(2);
-        h_x_cur.col(3) = h_x_.col(3);
-        h_x_cur.col(4) = h_x_.col(4);
-        h_x_cur.col(5) = h_x_.col(5);
-        h_x_cur.col(6) = h_x_.col(6);
-        h_x_cur.col(7) = h_x_.col(7);
-        h_x_cur.col(8) = h_x_.col(8);
-        h_x_cur.col(9) = h_x_.col(9);
-        h_x_cur.col(10) = h_x_.col(10);
-        h_x_cur.col(11) = h_x_.col(11);
-        */
+
         K_ = P_temp.template block<n, 12>(0, 0) * h_x_.transpose();
         K_x = cov::Zero();
         K_x.template block<n, 12>(0, 0) =
             P_inv.template block<n, 12>(0, 0) * HTH;
-        /*
-        solver.compute(R_);
-        Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> R_in_temp =
-        solver.solve(b); spMt R_in =R_in_temp.sparseView(); spMt K_temp =
-        h_x.transpose() * R_in * h_x; cov P_temp = P_.inverse(); P_temp +=
-        K_temp; K_ = P_temp.inverse() * h_x.transpose() * R_in;
-        */
 #else
         cov P_temp = (P_ / R).inverse();
-        // Eigen::Matrix<scalar_type, 12, Eigen::Dynamic> h_T =
-        // h_x_.transpose();
+
         Eigen::Matrix<scalar_type, 12, 12> HTH = h_x_.transpose() * h_x_;
         P_temp.template block<12, 12>(0, 0) += HTH;
-        /*
-        Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> h_x_cur =
-        Eigen::Matrix<scalar_type, Eigen::Dynamic,
-        Eigen::Dynamic>::Zero(dof_Measurement, n);
-        //std::cout << "line 1767" << std::endl;
-        h_x_cur.col(0) = h_x_.col(0);
-        h_x_cur.col(1) = h_x_.col(1);
-        h_x_cur.col(2) = h_x_.col(2);
-        h_x_cur.col(3) = h_x_.col(3);
-        h_x_cur.col(4) = h_x_.col(4);
-        h_x_cur.col(5) = h_x_.col(5);
-        h_x_cur.col(6) = h_x_.col(6);
-        h_x_cur.col(7) = h_x_.col(7);
-        h_x_cur.col(8) = h_x_.col(8);
-        h_x_cur.col(9) = h_x_.col(9);
-        h_x_cur.col(10) = h_x_.col(10);
-        h_x_cur.col(11) = h_x_.col(11);
-        */
+
         cov P_inv = P_temp.inverse();
-        // std::cout << "line 1781" << std::endl;
         K_h =
             P_inv.template block<n, 12>(0, 0) * h_x_.transpose() * dyn_share.h;
-        // std::cout << "line 1780" << std::endl;
-        // cov HTH_cur = cov::Zero();
-        // HTH_cur. template block<12, 12>(0, 0) = HTH;
-        K_x.setZero();  // = cov::Zero();
+
+        K_x.setZero();
         K_x.template block<n, 12>(0, 0) =
             P_inv.template block<n, 12>(0, 0) * HTH;
-        // K_= (h_x_.transpose() * h_x_ +
-        // (P_/R).inverse()).inverse()*h_x_.transpose();
 #endif
       }
 
-      // K_x = K_ * h_x_;
       Matrix<scalar_type, n, 1> dx_ =
           K_h + (K_x - Matrix<scalar_type, n, n>::Identity()) * dx_new;
       state x_before = x_;
@@ -1983,7 +1897,6 @@ class esekf {
 
       if (t > 1 || i == maximum_iter - 1) {
         L_ = P_;
-        // std::cout << "iteration time" << t << "," << i << std::endl;
         Matrix<scalar_type, 3, 3> res_temp_SO3;
         MTK::vect<3, scalar_type> seg_SO3;
         for (typename std::vector<std::pair<int, int>>::iterator it =
@@ -1998,20 +1911,11 @@ class esekf {
             L_.template block<3, 1>(idx, i) =
                 res_temp_SO3 * (P_.template block<3, 1>(idx, i));
           }
-          // if(n > dof_Measurement)
-          // {
-          // 	for(int i = 0; i < dof_Measurement; i++){
-          // 		K_.template block<3, 1>(idx, i) = res_temp_SO3 * (K_.
-          // template block<3, 1>(idx, i));
-          // 	}
-          // }
-          // else
-          // {
+
           for (int i = 0; i < 12; i++) {
             K_x.template block<3, 1>(idx, i) =
                 res_temp_SO3 * (K_x.template block<3, 1>(idx, i));
           }
-          //}
           for (int i = 0; i < n; i++) {
             L_.template block<1, 3>(i, idx) =
                 (L_.template block<1, 3>(i, idx)) * res_temp_SO3.transpose();
@@ -2040,20 +1944,11 @@ class esekf {
             L_.template block<2, 1>(idx, i) =
                 res_temp_S2 * (P_.template block<2, 1>(idx, i));
           }
-          // if(n > dof_Measurement)
-          // {
-          // 	for(int i = 0; i < dof_Measurement; i++){
-          // 		K_. template block<2, 1>(idx, i) = res_temp_S2 * (K_.
-          // template block<2, 1>(idx, i));
-          // 	}
-          // }
-          // else
-          // {
+
           for (int i = 0; i < 12; i++) {
             K_x.template block<2, 1>(idx, i) =
                 res_temp_S2 * (K_x.template block<2, 1>(idx, i));
           }
-          //}
           for (int i = 0; i < n; i++) {
             L_.template block<1, 2>(i, idx) =
                 (L_.template block<1, 2>(i, idx)) * res_temp_S2.transpose();
@@ -2062,33 +1957,8 @@ class esekf {
           }
         }
 
-        // if(n > dof_Measurement)
-        // {
-        // 	Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>
-        // h_x_cur = Eigen::Matrix<scalar_type, Eigen::Dynamic,
-        // Eigen::Dynamic>::Zero(dof_Measurement, n);
-        // 	h_x_cur.topLeftCorner(dof_Measurement, 12) = h_x_;
-        // 	/*
-        // 	h_x_cur.col(0) = h_x_.col(0);
-        // 	h_x_cur.col(1) = h_x_.col(1);
-        // 	h_x_cur.col(2) = h_x_.col(2);
-        // 	h_x_cur.col(3) = h_x_.col(3);
-        // 	h_x_cur.col(4) = h_x_.col(4);
-        // 	h_x_cur.col(5) = h_x_.col(5);
-        // 	h_x_cur.col(6) = h_x_.col(6);
-        // 	h_x_cur.col(7) = h_x_.col(7);
-        // 	h_x_cur.col(8) = h_x_.col(8);
-        // 	h_x_cur.col(9) = h_x_.col(9);
-        // 	h_x_cur.col(10) = h_x_.col(10);
-        // 	h_x_cur.col(11) = h_x_.col(11);
-        // 	*/
-        // 	P_ = L_ - K_*h_x_cur * P_;
-        // }
-        // else
-        //{
         P_ = L_ -
              K_x.template block<n, 12>(0, 0) * P_.template block<12, n>(0, 0);
-        //}
         solve_time += omp_get_wtime() - solve_start;
         return;
       }
