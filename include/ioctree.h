@@ -913,7 +913,7 @@ class Octree {
     octant->extent = extent;
     static const float factor[] = {-0.5f, 0.5f};
 
-    if (size > m_bucketSize && extent > 2 * m_minExtent) {
+    if (size > m_bucketSize && extent >= 2 * m_minExtent) {
       std::vector<std::vector<float *>> child_points(8, std::vector<float *>());
 
       for (size_t i = 0; i < size; ++i) {
@@ -967,7 +967,7 @@ class Octree {
     octant->isActive = true;
     if (octant->child == nullptr) {
       if (octant->points.size() + points.size() > m_bucketSize &&
-          extent > 2 * m_minExtent) {
+          extent >= 2 * m_minExtent) {
         octant->points.insert(octant->points.end(), points.begin(),
                               points.end());
         const size_t size = octant->points.size();
