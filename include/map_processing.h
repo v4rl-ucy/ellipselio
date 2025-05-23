@@ -102,13 +102,14 @@ class MappingNode : public rclcpp::Node {
   std::vector<V3F> salivalues;
 
   std::vector<int> new_neighbours_map_idx;
+  std::vector<std::atomic<int>> updated_pt;
+  std::vector<std::atomic<int>> last_registration;
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
   std::vector<int> mean_cnt;
   std::vector<int> scan_cloud_bins;
   std::vector<int> update_idx;
-  std::vector<std::atomic<int>> updated_pt;
   std::vector<int> saliency_idxs;
   std::vector<vector<bool>> filters;
   std::vector<vector<int>> neighbours;

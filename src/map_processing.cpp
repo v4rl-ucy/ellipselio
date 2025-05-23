@@ -159,6 +159,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     updated_pt[map_i] = 0;
+    last_registration[map_i] = map_counter;
     map_cloud->points[map_i].intensity = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
@@ -570,9 +571,7 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  std::atomic<long> time_score = 0;
-  std::atomic<int> feat_cnt = 0, reject_cnt = 0, score_cnt = 0, line_score = 0,
-                   plane_score = 0, point_score = 0;
+  std::atomic<int> feat_cnt = 0, reject_cnt = 0;
 
   // if (ekfom_iter_cnt > 0) {
   //   if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt)
@@ -586,19 +585,20 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    bool time_check = false;
-    double pt_time_diff, time_scale;
-    rclcpp::Time map_pt_time, scan_pt_time;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    int sali_idx, map_i, feat_num, score_check;
-    float residual, pl_score, ln_score, pt_score, score_sum, ellipse_check;
+    int sali_idx, map_i, feat_num;
+    rclcpp::Time map_pt_time, scan_pt_time, init_pt_time;
+    float residual, prim_score, time_score, ellipse_score, dist_score,
+        total_score;
 
     V3F a;
+    V3F scores;
     V3D p_imu;
     M3F P_skew;
     V3F p_lidar, p_world;
     V3F sali, n_world, p_dash, q, q_dash, norm_vec, eig_vals;
+    Eigen::VectorXd h_x_vec(6);
 
     const EllipseLioPoint &pt = scan_cloud->points[i];
 
@@ -619,90 +619,72 @@ void MappingNode::tensor_registration(
     sali = salivalues[map_i].normalized();
 
     n_world = map_cloud->points[map_i].getVector3fMap();
-    eig_vals = eigenvalues[map_i];
+    eig_vals = eigenvalues[map_i].normalized();
 
     // Point to plane
-    pl_score = sali(0) * (1.0 - (eig_vals(2) / eig_vals.sum()));
-    score_sum = pl_score;
-    plane_score += round(1e3 * pl_score);
+    scores(0) = sali(0) * (1.0 - eig_vals(2));
 
     q = p_world - n_world;
     q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
-    p_dash = pl_score * (p_world - q_dash);
+    p_dash = scores(0) * (p_world - q_dash);
 
     //  Point to line
-    ln_score = sali(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
-    score_sum += ln_score;
-    line_score += round(1e3 * ln_score);
+    scores(1) = sali(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
 
     q = p_world - n_world;
     q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
-    p_dash += ln_score * (n_world + q_dash);
+    p_dash += scores(1) * (n_world + q_dash);
 
     //  Point to point
-    pt_score = sali(2) * (1 - ((eig_vals(0) - eig_vals(2)) / eig_vals.sum()));
-    score_sum += pt_score;
-    point_score += round(1e3 * pt_score);
+    scores(2) = sali(2) * (1 - (eig_vals(0) - eig_vals(2)));
 
-    p_dash += pt_score * n_world;
-    p_dash *= (1.0 / score_sum);
+    p_dash += scores(2) * n_world;
+    p_dash *= (1.0 / scores.sum());
 
     norm_vec = p_world - p_dash;
     p_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
-    ellipse_check = p_dash.cwiseQuotient(eig_vals).cwiseAbs2().sum();
+    ellipse_score = p_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
-    score_cnt++;
-
-    score_check = pl_score > mean_pl_score;
-    score_check += ln_score > mean_ln_score;
-    score_check += pt_score > mean_pt_score;
+    scores.normalize();
+    prim_score = 1 - (scores.maxCoeff() - scores.minCoeff());
 
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
                      map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
+    init_pt_time = rclcpp::Time(map_cloud->points[0].time_secs,
+                                map_cloud->points[0].time_nsecs, RCL_ROS_TIME);
     scan_pt_time = rclcpp::Time(scan_cloud->points[i].time_secs,
                                 scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
 
-    pt_time_diff = (scan_pt_time - map_pt_time).seconds();
-    time_score += round(1e3 * pt_time_diff);
+    time_score = 1.0 / ceil((scan_pt_time - map_pt_time).seconds());
 
-    if (start_bin > 1) {
-      time_check = pt_time_diff < mean_time_score;
-    }
+    time_score = fmin(fmax(time_score, 1e-3), 1);
+    prim_score = fmin(fmax(prim_score, 1e-3), 1);
+    ellipse_score = fmin(fmax(ellipse_score, 1e-3), 1);
 
-    if (ellipse_check > 1.0 || score_check != 1) {
-      reject_cnt++;
-      continue;
-    }
+    scores(0) = time_score;
+    scores(1) = ellipse_score * fmin(time_score / (10 * ellipse_score), 1);
+    scores(2) = prim_score * fmin(time_score / (100 * prim_score), 1);
 
+    total_score = 1.0 / fmax(scores.sum(),
+                             pow(4, -fmin(scan_cloud->points[i].bin_idx, 5)));
+
+    feat_num = ++feat_cnt;
     residual = norm_vec.norm();
     norm_vec.normalize();
 
     P_skew << SKEW_SYM_MATRIX(p_imu.cast<float>());
     a = P_skew * s.rot.conjugate().cast<float>() * norm_vec;
+    h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
-    feat_num = ++feat_cnt;
     ekfom_data_h(feat_num - 1) = -residual;
-    ekfom_data_h_x.row(feat_num - 1) << norm_vec(0), norm_vec(1), norm_vec(2),
-        VEC_FROM_ARRAY(a), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+    ekfom_data_h_x.row(feat_num - 1) = h_x_vec;
+    ekfom_data_h_x_R.col(feat_num - 1) = total_score * h_x_vec;
   }
-
-  mean_time_score = (1e-3 * time_score) / score_cnt;
-
-  mean_pl_score = (map_counter - 1) * mean_pl_score;
-  mean_pl_score += (1e-3 * plane_score) / score_cnt;
-  mean_pl_score /= map_counter;
-
-  mean_ln_score = (map_counter - 1) * mean_ln_score;
-  mean_ln_score += (1e-3 * line_score) / score_cnt;
-  mean_ln_score /= map_counter;
-
-  mean_pt_score = (map_counter - 1) * mean_pt_score;
-  mean_pt_score += (1e-3 * point_score) / score_cnt;
-  mean_pt_score /= map_counter;
 
   ekfom_data.h = ekfom_data_h.head(int(feat_cnt));
   ekfom_data.h_x = ekfom_data_h_x.topRows(int(feat_cnt));
+  ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(int(feat_cnt));
 
   double res_mean = -ekfom_data.h.sum() / feat_cnt;
   double t1 = omp_get_wtime();
@@ -810,16 +792,17 @@ MappingNode::MappingNode(
   lidar_params.map_resolution = map_resolution;
 
   map_cloud->reserve(MAX_MAP_POINTS);
-  scan_cloud->reserve(MAX_SCAN_POINTS);
+  scan_cloud->reserve(MAX_PROC_POINTS);
 
   ioctree.set_bucket_size(1);
   ioctree.set_min_extent(map_resolution);
   ioctree.set_max_octants(MAX_MAP_POINTS);
-  ioctree.set_max_new_points(MAX_SCAN_POINTS);
+  ioctree.set_max_new_points(MAX_PROC_POINTS);
 
   max_ekfom_time = 0.5 * (1.0 / lidar_params.rate);
-  ekfom_data_h = Eigen::VectorXd(MAX_SCAN_POINTS, 1);
-  ekfom_data_h_x = Eigen::MatrixXd(MAX_SCAN_POINTS, 12);
+  ekfom_data_h = Eigen::VectorXd(MAX_PROC_POINTS, 1);
+  ekfom_data_h_x = Eigen::MatrixXd(MAX_PROC_POINTS, 6);
+  ekfom_data_h_x_R = Eigen::MatrixXd(6, MAX_PROC_POINTS);
 
   update_idx.reserve(MAX_MAP_POINTS);
   saliency_idxs.reserve(MAX_MAP_POINTS);
@@ -837,10 +820,11 @@ MappingNode::MappingNode(
   mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
-  new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);
-  new_neighbours_size = std::vector<std::atomic<int>>(MAX_SCAN_POINTS);
+  last_registration = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
+  new_neighbours_map_idx = std::vector<int>(MAX_PROC_POINTS);
+  new_neighbours_size = std::vector<std::atomic<int>>(MAX_PROC_POINTS);
   new_neighbours = std::vector<std::vector<int>>(
-      MAX_SCAN_POINTS, std::vector<int>(MAX_NEIGHBOURS));
+      MAX_PROC_POINTS, std::vector<int>(MAX_NEIGHBOURS));
 
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
   if (r_imu_lidar.size() == 9) {
