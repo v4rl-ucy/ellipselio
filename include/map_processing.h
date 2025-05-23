@@ -92,6 +92,7 @@ class MappingNode : public rclcpp::Node {
 
   Eigen::VectorXd ekfom_data_h;
   Eigen::MatrixXd ekfom_data_h_x;
+  Eigen::MatrixXd ekfom_data_h_x_R;
 
   std::vector<V3F> mean_sali;
   std::vector<M3F> tensors_p1;
