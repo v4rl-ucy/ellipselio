@@ -159,7 +159,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     updated_pt[map_i] = 0;
-    last_registration[map_i] = map_counter;
     map_cloud->points[map_i].intensity = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
@@ -573,13 +572,12 @@ void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   std::atomic<int> feat_cnt = 0, reject_cnt = 0;
 
-  // if (ekfom_iter_cnt > 0) {
-  //   if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt)
-  //   {
-  //     ekfom_data.valid = false;
-  //     return;
-  //   }
-  // }
+  if (ekfom_iter_cnt > 0) {
+    if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt) {
+      ekfom_data.valid = false;
+      return;
+    }
+  }
 
   double t0 = omp_get_wtime();
 
@@ -587,10 +585,9 @@ void MappingNode::tensor_registration(
   for (int i = 0; i < scan_cloud->size(); i++) {
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
-    int sali_idx, map_i, feat_num;
-    rclcpp::Time map_pt_time, scan_pt_time, init_pt_time;
-    float residual, prim_score, time_score, ellipse_score, dist_score,
-        total_score;
+    int sali_idx, map_i, feat_num, bin_idx;
+    rclcpp::Time map_pt_time, scan_pt_time;
+    float residual, prim_score, time_score, ellipse_score, total_score;
 
     V3F a;
     V3F scores;
@@ -651,14 +648,12 @@ void MappingNode::tensor_registration(
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
                      map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
-    init_pt_time = rclcpp::Time(map_cloud->points[0].time_secs,
-                                map_cloud->points[0].time_nsecs, RCL_ROS_TIME);
     scan_pt_time = rclcpp::Time(scan_cloud->points[i].time_secs,
                                 scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
 
     time_score = 1.0 / ceil((scan_pt_time - map_pt_time).seconds());
 
-    time_score = fmin(fmax(time_score, 1e-3), 1);
+    time_score = fmin(fmax(time_score, 1e-2), 1);
     prim_score = fmin(fmax(prim_score, 1e-3), 1);
     ellipse_score = fmin(fmax(ellipse_score, 1e-3), 1);
 
@@ -666,8 +661,8 @@ void MappingNode::tensor_registration(
     scores(1) = ellipse_score * fmin(time_score / (10 * ellipse_score), 1);
     scores(2) = prim_score * fmin(time_score / (100 * prim_score), 1);
 
-    total_score = 1.0 / fmax(scores.sum(),
-                             pow(4, -fmin(scan_cloud->points[i].bin_idx, 5)));
+    bin_idx = -fmin(start_bin, 5);
+    total_score = fmin(scores.sum() * ceil(pow(4, bin_idx) / scores.sum()), 1);
 
     feat_num = ++feat_cnt;
     residual = norm_vec.norm();
@@ -679,7 +674,7 @@ void MappingNode::tensor_registration(
 
     ekfom_data_h(feat_num - 1) = -residual;
     ekfom_data_h_x.row(feat_num - 1) = h_x_vec;
-    ekfom_data_h_x_R.col(feat_num - 1) = total_score * h_x_vec;
+    ekfom_data_h_x_R.col(feat_num - 1) = (1.0 / total_score) * h_x_vec;
   }
 
   ekfom_data.h = ekfom_data_h.head(int(feat_cnt));
@@ -692,10 +687,10 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   ekfom_iter_time += t1 - t0;
 
+  analytics_msg_.start_bin = start_bin;
   analytics_msg_.res_mean = res_mean;
   analytics_msg_.num_feats = feat_cnt;
-  analytics_msg_.num_reject = reject_cnt;
-  analytics_msg_.off_mean = mean_time_score;
+  analytics_msg_.num_reject = scan_cloud->size() - feat_cnt;
 }
 
 // Main mapping node
@@ -820,7 +815,6 @@ MappingNode::MappingNode(
   mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
 
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
-  last_registration = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   new_neighbours_map_idx = std::vector<int>(MAX_PROC_POINTS);
   new_neighbours_size = std::vector<std::atomic<int>>(MAX_PROC_POINTS);
   new_neighbours = std::vector<std::vector<int>>(

@@ -87,9 +87,6 @@ class MappingNode : public rclcpp::Node {
   double max_ekfom_time;
   double ekfom_iter_time;
 
-  float mean_pl_score = 0, mean_ln_score = FLT_MAX, mean_pt_score = FLT_MAX,
-        mean_time_score = 0;
-
   Eigen::VectorXd ekfom_data_h;
   Eigen::MatrixXd ekfom_data_h_x;
   Eigen::MatrixXd ekfom_data_h_x_R;
@@ -103,7 +100,6 @@ class MappingNode : public rclcpp::Node {
 
   std::vector<int> new_neighbours_map_idx;
   std::vector<std::atomic<int>> updated_pt;
-  std::vector<std::atomic<int>> last_registration;
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
