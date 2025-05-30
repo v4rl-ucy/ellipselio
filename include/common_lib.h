@@ -21,7 +21,7 @@ using namespace std;
 #define MIN_MAP_RESOLUTION (0.1)
 #define MIN_SEARCH_RADIUS (1.0)
 #define MAX_SCAN_POINTS (200000)
-#define MAX_PROC_POINTS (40000)
+#define MAX_PROC_POINTS (20000)
 #define MAX_MAP_POINTS (10000000)
 
 #define VEC_FROM_ARRAY(v) v[0], v[1], v[2]

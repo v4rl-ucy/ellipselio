@@ -14,6 +14,14 @@ int64 num_feats
 int64 num_reject
 float64 res_mean
 
+float64 wt_mean
+float64 wt_std
+float64 wt_min
+float64 wt_max
+float64 rng_min
+float64 rng_max
+float64 rng_mean
+
 float64 imu_time
 float64 state_time
 float64 map_time

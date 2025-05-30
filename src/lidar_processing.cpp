@@ -130,7 +130,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   bool init_time = true;
   for (size_t i = 0; i < num_bins_; i++) {
     if (!bin_pcs_sizes_[i]) continue;
-    if (ellipselio_pc_->size() > 0.1 * MAX_SCAN_POINTS) break;
+    if ((ellipselio_pc_->size() + bin_pcs_[i].size()) > MAX_PROC_POINTS) break;
 
     *ellipselio_pc_ += bin_pcs_[i];
 
