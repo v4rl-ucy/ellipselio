@@ -653,8 +653,8 @@ void MappingNode::tensor_registration(
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
     prim_score = 1 - scores.maxCoeff();
-    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
-    time_score = fmax(time_score, pow(2, -fmax(fmin(start_bin, 10), 1)));
+    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
+    time_score = fmax(time_score, fmin(pow(4, -fmin(start_bin, 5)), 0.8));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
