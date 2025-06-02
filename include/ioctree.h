@@ -266,8 +266,12 @@ class Octree {
     }
 
     for (size_t i = 1; i < 3; ++i) {
-      min[i] = ceil(min[i] / m_minExtent) * m_minExtent;
-      max[i] = floor(max[i] / m_minExtent) * m_minExtent;
+      min[i] = floor(min[i] / m_minExtent) * m_minExtent;
+      max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
+      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
+        min[i] += 0.5 * m_minExtent;
+        max[i] -= 0.5 * m_minExtent;
+      }
     }
 
     points.resize(cloud_index);
@@ -340,8 +344,12 @@ class Octree {
     }
 
     for (size_t i = 1; i < 3; ++i) {
-      min[i] = ceil(min[i] / m_minExtent) * m_minExtent;
-      max[i] = floor(max[i] / m_minExtent) * m_minExtent;
+      min[i] = floor(min[i] / m_minExtent) * m_minExtent;
+      max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
+      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
+        min[i] += 0.5 * m_minExtent;
+        max[i] -= 0.5 * m_minExtent;
+      }
     }
 
     if (print_debug) {
@@ -425,8 +433,12 @@ class Octree {
     points_tmp.resize(cloud_index);
 
     for (size_t i = 1; i < 3; ++i) {
-      min[i] = ceil(min[i] / m_minExtent) * m_minExtent;
-      max[i] = floor(max[i] / m_minExtent) * m_minExtent;
+      min[i] = floor(min[i] / m_minExtent) * m_minExtent;
+      max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
+      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
+        min[i] += 0.5 * m_minExtent;
+        max[i] -= 0.5 * m_minExtent;
+      }
     }
 
     static const float factor[] = {-0.5f, 0.5f};
@@ -530,8 +542,12 @@ class Octree {
     points_tmp.resize(cloud_index);
 
     for (size_t i = 1; i < 3; ++i) {
-      min[i] = ceil(min[i] / m_minExtent) * m_minExtent;
-      max[i] = floor(max[i] / m_minExtent) * m_minExtent;
+      min[i] = floor(min[i] / m_minExtent) * m_minExtent;
+      max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
+      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
+        min[i] += 0.5 * m_minExtent;
+        max[i] -= 0.5 * m_minExtent;
+      }
     }
 
     static const float factor[] = {-0.5f, 0.5f};

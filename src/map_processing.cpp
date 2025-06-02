@@ -577,6 +577,7 @@ void MappingNode::tensor_registration(
   int feat_tot, reject_cnt;
   std::atomic<int> feat_cnt = 0;
   float wt_mean, wt_std, wt_max, wt_min;
+  float res_mean, res_std, res_max, res_min;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
   if (ekfom_iter_cnt > 0) {
@@ -682,6 +683,21 @@ void MappingNode::tensor_registration(
   feat_tot = feat_cnt.load();
   reject_cnt = scan_cloud->size() - feat_tot;
 
+  res_mean = ekfom_data_h.head(feat_tot).mean();
+  res_min = ekfom_data_h.head(feat_tot).minCoeff();
+  res_max = ekfom_data_h.head(feat_tot).maxCoeff();
+  res_std = (ekfom_data_h.head(feat_tot).array() - res_mean).square().sum();
+  res_std = 0.5 * sqrt(res_std / (feat_tot - 1));
+
+  if (res_std > 0) {
+    float minValue = fmax(res_mean - res_std, res_min);
+    ekfom_data_h.head(feat_tot) =
+        (ekfom_data_h.head(feat_tot).array() >= minValue)
+            .select(ekfom_data_h.head(feat_tot).array(), minValue);
+  }
+
+  res_mean = -ekfom_data_h.head(feat_tot).mean();
+
   wt_mean = ekfom_data_w.head(feat_tot).mean();
   wt_min = ekfom_data_w.head(feat_tot).minCoeff();
   wt_max = ekfom_data_w.head(feat_tot).maxCoeff();
@@ -715,7 +731,6 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
-  double res_mean = -ekfom_data.h.sum() / feat_tot;
   double t1 = omp_get_wtime();
 
   ekfom_iter_cnt++;
