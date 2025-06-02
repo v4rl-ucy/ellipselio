@@ -596,7 +596,7 @@ void MappingNode::tensor_registration(
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
-    float residual, prim_score, time_score, ellipse_score;
+    float residual, prim_score, time_score, ellipse_score, grav_score;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
@@ -655,18 +655,21 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = fmax(time_score, fmin(pow(4, -fmin(start_bin, 5)), 0.8));
+    time_score = fmax(time_score, fmin(pow(6, -fmin(start_bin, 4)), 0.8));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
+    grav_score = 1 - fabs(norm_vec.normalized().dot(Eigen::Vector3f(0, 0, 1)));
+    grav_score = fmax(grav_score, fmin(pow(6, -fmin(start_bin, 4)), 0.8));
 
+    grav_score = fmin(fmax(grav_score, 1e-3), 1.0);
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
     time_score = fmin(fmax(time_score, 1e-3), 1.0);
     ellipse_score = fmin(fmax(ellipse_score, 1e-3), 1.0);
 
-    scores(0) = time_score;
+    scores(0) = fmin(time_score, grav_score);
     scores(1) = prim_score;
     scores(2) = ellipse_score;
-    scores(1) *= 1.0 / round(1.0 / fmin(time_score / (10 * prim_score), 1));
-    scores(2) *= 1.0 / round(1.0 / fmin(time_score / (10 * ellipse_score), 1));
+    scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
+    scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
 
     feat_num = ++feat_cnt;
     residual = norm_vec.norm();
