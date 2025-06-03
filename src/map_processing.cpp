@@ -161,9 +161,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     updated_pt[map_i] = 0;
     map_cloud->points[map_i].intensity = 0;
 
-    // reg_cnt[map_i] = 0;
-    // reg_last[map_i] = map_counter;
-
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
     const float &search_rad = lid_process->search_radii_[bin_idx];
@@ -293,7 +290,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
   std::vector<Eigen::MatrixXf> sali_vals;
   std::vector<Eigen::VectorXi> sali_filter;
-
+  int num_bins = lid_process->num_bins_;
   int total_size = added_idxs.size() + updated_idxs.size();
 
   sali_vals = std::vector<Eigen::MatrixXf>(
@@ -337,24 +334,9 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     filter_cnt = K_filter.sum();
     if (filter_cnt < min_neigh) continue;
 
-    old_sali = salivalues[map_i];
-    old_filter = filters[map_i][1];
-
     tensor_i2 = K.colwise().sum().reshaped(3, 3);
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
-
-    sali_filter[bin_idx](i) = filters[map_i][1] && !old_filter;
-    sali_vals[bin_idx].row(i) = salivalues[map_i] - old_sali;
-  }
-
-#pragma omp parallel for
-  for (int i = 0; i < num_bins; i++) {
-    Eigen::Vector3f sali_vals_sum = sali_vals[i].colwise().sum();
-    if (sali_vals_sum.sum() == 0) continue;
-    mean_sali[i] = ((mean_cnt[i] * mean_sali[i]) + sali_vals_sum) /
-                   (mean_cnt[i] + sali_filter[i].sum());
-    mean_cnt[i] += sali_filter[i].sum();
   }
 }
 
@@ -869,13 +851,6 @@ MappingNode::MappingNode(
   salivalues.reserve(MAX_MAP_POINTS);
   eigenvalues.reserve(MAX_MAP_POINTS);
   eigenvectors.reserve(MAX_MAP_POINTS);
-
-  num_bins = ceil(lidar_params.max_range / lidar_params.bin_size);
-  mean_cnt = std::vector<int>(num_bins, 1);
-  mean_sali = std::vector<V3F>(num_bins, V3F::Zero());
-
-  reg_cnt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
-  reg_last = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
 
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);

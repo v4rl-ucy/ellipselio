@@ -80,7 +80,7 @@ class MappingNode : public rclcpp::Node {
   int kf_iterations, map_bucket_size, pub_map_n_secs;
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
-  int start_bin, num_bins;
+  int start_bin;
   bool initialized = false;
 
   int ekfom_iter_cnt;
@@ -92,23 +92,18 @@ class MappingNode : public rclcpp::Node {
   Eigen::MatrixXd ekfom_data_h_x;
   Eigen::MatrixXd ekfom_data_h_x_R;
 
-  std::vector<V3F> mean_sali;
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
   std::vector<M3F> eigenvectors;
   std::vector<V3F> eigenvalues;
   std::vector<V3F> salivalues;
 
+  std::vector<int> scan_cloud_bins;
   std::vector<int> new_neighbours_map_idx;
   std::vector<std::atomic<int>> updated_pt;
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
-  std::vector<std::atomic<int>> reg_cnt;
-  std::vector<std::atomic<int>> reg_last;
-
-  std::vector<int> mean_cnt;
-  std::vector<int> scan_cloud_bins;
   std::vector<int> update_idx;
   std::vector<int> saliency_idxs;
   std::vector<vector<bool>> filters;
