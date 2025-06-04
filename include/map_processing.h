@@ -87,8 +87,11 @@ class MappingNode : public rclcpp::Node {
   double max_ekfom_time;
   double ekfom_iter_time;
 
-  Eigen::ArrayXd ekfom_data_w;
-  Eigen::VectorXd ekfom_data_h;
+  Eigen::ArrayXi ekfom_data_i;
+  Eigen::ArrayXi ekfom_data_v;
+  Eigen::ArrayXd ekfom_data_r;
+  Eigen::ArrayXd ekfom_data_h;
+  Eigen::ArrayXXd ekfom_data_w;
   Eigen::MatrixXd ekfom_data_h_x;
   Eigen::MatrixXd ekfom_data_h_x_R;
 
@@ -104,6 +107,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
+  std::vector<int> valid_reg;
   std::vector<int> update_idx;
   std::vector<int> saliency_idxs;
   std::vector<vector<bool>> filters;
