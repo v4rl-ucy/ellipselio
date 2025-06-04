@@ -368,6 +368,7 @@ void MappingNode::map_incremental() {
     end_idx += scan_cloud_bins[i];
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
+    if (map_counter > 0 && new_idxs.size() > 1e3) break;
 
     ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
     ioctree.update(*scan_cloud, added_idxs_i, new_idxs_i, true, start_idx,
