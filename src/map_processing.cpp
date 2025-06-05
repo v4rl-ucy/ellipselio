@@ -713,7 +713,7 @@ void MappingNode::tensor_registration(
     if (stds(j + 1) && stds(j + 4)) {
       int filter_num = 0;
       int cnt = cnts(j + 1);
-      float filter_scale = 1.0 / fmax(start_bin, 1);
+      float filter_scale = 1.0 / fmin(pow(start_bin + 1, 2), 10);
       filter_scale *= float(cnt) / float(feat_tot);
       while (filter_num < fmin(filter_scale * scan_cloud->size(), cnt)) {
         ekfom_data_v.col(j).head(cnt) =
