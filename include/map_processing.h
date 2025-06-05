@@ -87,11 +87,10 @@ class MappingNode : public rclcpp::Node {
   int ekfom_iter_cnt;
   double max_ekfom_time, ekfom_iter_time;
 
-  Eigen::ArrayXi ekfom_data_i;
-  Eigen::ArrayXi ekfom_data_v;
-  Eigen::ArrayXd ekfom_data_r;
-  Eigen::ArrayXd ekfom_data_h;
+  Eigen::ArrayXXi ekfom_data_i;
+  Eigen::ArrayXXi ekfom_data_v;
   Eigen::ArrayXXd ekfom_data_w;
+  Eigen::VectorXd ekfom_data_h;
   Eigen::MatrixXd ekfom_data_h_x;
   Eigen::MatrixXd ekfom_data_h_x_R;
 
