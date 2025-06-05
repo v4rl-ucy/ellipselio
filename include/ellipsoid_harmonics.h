@@ -5,12 +5,12 @@
 #include <vector>
 using namespace autodiff;
 
-class SphericalHarmonicsProjector {
+class EllipsoidHarmonicsProjector {
  public:
   using Vec3f = Eigen::Vector3f;
   using SHCoeffs = std::vector<Eigen::VectorXf>;  // R, G, B
 
-  explicit SphericalHarmonicsProjector(int l_max);
+  explicit EllipsoidHarmonicsProjector(int l_max);
 
   void computeCoefficients(const std::vector<Vec3f>& directions,
                            const std::vector<Vec3f>& colors,
@@ -32,7 +32,7 @@ class SphericalHarmonicsProjector {
       int max_iters = 20, float epsilon = 1e-6f) const;
 };
 
-auto cartesianToSpherical = [](const Eigen::Vector3f& dir) -> Eigen::Vector2d {
+auto cartesianToSphere = [](const Eigen::Vector3f& dir) -> Eigen::Vector2d {
   float x = dir.x(), y = dir.y(), z = dir.z();
   float r = std::max(dir.norm(), 1e-8f);                    // avoid divide by 0
   float theta = std::acos(std::clamp(z / r, -1.0f, 1.0f));  // [0, π]

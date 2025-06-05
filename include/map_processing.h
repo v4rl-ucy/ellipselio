@@ -81,11 +81,11 @@ class MappingNode : public rclcpp::Node {
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   int start_bin;
+  double start_time;
   bool initialized = false;
 
   int ekfom_iter_cnt;
-  double max_ekfom_time;
-  double ekfom_iter_time;
+  double max_ekfom_time, ekfom_iter_time;
 
   Eigen::ArrayXi ekfom_data_i;
   Eigen::ArrayXi ekfom_data_v;

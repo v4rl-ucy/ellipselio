@@ -36,3 +36,5 @@ float64 imu_max
 float64 state_max
 float64 map_max
 float64 total_max
+
+float64 run_time

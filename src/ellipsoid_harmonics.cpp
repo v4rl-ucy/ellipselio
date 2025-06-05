@@ -1,12 +1,10 @@
+#include <ellipsoid_harmonics.h>
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 
-#include "SphericalHarmonicsProjector.h"
-
-constexpr float PI = 3.14159265359f;
-
-SphericalHarmonicsProjector::SphericalHarmonicsProjector(int l_max, float a,
+EllipsoidHarmonicsProjector::EllipsoidHarmonicsProjector(int l_max, float a,
                                                          float b, float c)
     : l_max_(l_max),
       n_coeffs_((l_max + 1) * (l_max + 1)),
@@ -14,16 +12,16 @@ SphericalHarmonicsProjector::SphericalHarmonicsProjector(int l_max, float a,
       b_(b),
       c_(c) {}
 
-int SphericalHarmonicsProjector::getCoefficientCount() const {
+int EllipsoidHarmonicsProjector::getCoefficientCount() const {
   return n_coeffs_;
 }
 
-float SphericalHarmonicsProjector::K(int l, int m) const {
+float EllipsoidHarmonicsProjector::K(int l, int m) const {
   return std::sqrt((2 * l + 1) * std::tgamma(l - m + 1) /
-                   (4 * PI * std::tgamma(l + m + 1)));
+                   (4 * M_PI * std::tgamma(l + m + 1)));
 }
 
-float SphericalHarmonicsProjector::P(int l, int m, float x) const {
+float EllipsoidHarmonicsProjector::P(int l, int m, float x) const {
   float pmm = 1.0f;
   if (m > 0) {
     float somx2 = std::sqrt((1.0f - x) * (1.0f + x));
@@ -48,7 +46,7 @@ float SphericalHarmonicsProjector::P(int l, int m, float x) const {
   return pll;
 }
 
-float SphericalHarmonicsProjector::SH(int l, int m, float theta,
+float EllipsoidHarmonicsProjector::SH(int l, int m, float theta,
                                       float phi) const {
   if (m > 0)
     return std::sqrt(2.0f) * K(l, m) * std::cos(m * phi) *
@@ -59,7 +57,7 @@ float SphericalHarmonicsProjector::SH(int l, int m, float theta,
   return K(l, 0) * P(l, 0, std::cos(theta));
 }
 
-Vec3f SphericalHarmonicsProjector::mapToUnitSphere(const Vec3f& dir) const {
+Vec3f EllipsoidHarmonicsProjector::mapToUnitSphere(const Vec3f& dir) const {
   float x = dir.x() / a_;
   float y = dir.y() / b_;
   float z = dir.z() / c_;
@@ -67,7 +65,7 @@ Vec3f SphericalHarmonicsProjector::mapToUnitSphere(const Vec3f& dir) const {
   return scaled.normalized();
 }
 
-void SphericalHarmonicsProjector::computeCoefficients(
+void EllipsoidHarmonicsProjector::computeCoefficients(
     const std::vector<Vec3f>& directions, const std::vector<Vec3f>& colors,
     SHCoeffs& out_coeffs) {
   out_coeffs.resize(3);
@@ -83,7 +81,7 @@ void SphericalHarmonicsProjector::computeCoefficients(
 
     float theta = std::acos(std::clamp(dir.z(), -1.0f, 1.0f));
     float phi = std::atan2(dir.y(), dir.x());
-    if (phi < 0.0f) phi += 2 * PI;
+    if (phi < 0.0f) phi += 2 * M_PI;
 
     float weight = std::sin(theta);
     total_weight += weight;
@@ -105,11 +103,11 @@ void SphericalHarmonicsProjector::computeCoefficients(
   }
 }
 
-Eigen::Vector3f SphericalHarmonicsProjector::findClosestDirectionToColorNewton(
+Eigen::Vector3f EllipsoidHarmonicsProjector::findClosestDirectionToColorNewton(
     const SHCoeffs& sh_coeffs, const Eigen::Vector3f& target_color,
     const Eigen::Vector3f& initial_dir, int max_iters, float epsilon) const {
   Vec3f sph_dir = mapToUnitSphere(initial_dir);
-  auto sph = cartesianToSpherical(sph_dir);
+  auto sph = cartesianToSphere(sph_dir);
   dual2nd theta = sph[0];
   dual2nd phi = sph[1];
 
@@ -142,9 +140,9 @@ Eigen::Vector3f SphericalHarmonicsProjector::findClosestDirectionToColorNewton(
     theta = theta + delta(0);
     phi = phi + delta(1);
 
-    theta = std::clamp(theta, 0.001, PI - 0.001);
-    phi = std::fmod(phi, 2 * PI);
-    if (phi < 0.0) phi += 2 * PI;
+    theta = std::clamp(theta, 0.001, M_PI - 0.001);
+    phi = std::fmod(phi, 2 * M_PI);
+    if (phi < 0.0) phi += 2 * M_PI;
 
     if (grad.norm() < epsilon || delta.norm() < epsilon) break;
   }
@@ -157,14 +155,14 @@ Eigen::Vector3f SphericalHarmonicsProjector::findClosestDirectionToColorNewton(
   return e.normalized();
 }
 
-Eigen::Vector3f SphericalHarmonicsProjector::evaluateColorFromDirection(
+Eigen::Vector3f EllipsoidHarmonicsProjector::evaluateColorFromDirection(
     const SHCoeffs& sh_coeffs, const Eigen::Vector3f& dir) const {
   Vec3f sph_dir = mapToUnitSphere(dir);
   float x = sph_dir.x(), y = sph_dir.y(), z = sph_dir.z();
   float r = std::max(sph_dir.norm(), 1e-8f);
   float theta = std::acos(std::clamp(z / r, -1.0f, 1.0f));
   float phi = std::atan2(y, x);
-  if (phi < 0.0f) phi += 2.0f * PI;
+  if (phi < 0.0f) phi += 2.0f * M_PI;
 
   Eigen::VectorXf Y(n_coeffs_);
   int idx = 0;

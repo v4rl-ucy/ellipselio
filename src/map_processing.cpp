@@ -368,7 +368,6 @@ void MappingNode::map_incremental() {
     end_idx += scan_cloud_bins[i];
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
-    if (map_counter > 0 && new_idxs.size() > 1e3) break;
 
     ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
     ioctree.update(*scan_cloud, added_idxs_i, new_idxs_i, true, start_idx,
@@ -642,7 +641,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = fmax(time_score, fmin(pow(10, -fmin(start_bin, 3)), 0.8));
+    time_score = fmax(time_score, fmin(pow(2, -fmin(start_bin, 10)), 0.8));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -697,24 +696,31 @@ void MappingNode::tensor_registration(
   }
 
   if (stds(1) && stds(2)) {
-    ekfom_data_v.head(feat_tot) =
-        (ekfom_data_w.col(1).head(feat_tot) < means(1) + (4 * stds(1)) &&
-         ekfom_data_w.col(2).head(feat_tot) < means(2) + (4 * stds(2)))
-            .cast<int>();
+    int filter_num = 0;
+    float filter_scale = 1.0 / fmax(start_bin, 1);
+    while (filter_num < fmin(filter_scale * scan_cloud->size(), feat_tot)) {
+      ekfom_data_v.head(feat_tot) =
+          (ekfom_data_w.col(1).head(feat_tot) < means(1) + stds(1) &&
+           ekfom_data_w.col(2).head(feat_tot) < means(2) + stds(2))
+              .cast<int>();
+      filter_num = ekfom_data_v.head(feat_tot).count();
+      stds(1) *= 2;
+      stds(2) *= 2;
+    }
 #pragma omp parallel for
     for (int i = 0; i < feat_tot; i++) {
       valid_reg[ekfom_data_i(i)] = ekfom_data_v(i);
     }
   }
 
-  if (stds(3)) {
-    ekfom_data_r.head(feat_tot) =
-        (ekfom_data_w.col(3).head(feat_tot) < means(3) + (4 * stds(3)))
-            .cast<double>();
-    ekfom_data_h.head(feat_tot) *= ekfom_data_r.head(feat_tot);
-    ekfom_data_w.col(0).head(feat_tot) *= ekfom_data_r.head(feat_tot);
-    feat_tot -= (ekfom_data_h.head(feat_tot) == 0).count();
-  }
+  // if (stds(3)) {
+  //   ekfom_data_r.head(feat_tot) =
+  //       (ekfom_data_w.col(3).head(feat_tot) < means(3) + (4 * stds(3)))
+  //           .cast<double>();
+  //   ekfom_data_h.head(feat_tot) *= ekfom_data_r.head(feat_tot);
+  //   ekfom_data_w.col(0).head(feat_tot) *= ekfom_data_r.head(feat_tot);
+  //   feat_tot -= (ekfom_data_h.head(feat_tot) == 0).count();
+  // }
 
   ekfom_data_h_x_R.leftCols(feat_tot) =
       (ekfom_data_h_x.topRows(feat_tot).array().colwise() *
@@ -923,6 +929,7 @@ MappingNode::MappingNode(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&MappingNode::publish_map, this), pub_map_callback_group_);
 
+  start_time = omp_get_wtime();
   RCLCPP_INFO(this->get_logger(), "Node init finished.");
 }
 
@@ -1049,6 +1056,8 @@ void MappingNode::timer_callback() {
     mean_state_time += state_time;
     mean_map_time += map_time;
     mean_total_time += total_time;
+
+    analytics_msg_.run_time = omp_get_wtime() - start_time;
 
     analytics_msg_.imu_time = imu_time;
     analytics_msg_.state_time = state_time;

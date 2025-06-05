@@ -63,13 +63,13 @@ class LidarProcess {
   void ConvertPoint(InPtType &in_pt, EllipseLioPoint &out_pt,
                     rclcpp::Time &point_time);
   template <typename InPtType>
-  void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-                         EllipseLioPointCloudPtr new_pc);
+  void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
+  Eigen::ArrayXf ranges_;
   std::vector<int> bin_pcs_sizes_;
   std::vector<std::vector<int>> bin_idxs_;
   std::vector<std::atomic<int>> bin_sizes_;
@@ -79,6 +79,7 @@ class LidarProcess {
   std::vector<rclcpp::Time> bin_min_times_;
   std::vector<rclcpp::Time> bin_max_times_;
 
+  EllipseLioPointCloudPtr process_pc_;
   EllipseLioPointCloudPtr ellipselio_pc_;
 
   int start_bin_;

@@ -7,6 +7,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     : params_(params),
       node_(node),
       lidar_counter_(0),
+      process_pc_(new EllipseLioPointCloud()),
       ellipselio_pc_(new EllipseLioPointCloud()) {
   lidar_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -36,7 +37,10 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
+  process_pc_->resize(MAX_SCAN_POINTS);
   ellipselio_pc_->reserve(MAX_PROC_POINTS);
+  ranges_ = Eigen::ArrayXf(MAX_SCAN_POINTS);
+
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
   cnt_neighbours_ = std::vector<int>(num_bins_, 1);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
@@ -93,20 +97,18 @@ void LidarProcess::LidarCallback(
 
 // Process the lidar point cloud
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  EllipseLioPointCloudPtr out_pc(new EllipseLioPointCloud());
-
   switch (params_.type) {
     case LIVOX:
-      PointCloudHandler<LivoxPoint>(msg, out_pc);
+      PointCloudHandler<LivoxPoint>(msg);
       break;
     case VELODYNE:
-      PointCloudHandler<VelodynePoint>(msg, out_pc);
+      PointCloudHandler<VelodynePoint>(msg);
       break;
     case OUSTER:
-      PointCloudHandler<OusterPoint>(msg, out_pc);
+      PointCloudHandler<OusterPoint>(msg);
       break;
     case HESAI:
-      PointCloudHandler<HesaiPoint>(msg, out_pc);
+      PointCloudHandler<HesaiPoint>(msg);
       break;
   }
 
@@ -117,11 +119,11 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
     bin_octrees_[i].set_bucket_size(1);
     bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
-    bin_octrees_[i].update(*out_pc, bin_sizes_[i], bin_idxs_[i], added_idxs,
-                           new_idxs);
+    bin_octrees_[i].update(*process_pc_, bin_sizes_[i], bin_idxs_[i],
+                           added_idxs, new_idxs);
 
     if (!added_idxs.size()) continue;
-    bin_pcs_[i] += EllipseLioPointCloud(*out_pc, added_idxs);
+    bin_pcs_[i] += EllipseLioPointCloud(*process_pc_, added_idxs);
     bin_pcs_sizes_[i] = bin_pcs_[i].size();
     SetMinMaxTime(i);
   }
@@ -243,26 +245,23 @@ void LidarProcess::ConvertPoint(InPtType &in_pt, EllipseLioPoint &out_pt,
 // Convert the point cloud to an ellipselio point cloud
 template <typename InPtType>
 void LidarProcess::PointCloudHandler(
-    const sensor_msgs::msg::PointCloud2::SharedPtr msg,
-    EllipseLioPointCloudPtr out_pc) {
+    const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+  int in_pc_size;
   pcl::PointCloud<InPtType> in_pc;
   pcl::fromROSMsg(*msg, in_pc);
 
-  size_t in_pc_size = fmin(in_pc.size(), MAX_SCAN_POINTS);
-  out_pc->resize(in_pc_size);
-
-  Eigen::ArrayXf ranges(in_pc_size);
+  in_pc_size = fmin(in_pc.size(), MAX_SCAN_POINTS);
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
 
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc_size; i++) {
     rclcpp::Time point_time = msg->header.stamp;
-    ConvertPoint<InPtType>(in_pc.points[i], out_pc->points[i], point_time);
-    float range = sqrt(out_pc->points[i].x * out_pc->points[i].x +
-                       out_pc->points[i].y * out_pc->points[i].y +
-                       out_pc->points[i].z * out_pc->points[i].z);
+    ConvertPoint<InPtType>(in_pc.points[i], process_pc_->points[i], point_time);
+    float range = sqrt(process_pc_->points[i].x * process_pc_->points[i].x +
+                       process_pc_->points[i].y * process_pc_->points[i].y +
+                       process_pc_->points[i].z * process_pc_->points[i].z);
 
-    ranges(i) = range;
+    ranges_(i) = range;
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
@@ -270,8 +269,13 @@ void LidarProcess::PointCloudHandler(
     int bin_idx = floor(range / params_.bin_size);
     bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
 
-    out_pc->points[i].bin_idx = bin_idx;
+    process_pc_->points[i].bin_idx = bin_idx;
   }
 
-  start_bin_ = floor(ranges.mean() / params_.bin_size);
+  float range_mean = floor(ranges_.head(in_pc_size).mean() / params_.bin_size);
+  float range_std = (ranges_.head(in_pc_size) - range_mean).square().sum();
+  range_std = sqrt(range_std / (in_pc_size - 1));
+  range_std = floor(range_std / params_.bin_size);
+
+  start_bin_ = fmin(floor(range_mean * fmax(range_std, 1) / 2.0), 10);
 }
