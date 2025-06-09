@@ -710,7 +710,7 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
-    int beg, end;
+    int st, sz;
     float std_p, std_e;
 
     if (stds(i)) {
@@ -746,15 +746,15 @@ void MappingNode::tensor_registration(
     }
 
     if (i == 0) {
-      beg = 0;
+      st = 0;
     } else {
-      beg = cnts.head(i).sum();
+      st = cnts.head(i).sum();
     }
-    end = cnts.head(i + 1).sum();
+    sz = cnts(i);
 
-    ekfom_data_h.block(beg, 0, end, 1) = ekfom_data_h_v[i].head(cnts(i));
-    ekfom_data_w_x.block(beg, 0, end, 1) = ekfom_data_w.col(i).head(cnts(i));
-    ekfom_data_h_x.block(beg, 0, end, 6) = ekfom_data_h_x_v[i].topRows(cnts(i));
+    ekfom_data_h.block(st, 0, sz, 1) = ekfom_data_h_v[i].head(cnts(i));
+    ekfom_data_w_x.block(st, 0, sz, 1) = ekfom_data_w.col(i).head(cnts(i));
+    ekfom_data_h_x.block(st, 0, sz, 6) = ekfom_data_h_x_v[i].topRows(cnts(i));
   }
   rng_min = 1;
   rng_max += 1;
