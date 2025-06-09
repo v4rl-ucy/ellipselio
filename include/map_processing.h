@@ -88,11 +88,15 @@ class MappingNode : public rclcpp::Node {
   double max_ekfom_time, ekfom_iter_time;
 
   Eigen::ArrayXXi ekfom_data_i;
-  Eigen::ArrayXXi ekfom_data_v;
+  Eigen::ArrayXXd ekfom_data_c;
+  Eigen::ArrayXXd ekfom_data_v;
   Eigen::ArrayXXd ekfom_data_w;
   Eigen::VectorXd ekfom_data_h;
+  Eigen::ArrayXd ekfom_data_w_x;
   Eigen::MatrixXd ekfom_data_h_x;
   Eigen::MatrixXd ekfom_data_h_x_R;
+  std::vector<Eigen::ArrayXd> ekfom_data_h_v;
+  std::vector<Eigen::MatrixXd> ekfom_data_h_x_v;
 
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
@@ -102,10 +106,12 @@ class MappingNode : public rclcpp::Node {
 
   std::vector<int> scan_cloud_bins;
   std::vector<int> new_neighbours_map_idx;
+  std::vector<std::atomic<int>> count_reg;
   std::vector<std::atomic<int>> updated_pt;
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
+  std::vector<int> last_reg;
   std::vector<int> valid_reg;
   std::vector<int> update_idx;
   std::vector<int> saliency_idxs;
@@ -134,6 +140,8 @@ class MappingNode : public rclcpp::Node {
 
   IkfomSPtr kf_;
   KfState kf_state_, kf_state_pub_;
+
+  std::mutex pub_mutex_;
 
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_ =
       ellipse_lio::msg::EllipseLioAnalytics();

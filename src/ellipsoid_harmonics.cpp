@@ -6,9 +6,8 @@
 
 constexpr float PI = 3.14159265359f;
 
-EllipsoidHarmonics::EllipsoidHarmonics(int l_max, bool use_gpu)
+EllipsoidHarmonics::EllipsoidHarmonics(int l_max)
     : l_max_(l_max),
-      use_gpu_(use_gpu),
       n_coeffs_((l_max + 1) * (l_max + 1)),
       a_(1.0f),
       b_(1.0f),
@@ -64,7 +63,13 @@ float EllipsoidHarmonics::SH(int l, int m, float theta, float phi) const {
 
 void EllipsoidHarmonics::accumulateCoefficients(
     const std::vector<Vec3f>& directions, const std::vector<Vec3f>& colors,
-    SHAccumulation& accum) const {
+    SHCoeffs& coeffs) const {
+  if (!coeffs.raw_coeffs.rows()) {
+    coeffs.raw_coeffs.resize(3, n_coeffs_);
+    coeffs.sh_coeffs.resize(3, n_coeffs_);
+    coeffs.raw_coeffs.setZero();
+    coeffs.weight = 0.0f;
+  }
   for (size_t i = 0; i < directions.size(); ++i) {
     const auto& dir = directions[i].normalized();
     const auto& color = colors[i];
@@ -74,57 +79,27 @@ void EllipsoidHarmonics::accumulateCoefficients(
     if (phi < 0.0f) phi += 2 * PI;
 
     float weight = std::sin(theta);
-    accum.weight += weight;
+    coeffs.weight += weight;
 
     int idx = 0;
     for (int l = 0; l <= l_max_; ++l) {
       for (int m = -l; m <= l; ++m) {
         float ylm = SH(l, m, theta, phi);
-        accum.coeffs[0](idx) += color.x() * ylm * weight;
-        accum.coeffs[1](idx) += color.y() * ylm * weight;
-        accum.coeffs[2](idx) += color.z() * ylm * weight;
+        coeffs.raw_coeffs(0, idx) += color.x() * ylm * weight;
+        coeffs.raw_coeffs(1, idx) += color.y() * ylm * weight;
+        coeffs.raw_coeffs(2, idx) += color.z() * ylm * weight;
         ++idx;
       }
     }
   }
 }
 
-void EllipsoidHarmonics::finalizeCoefficients(const SHAccumulation& accum,
-                                              SHCoeffs& out_coeffs) const {
-  out_coeffs.resize(3);
-  for (int i = 0; i < 3; ++i) {
-    out_coeffs[i] = accum.coeffs[i] / accum.weight;
-  }
-}
-
-void EllipsoidHarmonics::computeCoefficients(
-    const std::vector<Vec3f>& directions, const std::vector<Vec3f>& colors,
-    SHCoeffs& out_coeffs) {
-  if (use_gpu_) {
-    computeOnGPU(directions, colors, out_coeffs);
-    return;
-  }
-
-  SHAccumulation accum;
-  accum.weight = 0.0f;
-  accum.coeffs.resize(3);
-  for (auto& c : accum.coeffs) {
-    c = Eigen::VectorXf::Zero(n_coeffs_);
-  }
-
-  accumulateCoefficients(directions, colors, accum);
-  finalizeCoefficients(accum, out_coeffs);
-}
-
-void EllipsoidHarmonics::computeOnGPU(const std::vector<Vec3f>& directions,
-                                      const std::vector<Vec3f>& colors,
-                                      SHCoeffs& out_coeffs) {
-  std::cerr << "GPU acceleration not yet implemented.\n";
-  std::exit(1);
+void EllipsoidHarmonics::finalizeCoefficients(SHCoeffs& coeffs) const {
+  coeffs.sh_coeffs = coeffs.raw_coeffs / coeffs.weight;
 }
 
 Eigen::Vector3f EllipsoidHarmonics::evaluateColorFromDirection(
-    const SHCoeffs& sh_coeffs, const Eigen::Vector3f& dir) const {
+    const SHCoeffs& coeffs, const Eigen::Vector3f& dir) const {
   Eigen::Vector3f n = dir.normalized();
   float x = n.x(), y = n.y(), z = n.z();
   float theta = std::acos(std::clamp(z, -1.0f, 1.0f));
@@ -137,7 +112,7 @@ Eigen::Vector3f EllipsoidHarmonics::evaluateColorFromDirection(
     for (int m = -l; m <= l; ++m) Y(idx++) = SH(l, m, theta, phi);
 
   Eigen::Vector3f color;
-  for (int c = 0; c < 3; ++c) color[c] = sh_coeffs[c].dot(Y);
+  for (int c = 0; c < 3; ++c) color[c] = coeffs.sh_coeffs.row(c).dot(Y);
 
   return color;
 }
@@ -148,9 +123,14 @@ Eigen::Vector3f EllipsoidHarmonics::ellipsoidPointFromDir(
   return Eigen::Vector3f(a_ * n.x(), b_ * n.y(), c_ * n.z());
 }
 
-Eigen::Vector3f EllipsoidHarmonics::evaluateColorOnEllipsoidFromDir(
-    const Eigen::Vector3f& dir, const SHCoeffs& coeffs) const {
-  return evaluateColorFromDirection(coeffs, dir);
+Eigen::Vector3f EllipsoidHarmonics::dirFromEllipsoidPoint(
+    const Eigen::Vector3f& point) const {
+  float x = point.x() / a_;
+  float y = point.y() / b_;
+  float z = point.z() / c_;
+
+  Eigen::Vector3f dir(x, y, z);
+  return dir.normalized();
 }
 
 Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
@@ -171,7 +151,7 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
 
       dual2nd loss = 0.0;
       for (int c = 0; c < 3; ++c) {
-        auto col = coeffs[c].cast<dual2nd>().dot(Y);
+        auto col = coeffs.sh_coeffs.row(c).cast<dual2nd>().dot(Y);
         loss += pow(col - target_color[c], 2);
       }
       return loss;
