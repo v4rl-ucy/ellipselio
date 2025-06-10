@@ -141,7 +141,8 @@ class MappingNode : public rclcpp::Node {
   IkfomSPtr kf_;
   KfState kf_state_, kf_state_pub_;
 
-  std::mutex pub_mutex_;
+  std::mutex map_mutex_;
+  std::mutex odom_mutex_;
 
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_ =
       ellipse_lio::msg::EllipseLioAnalytics();

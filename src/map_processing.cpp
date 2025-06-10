@@ -439,12 +439,14 @@ void MappingNode::split_map(const sensor_msgs::msg::PointCloud2 &input,
 void MappingNode::publish_map() {
   sensor_msgs::msg::PointCloud2 map_msg;
   std::vector<sensor_msgs::msg::PointCloud2> map_parts;
-
-  publish_markers();
-
   if (!map_cloud->size()) return;
+
+  map_mutex_.lock();
+  publish_markers();
   pcl::toROSMsg(*map_cloud, map_msg);
-  map_msg.header.stamp = kf_state_.time;
+  map_mutex_.unlock();
+
+  map_msg.header.stamp = kf_state_pub_.time;
   map_msg.header.frame_id = "odom_ellipselio";
 
   split_map(map_msg, map_parts, (1000 * pub_map_n_secs) / 100);
@@ -486,7 +488,7 @@ void MappingNode::publish_markers() {
     marker.ns = "map_primitives";
     marker.lifetime = rclcpp::Duration(0, 0);
     marker.header.frame_id = "odom_ellipselio";
-    marker.header.stamp = kf_state_.time;
+    marker.header.stamp = kf_state_pub_.time;
     marker.action = visualization_msgs::msg::Marker::ADD;
 
     marker.color.a = 1.0;
@@ -538,7 +540,7 @@ void MappingNode::publish_markers() {
 // Publish odometry transform
 void MappingNode::publish_odometry() {
   if (last_pub_time == kf_state_pub_.time) return;
-  pub_mutex_.lock();
+  odom_mutex_.lock();
   last_pub_time = kf_state_pub_.time;
 
   geometry_msgs::msg::TransformStamped trans;
@@ -556,24 +558,31 @@ void MappingNode::publish_odometry() {
 
   pub_analytics_->publish(analytics_msg_pub_);
   publish_scan();
-  pub_mutex_.unlock();
+  odom_mutex_.unlock();
 }
 
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   double t0, t1, res_mean;
-  std::atomic<int> feat_cnt = 0;
+  float wt_min, wt_max, wt_mean, wt_std;
+  int feat_tot, plane_tot, line_tot, pt_tot, reject_cnt;
+  float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
+
   Eigen::Array3i feats_num(3), cnts(3);
   std::vector<std::atomic<int>> prim_cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
-  float wt_min, wt_max, wt_mean, wt_std;
-  int feat_tot, plane_tot, line_tot, pt_tot, reject_cnt = 0;
-  float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
   prim_cnts[0] = 0;
   prim_cnts[1] = 0;
   prim_cnts[2] = 0;
+
+  maxs.setZero();
+  mins.setZero();
+  stds.setZero();
+  cnts.setZero();
+  means.setZero();
+  feats_num.setZero();
 
   if (ekfom_iter_cnt > 0) {
     if (max_ekfom_time - ekfom_iter_time < ekfom_iter_time / ekfom_iter_cnt) {
@@ -664,9 +673,6 @@ void MappingNode::tensor_registration(
     scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
     total_score = 1.0 / fmin(time_score, 1.0);
 
-    feat_num = ++feat_cnt;
-    prim_num = ++prim_cnts[saliency_idxs[map_i]];
-
     residual = norm_vec.norm();
     norm_vec.normalize();
 
@@ -674,6 +680,7 @@ void MappingNode::tensor_registration(
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
+    prim_num = ++prim_cnts[saliency_idxs[map_i]];
     ekfom_data_i(prim_num - 1, saliency_idxs[map_i]) = map_i;
     ekfom_data_c(prim_num - 1, saliency_idxs[map_i]) = count_reg[map_i];
     ekfom_data_w(prim_num - 1, saliency_idxs[map_i]) = total_score;
@@ -684,11 +691,12 @@ void MappingNode::tensor_registration(
     ekfom_data_h_x_v[saliency_idxs[map_i]].row(prim_num - 1) = h_x_vec;
   }
 
-  feat_tot = feat_cnt.load();
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
+  feat_tot = cnts.sum();
 
 #pragma omp parallel for
   for (int i = 0; i < 9; i++) {
+    if (!cnts(i % 3)) continue;
     means(i) = ekfom_data_w.col(i).head(cnts(i % 3)).mean();
     mins(i) = ekfom_data_w.col(i).head(cnts(i % 3)).minCoeff();
     maxs(i) = ekfom_data_w.col(i).head(cnts(i % 3)).maxCoeff();
@@ -712,6 +720,8 @@ void MappingNode::tensor_registration(
   for (int i = 0; i < 3; i++) {
     int st, sz;
     float std_p, std_e;
+
+    if (!cnts(i)) continue;
 
     if (stds(i)) {
       ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
@@ -768,9 +778,11 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
-  res_mean = -ekfom_data_h.head(feat_tot).mean();
+  res_mean = -ekfom_data_h.head(feat_tot).sum();
+
   feat_tot = feats_num.sum();
-  reject_cnt = scan_cloud->size() - feats_num.sum();
+  res_mean /= feat_tot;
+  reject_cnt = scan_cloud->size() - feat_tot;
 
   analytics_msg_.wt_std = wt_std;
   analytics_msg_.wt_min = wt_min;
@@ -1050,44 +1062,41 @@ void MappingNode::timer_callback() {
   }
 
   if (sync_packages()) {
-    double t0, t1, t2, t3, t4, imu_time, state_time, map_time, total_time;
+    double t1, t2, t3, t4, imu_time, state_time, map_time, total_time;
     rclcpp::Time lidar_end_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-    t0 = omp_get_wtime();
+    t1 = omp_get_wtime();
 
     lid_process->GetPointCloud(scan_cloud, lidar_end_time, scan_cloud_bins,
                                start_bin);
     imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_end_time,
                                      cams_process);
 
-    t1 = omp_get_wtime();
-
     if (scan_cloud->empty() || (scan_cloud == NULL)) {
       RCLCPP_WARN(this->get_logger(), "No points skipping scan");
       return;
     }
 
-    if (ioctree.size() == 0) {
-      RCLCPP_INFO(this->get_logger(), "Initialize the map");
-      map_incremental();
-      return;
+    t2 = omp_get_wtime();
+
+    if (map_counter) {
+      ekfom_iter_cnt = 0;
+      ekfom_iter_time = 0;
+      imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
     }
 
-    analytics_msg_.scan_size = scan_cloud->size();
-
-    ekfom_iter_cnt = 0;
-    ekfom_iter_time = 0;
-    t2 = omp_get_wtime();
-    imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
-
     t3 = omp_get_wtime();
+
+    map_mutex_.lock();
     map_incremental();
+    map_mutex_.unlock();
+
     t4 = omp_get_wtime();
 
-    imu_time = t1 - t0;
+    imu_time = t2 - t1;
     state_time = t3 - t2;
     map_time = t4 - t3;
-    total_time = t4 - t0;
+    total_time = t4 - t1;
 
     max_imu_time = fmax(max_imu_time, imu_time);
     max_state_time = fmax(max_state_time, state_time);
@@ -1099,28 +1108,29 @@ void MappingNode::timer_callback() {
     mean_map_time += map_time;
     mean_total_time += total_time;
 
-    analytics_msg_.run_time = omp_get_wtime() - start_time;
+    analytics_msg_.scan_size = scan_cloud->size();
+    analytics_msg_.run_time = t4 - start_time;
 
     analytics_msg_.imu_time = imu_time;
     analytics_msg_.state_time = state_time;
     analytics_msg_.map_time = map_time;
     analytics_msg_.total_time = total_time;
 
-    analytics_msg_.imu_mean = mean_imu_time / (map_counter - 1);
-    analytics_msg_.state_mean = mean_state_time / (map_counter - 1);
-    analytics_msg_.map_mean = mean_map_time / (map_counter - 1);
-    analytics_msg_.total_mean = mean_total_time / (map_counter - 1);
+    analytics_msg_.imu_mean = mean_imu_time / map_counter;
+    analytics_msg_.state_mean = mean_state_time / map_counter;
+    analytics_msg_.map_mean = mean_map_time / map_counter;
+    analytics_msg_.total_mean = mean_total_time / map_counter;
 
     analytics_msg_.imu_max = max_imu_time;
     analytics_msg_.state_max = max_state_time;
     analytics_msg_.map_max = max_map_time;
     analytics_msg_.total_max = max_total_time;
 
-    pub_mutex_.lock();
+    odom_mutex_.lock();
     kf_state_pub_ = kf_state_;
     *scan_cloud_pub = *scan_cloud;
     analytics_msg_pub_ = analytics_msg_;
-    pub_mutex_.unlock();
+    odom_mutex_.unlock();
   }
 }
 
