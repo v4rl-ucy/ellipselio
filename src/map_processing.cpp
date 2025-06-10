@@ -312,6 +312,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
     valid_reg[map_i] = 1;
+    count_reg[map_i] = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &min_neigh = lid_process->min_neighbours_[bin_idx];
@@ -569,6 +570,7 @@ void MappingNode::tensor_registration(
   int feat_tot, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
+  V3F hit_mean;
   Eigen::Array3i feats_num(3), cnts(3);
   std::vector<std::atomic<int>> prim_cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
@@ -582,6 +584,7 @@ void MappingNode::tensor_registration(
   stds.setZero();
   cnts.setZero();
   means.setZero();
+  hit_mean.setZero();
   feats_num.setZero();
 
   if (ekfom_iter_cnt > 0) {
@@ -633,11 +636,11 @@ void MappingNode::tensor_registration(
     eig_vals = eigenvalues[map_i] / eigenvalues[map_i].sum();
 
     // Point to plane
-    scores(0) = sali_vals(0) * (1.0 - eig_vals(2));
+    scores(0) = sali_vals(0);  // * (1.0 - eig_vals(2));
     //  Point to line
-    scores(1) = sali_vals(1) * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
+    scores(1) = sali_vals(1);  // * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
     //  Point to point
-    scores(2) = sali_vals(2) * (1 - (eig_vals(0) - eig_vals(2)));
+    scores(2) = sali_vals(2);  // * (1 - (eig_vals(0) - eig_vals(2)));
     scores /= scores.sum();
 
     n_world = map_cloud->points[map_i].getVector3fMap();
@@ -646,20 +649,21 @@ void MappingNode::tensor_registration(
     // Point to plane
     q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
     p_dash = scores(0) * (p_world - q_dash);
-
-    //  Point to line
+    // Point to line
     q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
     p_dash += scores(1) * (n_world + q_dash);
-
-    //  Point to point
+    // Point to point
     p_dash += scores(2) * n_world;
 
     norm_vec = p_world - p_dash;
+    residual = norm_vec.norm();
+    norm_vec.normalize();
+
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, (start_bin + 1) / 20.0);
+    time_score = pow(time_score, (start_bin + 1) / 11.0);
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -672,9 +676,6 @@ void MappingNode::tensor_registration(
     scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
     scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
     total_score = 1.0 / fmin(time_score, 1.0);
-
-    residual = norm_vec.norm();
-    norm_vec.normalize();
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
@@ -719,7 +720,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz;
-    float std_p, std_e;
+    float std_p, std_e, mean_cnt;
 
     if (!cnts(i)) continue;
 
@@ -734,8 +735,10 @@ void MappingNode::tensor_registration(
       ekfom_data_c.col(i).head(cnts(i)) *= (11.0 - start_bin) / 11.0;
       ekfom_data_c.col(i).head(cnts(i)) += 1.0;
 
-      std_p = stds(i + 3) * fmin(ekfom_data_c.col(i).head(cnts(i)).mean(), 4);
-      std_e = stds(i + 6) * fmin(ekfom_data_c.col(i).head(cnts(i)).mean(), 4);
+      hit_mean(i) = fmin(ekfom_data_c.col(i).head(cnts(i)).mean(), 4);
+
+      std_p = stds(i + 3) * hit_mean(i);
+      std_e = stds(i + 6) * hit_mean(i);
 
       ekfom_data_v.col(i).head(cnts(i)) =
           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
@@ -795,6 +798,7 @@ void MappingNode::tensor_registration(
   analytics_msg_.start_bin = start_bin;
   analytics_msg_.num_feats = feat_tot;
   analytics_msg_.num_reject = reject_cnt;
+  analytics_msg_.hit_mean = hit_mean.mean();
 
   ekfom_iter_cnt++;
   t1 = omp_get_wtime();
