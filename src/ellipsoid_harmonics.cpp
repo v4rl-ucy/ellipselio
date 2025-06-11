@@ -7,17 +7,7 @@
 constexpr float PI = 3.14159265359f;
 
 EllipsoidHarmonics::EllipsoidHarmonics(int l_max)
-    : l_max_(l_max),
-      n_coeffs_((l_max + 1) * (l_max + 1)),
-      a_(1.0f),
-      b_(1.0f),
-      c_(1.0f) {}
-
-void EllipsoidHarmonics::setEllipsoidAxes(float a, float b, float c) {
-  a_ = a;
-  b_ = b;
-  c_ = c;
-}
+    : l_max_(l_max), n_coeffs_((l_max + 1) * (l_max + 1)) {}
 
 int EllipsoidHarmonics::getCoefficientCount() const { return n_coeffs_; }
 
@@ -118,16 +108,17 @@ Eigen::Vector3f EllipsoidHarmonics::evaluateColorFromDirection(
 }
 
 Eigen::Vector3f EllipsoidHarmonics::ellipsoidPointFromDir(
-    const Eigen::Vector3f& dir) const {
+    const Eigen::Vector3f& dir, const Eigen::Vector3f& scale) const {
   Eigen::Vector3f n = dir.normalized();
-  return Eigen::Vector3f(a_ * n.x(), b_ * n.y(), c_ * n.z());
+  return Eigen::Vector3f(scale.x() * n.x(), scale.y() * n.y(),
+                         scale.z() * n.z());
 }
 
 Eigen::Vector3f EllipsoidHarmonics::dirFromEllipsoidPoint(
-    const Eigen::Vector3f& point) const {
-  float x = point.x() / a_;
-  float y = point.y() / b_;
-  float z = point.z() / c_;
+    const Eigen::Vector3f& point, const Eigen::Vector3f& scale) const {
+  float x = point.x() / scale.x();
+  float y = point.y() / scale.y();
+  float z = point.z() / scale.z();
 
   Eigen::Vector3f dir(x, y, z);
   return dir.normalized();
@@ -143,11 +134,11 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
   for (int iter = 0; iter < max_iters; ++iter) {
     auto loss_fn = [&](const auto& vars) {
       dual2nd t = vars(0), p = vars(1);
-      VectorX<dual2nd> Y(n_coeffs_);
+      Eigen::VectorX<dual2nd> Y(n_coeffs_);
 
       int idx = 0;
       for (int l = 0; l <= l_max_; ++l)
-        for (int m = -l; m <= l; ++m) Y(idx++) = SH(l, m, t, p);
+        for (int m = -l; m <= l; ++m) Y(idx++) = SH(l, m, val(t), val(p));
 
       dual2nd loss = 0.0;
       for (int c = 0; c < 3; ++c) {
@@ -162,7 +153,7 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
     Eigen::Vector2d grad;
     Eigen::Matrix2d hess;
 
-    loss = hessian(loss_fn, wrt(vars), at(vars), grad, hess);
+    hessian(loss_fn, wrt(vars), at(vars), loss, grad, hess);
 
     Eigen::Vector2d delta;
     bool failed = false;
@@ -180,8 +171,8 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
     theta = theta + delta(0);
     phi = phi + delta(1);
 
-    theta = std::clamp(theta, 0.001, PI - 0.001);
-    phi = std::fmod(phi, 2 * PI);
+    theta = std::clamp(val(theta), 0.001, PI - 0.001);
+    phi = std::fmod(val(phi), 2 * PI);
     if (phi < 0.0) phi += 2 * PI;
 
     if (grad.norm() < epsilon || delta.norm() < epsilon) break;

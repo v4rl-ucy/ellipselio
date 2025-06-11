@@ -1,11 +1,16 @@
 #ifndef ELLIPSOIDS_HARMONICS_H
 #define ELLIPSOIDS_HARMONICS_H
 
+#include <Eigen/Cholesky>
 #include <Eigen/Core>
-#include <autodiff/forward/dual2nd.hpp>
+#include <autodiff/forward/dual.hpp>
+#include <autodiff/forward/dual/eigen.hpp>
+#include <autodiff/forward/utils/gradient.hpp>
 #include <vector>
 
 using Vec3f = Eigen::Vector3f;
+using autodiff::dual2nd;
+using autodiff::detail::hessian;
 
 struct SHCoeffs {
   float weight = 0.0f;
@@ -62,7 +67,7 @@ class EllipsoidHarmonics {
   // Map unit direction vector to ellipsoid surface point
   Eigen::Vector3f ellipsoidPointFromDir(const Eigen::Vector3f& dir) const;
 
-  Eigen::Vector3f dirFromEllipsoidPoint(const Eigen::Vector3f& point) const
+  Eigen::Vector3f dirFromEllipsoidPoint(const Eigen::Vector3f& point) const;
 };
 
 #endif  // ELLIPSOIDS_HARMONICS_H
