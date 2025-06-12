@@ -1,11 +1,5 @@
 #include <ellipsoid_harmonics.h>
 
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-
-constexpr float PI = 3.14159265359f;
-
 EllipsoidHarmonics::EllipsoidHarmonics(int l_max)
     : l_max_(l_max), n_coeffs_((l_max + 1) * (l_max + 1)) {}
 
@@ -13,7 +7,7 @@ int EllipsoidHarmonics::getCoefficientCount() const { return n_coeffs_; }
 
 float EllipsoidHarmonics::K(int l, int m) const {
   return std::sqrt((2 * l + 1) * std::tgamma(l - m + 1) /
-                   (4 * PI * std::tgamma(l + m + 1)));
+                   (4 * M_PI * std::tgamma(l + m + 1)));
 }
 
 float EllipsoidHarmonics::P(int l, int m, float x) const {
@@ -66,7 +60,7 @@ void EllipsoidHarmonics::accumulateCoefficients(
 
     float theta = std::acos(std::clamp(dir.z(), -1.0f, 1.0f));
     float phi = std::atan2(dir.y(), dir.x());
-    if (phi < 0.0f) phi += 2 * PI;
+    if (phi < 0.0f) phi += 2 * M_PI;
 
     float weight = std::sin(theta);
     coeffs.weight += weight;
@@ -94,7 +88,7 @@ Eigen::Vector3f EllipsoidHarmonics::evaluateColorFromDirection(
   float x = n.x(), y = n.y(), z = n.z();
   float theta = std::acos(std::clamp(z, -1.0f, 1.0f));
   float phi = std::atan2(y, x);
-  if (phi < 0.0f) phi += 2.0f * PI;
+  if (phi < 0.0f) phi += 2.0f * M_PI;
 
   Eigen::VectorXf Y(n_coeffs_);
   int idx = 0;
@@ -171,9 +165,9 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
     theta = theta + delta(0);
     phi = phi + delta(1);
 
-    theta = std::clamp(val(theta), 0.001, PI - 0.001);
-    phi = std::fmod(val(phi), 2 * PI);
-    if (phi < 0.0) phi += 2 * PI;
+    theta = std::clamp(val(theta), 0.001, M_PI - 0.001);
+    phi = std::fmod(val(phi), 2 * M_PI);
+    if (phi < 0.0) phi += 2 * M_PI;
 
     if (grad.norm() < epsilon || delta.norm() < epsilon) break;
   }
@@ -191,7 +185,7 @@ Eigen::Vector2f EllipsoidHarmonics::cartesianToSpherical(
       std::acos(std::clamp(n.z(), -1.0f, 1.0f));  // polar angle [0, π]
   float phi = std::atan2(n.y(), n.x());           // azimuthal angle [-π, π]
 
-  if (phi < 0.0f) phi += 2 * PI;  // convert to [0, 2π)
+  if (phi < 0.0f) phi += 2 * M_PI;  // convert to [0, 2π)
 
   return Eigen::Vector2f(theta, phi);
 }

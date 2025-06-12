@@ -3,9 +3,12 @@
 
 #include <Eigen/Cholesky>
 #include <Eigen/Core>
+#include <algorithm>
 #include <autodiff/forward/dual.hpp>
 #include <autodiff/forward/dual/eigen.hpp>
 #include <autodiff/forward/utils/gradient.hpp>
+#include <cmath>
+#include <iostream>
 #include <vector>
 
 using Vec3f = Eigen::Vector3f;
@@ -21,9 +24,6 @@ struct SHCoeffs {
 class EllipsoidHarmonics {
  public:
   EllipsoidHarmonics(int l_max = 3);
-
-  // Set ellipsoid axes lengths (a, b, c)
-  void setEllipsoidAxes(float a, float b, float c);
 
   int getCoefficientCount() const;
 
@@ -50,8 +50,6 @@ class EllipsoidHarmonics {
   int l_max_;
   int n_coeffs_;
 
-  float a_, b_, c_;  // Ellipsoid axes
-
   // Compute the normalization constant for SH
   float K(int l, int m) const;
 
@@ -65,9 +63,11 @@ class EllipsoidHarmonics {
   Eigen::Vector2f cartesianToSpherical(const Eigen::Vector3f& dir) const;
 
   // Map unit direction vector to ellipsoid surface point
-  Eigen::Vector3f ellipsoidPointFromDir(const Eigen::Vector3f& dir) const;
+  Eigen::Vector3f ellipsoidPointFromDir(const Eigen::Vector3f& dir,
+                                        const Eigen::Vector3f& scale) const;
 
-  Eigen::Vector3f dirFromEllipsoidPoint(const Eigen::Vector3f& point) const;
+  Eigen::Vector3f dirFromEllipsoidPoint(const Eigen::Vector3f& point,
+                                        const Eigen::Vector3f& scale) const;
 };
 
 #endif  // ELLIPSOIDS_HARMONICS_H
