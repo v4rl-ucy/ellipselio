@@ -49,9 +49,8 @@ void EllipsoidHarmonics::computeCoefficients(const Vec3f& dir,
                                              const Vec3f& color,
                                              SHCoeffs& coeffs,
                                              int p_idx) const {
-  auto sph = cartesianToSpherical(dir);
-  float theta = sph[0];
-  float phi = sph[1];
+  float theta, phi;
+  cartesianToSpherical(dir, theta, phi);
 
   coeffs.weights(p_idx) = std::sin(theta);
 
@@ -95,32 +94,35 @@ Vec3f EllipsoidHarmonics::evaluateColorFromDirection(
   return color;
 }
 
-Vec3f EllipsoidHarmonics::ellipsoidPointFromDir(const Vec3f& dir,
-                                                const Vec3f& scale,
-                                                const Mat3f& rot) const {
-  Vec3f n = dir.normalized();
-  n = rot.transpose() * n;        // Apply rotation
-  n = n.array() * scale.array();  // Scale to ellipsoid
-  n = rot * n;                    // Apply rotation back
-  return n;
+void EllipsoidHarmonics::ellipsoidPointFromDir(const Vec3f& dir,
+                                               const Vec3f& scale,
+                                               const Mat3f& rot,
+                                               Vec3f pt) const {
+  pt = dir.normalized();
+  pt = rot.transpose() * pt;        // Apply rotation
+  pt = pt.array() * scale.array();  // Scale to ellipsoid
+  pt = rot * pt;                    // Apply rotation back
 }
 
-Vec3f EllipsoidHarmonics::dirFromEllipsoidPoint(const Vec3f& point,
-                                                const Vec3f& scale,
-                                                const Mat3f& rot) const {
-  Vec3f n = rot.transpose() * point;  // Apply inverse rotation
-  n = n.array() / scale.array();      // Scale back to unit sphere
-  n = rot * n;                        // Apply rotation back
-  n.normalize();                      // Normalize to get direction
-  return n;
+void EllipsoidHarmonics::dirFromEllipsoidPoint(const Vec3f& pt,
+                                               const Vec3f& scale,
+                                               const Mat3f& rot,
+                                               Vec3f dir) const {
+  dir = rot.transpose() * pt;         // Apply inverse rotation
+  dir = dir.array() / scale.array();  // Scale back to unit sphere
+  dir = rot * dir;                    // Apply rotation back
+  dir.normalize();                    // Normalize to get direction
 }
 
 Vec3f EllipsoidHarmonics::findDirectionMatchingColor(
     const Eigen::MatrixXf& sh_mat, const Vec3f& target_color,
     const Vec3f& initial_dir, int max_iters, float epsilon) const {
-  auto sph = cartesianToSpherical(initial_dir);
-  dual2nd theta = sph[0];
-  dual2nd phi = sph[1];
+  float theta_f, phi_f;
+
+  cartesianToSpherical(initial_dir, theta_f, phi_f);
+
+  dual2nd theta = theta_f;
+  dual2nd phi = phi_f;
 
   for (int iter = 0; iter < max_iters; ++iter) {
     auto loss_fn = [&](const auto& vars) {
@@ -175,13 +177,34 @@ Vec3f EllipsoidHarmonics::findDirectionMatchingColor(
                std::cos(th));
 }
 
-Eigen::Vector2f EllipsoidHarmonics::cartesianToSpherical(
-    const Vec3f& dir) const {
+void EllipsoidHarmonics::cartesianToSpherical(const Vec3f& dir, float& theta,
+                                              float& phi) const {
   Vec3f n = dir.normalized();
-  float theta = std::acos(std::clamp(n(2), -1.0f, 1.0f));  // polar angle [0, π]
-  float phi = std::atan2(n(1), n(0));  // azimuthal angle [-π, π]
+  theta = std::acos(std::clamp(n(2), -1.0f, 1.0f));  // polar angle [0, π]
+  phi = std::atan2(n(1), n(0));                      // azimuthal angle [-π, π]
+  if (phi < 0.0f) phi += 2 * M_PI;                   // convert to [0, 2π)
+}
 
-  if (phi < 0.0f) phi += 2 * M_PI;  // convert to [0, 2π)
+void EllipsoidHarmonics::dirFromNeighbouringPoint(
+    const Vec3f& target_pt, const Vec3f& neigh_pt, const Vec3f& sensor_pt,
+    Vec3f& out_dir, const float& search_radius) const {
+  int t_idx;
+  Vec3f inter_pt;
+  Eigen::Vector2f t;
+  Vec3f oc = sensor_pt - target_pt;
+  Vec3f ray_dir = (neigh_pt - sensor_pt).normalized();
 
-  return Eigen::Vector2f(theta, phi);
+  double b = 2.0 * ray_dir.dot(oc);
+  double c = oc.squaredNorm() - pow(search_radius, 2);
+  double discriminant = b * b - 4 * c;
+  double sqrt_disc = std::sqrt(discriminant);
+
+  t[0] = (-b - sqrt_disc) / 2.0;
+  t[1] = (-b + sqrt_disc) / 2.0;
+
+  t.cwiseAbs().minCoeff(&t_idx);
+
+  inter_pt = sensor_pt + t[t_idx] * ray_dir;
+  out_dir = inter_pt - target_pt;
+  out_dir.normalize();
 }

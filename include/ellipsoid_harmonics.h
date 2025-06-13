@@ -55,6 +55,19 @@ class EllipsoidHarmonics {
                                    const Vec3f& initial_dir, int max_iters = 20,
                                    float epsilon = 1e-6f) const;
 
+  void dirFromNeighbouringPoint(const Eigen::Vector3f& target_pt,
+                                const Eigen::Vector3f& neigh_pt,
+                                const Eigen::Vector3f& sensor_pt,
+                                Eigen::Vector3f& out_dir,
+                                const float& search_radius) const;
+
+  // Map unit direction vector to ellipsoid surface point
+  void ellipsoidPointFromDir(const Vec3f& dir, const Vec3f& scale,
+                             const Mat3f& rot, Vec3f pt) const;
+
+  void dirFromEllipsoidPoint(const Vec3f& pt, const Vec3f& scale,
+                             const Mat3f& rot, Vec3f dir) const;
+
  private:
   int l_max_;
   int n_coeffs_;
@@ -69,14 +82,7 @@ class EllipsoidHarmonics {
   float SH(int l, int m, float theta, float phi) const;
 
   // Convert Cartesian direction to spherical coords (theta, phi)
-  Eigen::Vector2f cartesianToSpherical(const Vec3f& dir) const;
-
-  // Map unit direction vector to ellipsoid surface point
-  Vec3f ellipsoidPointFromDir(const Vec3f& dir, const Vec3f& scale,
-                              const Mat3f& rot) const;
-
-  Vec3f dirFromEllipsoidPoint(const Vec3f& point, const Vec3f& scale,
-                              const Mat3f& rot) const;
+  void cartesianToSpherical(const Vec3f& dir, float& theta, float& phi) const;
 };
 
 #endif  // ELLIPSOIDS_HARMONICS_H
