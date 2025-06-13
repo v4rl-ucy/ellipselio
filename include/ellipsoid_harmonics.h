@@ -12,13 +12,23 @@
 #include <vector>
 
 using Vec3f = Eigen::Vector3f;
+using Mat3f = Eigen::Matrix3f;
+
 using autodiff::dual2nd;
 using autodiff::detail::hessian;
 
 struct SHCoeffs {
-  float weight = 0.0f;
-  Eigen::MatrixXf raw_coeffs;  // size 3, one per color channel
-  Eigen::MatrixXf sh_coeffs;
+  Eigen::VectorXf weights;
+  Eigen::MatrixXf r_coeffs;
+  Eigen::MatrixXf g_coeffs;
+  Eigen::MatrixXf b_coeffs;
+
+  SHCoeffs() = default;
+  SHCoeffs(int p_num, int l_max)
+      : weights(p_num),
+        r_coeffs(p_num, (l_max + 1) * (l_max + 1)),
+        g_coeffs(p_num, (l_max + 1) * (l_max + 1)),
+        b_coeffs(p_num, (l_max + 1) * (l_max + 1)) {}
 };
 
 class EllipsoidHarmonics {
@@ -27,24 +37,23 @@ class EllipsoidHarmonics {
 
   int getCoefficientCount() const;
 
-  // Accumulate SH coefficients incrementally
-  void accumulateCoefficients(const std::vector<Vec3f>& directions,
-                              const std::vector<Vec3f>& colors,
-                              SHCoeffs& coeffs) const;
+  // compute SH coefficients in parallel
+  void computeCoefficients(const Vec3f& dir, const Vec3f& color,
+                           SHCoeffs& coeffs, int p_idx) const;
 
   // Finalize coefficients by normalizing with accumulated weight
-  void finalizeCoefficients(SHCoeffs& coeffs) const;
+  void finalizeCoefficients(SHCoeffs& coeffs, Eigen::MatrixXf& sh_mat) const;
 
   // Evaluate color from direction vector on unit sphere
-  Eigen::Vector3f evaluateColorFromDirection(const SHCoeffs& coeffs,
-                                             const Eigen::Vector3f& dir) const;
+  Vec3f evaluateColorFromDirection(const Eigen::MatrixXf& sh_mat,
+                                   const Vec3f& dir) const;
 
   // Find direction that best matches a target color using autodiff Newton
   // optimization
-  Eigen::Vector3f findDirectionMatchingColor(
-      const SHCoeffs& coeffs, const Eigen::Vector3f& target_color,
-      const Eigen::Vector3f& initial_dir, int max_iters = 20,
-      float epsilon = 1e-6f) const;
+  Vec3f findDirectionMatchingColor(const Eigen::MatrixXf& sh_mat,
+                                   const Vec3f& target_color,
+                                   const Vec3f& initial_dir, int max_iters = 20,
+                                   float epsilon = 1e-6f) const;
 
  private:
   int l_max_;
@@ -60,14 +69,14 @@ class EllipsoidHarmonics {
   float SH(int l, int m, float theta, float phi) const;
 
   // Convert Cartesian direction to spherical coords (theta, phi)
-  Eigen::Vector2f cartesianToSpherical(const Eigen::Vector3f& dir) const;
+  Eigen::Vector2f cartesianToSpherical(const Vec3f& dir) const;
 
   // Map unit direction vector to ellipsoid surface point
-  Eigen::Vector3f ellipsoidPointFromDir(const Eigen::Vector3f& dir,
-                                        const Eigen::Vector3f& scale) const;
+  Vec3f ellipsoidPointFromDir(const Vec3f& dir, const Vec3f& scale,
+                              const Mat3f& rot) const;
 
-  Eigen::Vector3f dirFromEllipsoidPoint(const Eigen::Vector3f& point,
-                                        const Eigen::Vector3f& scale) const;
+  Vec3f dirFromEllipsoidPoint(const Vec3f& point, const Vec3f& scale,
+                              const Mat3f& rot) const;
 };
 
 #endif  // ELLIPSOIDS_HARMONICS_H

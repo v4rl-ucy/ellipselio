@@ -2,7 +2,7 @@
 
 namespace ellipselio {
 
-// Sync lida, imu, and camera data
+// Sync lidar, imu, and camera data
 bool MappingNode::sync_packages() {
   double inter_sync_time = omp_get_wtime() - last_sync_time;
 

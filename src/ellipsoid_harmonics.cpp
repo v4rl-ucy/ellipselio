@@ -45,47 +45,41 @@ float EllipsoidHarmonics::SH(int l, int m, float theta, float phi) const {
   return K(l, 0) * P(l, 0, std::cos(theta));
 }
 
-void EllipsoidHarmonics::accumulateCoefficients(
-    const std::vector<Vec3f>& directions, const std::vector<Vec3f>& colors,
-    SHCoeffs& coeffs) const {
-  if (!coeffs.raw_coeffs.rows()) {
-    coeffs.raw_coeffs.resize(3, n_coeffs_);
-    coeffs.sh_coeffs.resize(3, n_coeffs_);
-    coeffs.raw_coeffs.setZero();
-    coeffs.weight = 0.0f;
-  }
-  for (size_t i = 0; i < directions.size(); ++i) {
-    const auto& dir = directions[i].normalized();
-    const auto& color = colors[i];
+void EllipsoidHarmonics::computeCoefficients(const Vec3f& dir,
+                                             const Vec3f& color,
+                                             SHCoeffs& coeffs,
+                                             int p_idx) const {
+  auto sph = cartesianToSpherical(dir);
+  float theta = sph[0];
+  float phi = sph[1];
 
-    float theta = std::acos(std::clamp(dir.z(), -1.0f, 1.0f));
-    float phi = std::atan2(dir.y(), dir.x());
-    if (phi < 0.0f) phi += 2 * M_PI;
+  coeffs.weights(p_idx) = std::sin(theta);
 
-    float weight = std::sin(theta);
-    coeffs.weight += weight;
-
-    int idx = 0;
-    for (int l = 0; l <= l_max_; ++l) {
-      for (int m = -l; m <= l; ++m) {
-        float ylm = SH(l, m, theta, phi);
-        coeffs.raw_coeffs(0, idx) += color.x() * ylm * weight;
-        coeffs.raw_coeffs(1, idx) += color.y() * ylm * weight;
-        coeffs.raw_coeffs(2, idx) += color.z() * ylm * weight;
-        ++idx;
-      }
+#pragma omp parallel for
+  for (int l = 0; l < l_max_ + 1; l++) {
+#pragma omp parallel for
+    for (int m = -l; m < l + 1; m++) {
+      int c_idx = l * l + (m + l);
+      float ylm = SH(l, m, theta, phi);
+      coeffs.r_coeffs(p_idx, c_idx) = color(0) * ylm * coeffs.weights(p_idx);
+      coeffs.g_coeffs(p_idx, c_idx) = color(1) * ylm * coeffs.weights(p_idx);
+      coeffs.b_coeffs(p_idx, c_idx) = color(2) * ylm * coeffs.weights(p_idx);
     }
   }
 }
 
-void EllipsoidHarmonics::finalizeCoefficients(SHCoeffs& coeffs) const {
-  coeffs.sh_coeffs = coeffs.raw_coeffs / coeffs.weight;
+void EllipsoidHarmonics::finalizeCoefficients(SHCoeffs& coeffs,
+                                              Eigen::MatrixXf& sh_mat) const {
+  float total_weight = coeffs.weights.sum();
+  sh_mat.row(0) = coeffs.r_coeffs.colwise().sum() / total_weight;
+  sh_mat.row(1) = coeffs.g_coeffs.colwise().sum() / total_weight;
+  sh_mat.row(2) = coeffs.b_coeffs.colwise().sum() / total_weight;
 }
 
-Eigen::Vector3f EllipsoidHarmonics::evaluateColorFromDirection(
-    const SHCoeffs& coeffs, const Eigen::Vector3f& dir) const {
-  Eigen::Vector3f n = dir.normalized();
-  float x = n.x(), y = n.y(), z = n.z();
+Vec3f EllipsoidHarmonics::evaluateColorFromDirection(
+    const Eigen::MatrixXf& sh_mat, const Vec3f& dir) const {
+  Vec3f n = dir.normalized();
+  float x = n(0), y = n(1), z = n(2);
   float theta = std::acos(std::clamp(z, -1.0f, 1.0f));
   float phi = std::atan2(y, x);
   if (phi < 0.0f) phi += 2.0f * M_PI;
@@ -95,32 +89,35 @@ Eigen::Vector3f EllipsoidHarmonics::evaluateColorFromDirection(
   for (int l = 0; l <= l_max_; ++l)
     for (int m = -l; m <= l; ++m) Y(idx++) = SH(l, m, theta, phi);
 
-  Eigen::Vector3f color;
-  for (int c = 0; c < 3; ++c) color[c] = coeffs.sh_coeffs.row(c).dot(Y);
+  Vec3f color;
+  for (int c = 0; c < 3; ++c) color[c] = sh_mat.row(c).dot(Y);
 
   return color;
 }
 
-Eigen::Vector3f EllipsoidHarmonics::ellipsoidPointFromDir(
-    const Eigen::Vector3f& dir, const Eigen::Vector3f& scale) const {
-  Eigen::Vector3f n = dir.normalized();
-  return Eigen::Vector3f(scale.x() * n.x(), scale.y() * n.y(),
-                         scale.z() * n.z());
+Vec3f EllipsoidHarmonics::ellipsoidPointFromDir(const Vec3f& dir,
+                                                const Vec3f& scale,
+                                                const Mat3f& rot) const {
+  Vec3f n = dir.normalized();
+  n = rot.transpose() * n;        // Apply rotation
+  n = n.array() * scale.array();  // Scale to ellipsoid
+  n = rot * n;                    // Apply rotation back
+  return n;
 }
 
-Eigen::Vector3f EllipsoidHarmonics::dirFromEllipsoidPoint(
-    const Eigen::Vector3f& point, const Eigen::Vector3f& scale) const {
-  float x = point.x() / scale.x();
-  float y = point.y() / scale.y();
-  float z = point.z() / scale.z();
-
-  Eigen::Vector3f dir(x, y, z);
-  return dir.normalized();
+Vec3f EllipsoidHarmonics::dirFromEllipsoidPoint(const Vec3f& point,
+                                                const Vec3f& scale,
+                                                const Mat3f& rot) const {
+  Vec3f n = rot.transpose() * point;  // Apply inverse rotation
+  n = n.array() / scale.array();      // Scale back to unit sphere
+  n = rot * n;                        // Apply rotation back
+  n.normalize();                      // Normalize to get direction
+  return n;
 }
 
-Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
-    const SHCoeffs& coeffs, const Eigen::Vector3f& target_color,
-    const Eigen::Vector3f& initial_dir, int max_iters, float epsilon) const {
+Vec3f EllipsoidHarmonics::findDirectionMatchingColor(
+    const Eigen::MatrixXf& sh_mat, const Vec3f& target_color,
+    const Vec3f& initial_dir, int max_iters, float epsilon) const {
   auto sph = cartesianToSpherical(initial_dir);
   dual2nd theta = sph[0];
   dual2nd phi = sph[1];
@@ -136,7 +133,7 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
 
       dual2nd loss = 0.0;
       for (int c = 0; c < 3; ++c) {
-        auto col = coeffs.sh_coeffs.row(c).cast<dual2nd>().dot(Y);
+        auto col = sh_mat.row(c).cast<dual2nd>().dot(Y);
         loss += pow(col - target_color[c], 2);
       }
       return loss;
@@ -174,16 +171,15 @@ Eigen::Vector3f EllipsoidHarmonics::findDirectionMatchingColor(
 
   float th = val(theta);
   float ph = val(phi);
-  return Eigen::Vector3f(std::sin(th) * std::cos(ph),
-                         std::sin(th) * std::sin(ph), std::cos(th));
+  return Vec3f(std::sin(th) * std::cos(ph), std::sin(th) * std::sin(ph),
+               std::cos(th));
 }
 
 Eigen::Vector2f EllipsoidHarmonics::cartesianToSpherical(
-    const Eigen::Vector3f& dir) const {
-  Eigen::Vector3f n = dir.normalized();
-  float theta =
-      std::acos(std::clamp(n.z(), -1.0f, 1.0f));  // polar angle [0, π]
-  float phi = std::atan2(n.y(), n.x());           // azimuthal angle [-π, π]
+    const Vec3f& dir) const {
+  Vec3f n = dir.normalized();
+  float theta = std::acos(std::clamp(n(2), -1.0f, 1.0f));  // polar angle [0, π]
+  float phi = std::atan2(n(1), n(0));  // azimuthal angle [-π, π]
 
   if (phi < 0.0f) phi += 2 * M_PI;  // convert to [0, 2π)
 
