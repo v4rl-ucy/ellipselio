@@ -75,8 +75,8 @@ void EllipsoidHarmonics::finalizeCoefficients(SHCoeffs& coeffs,
   sh_mat.row(2) = coeffs.b_coeffs.colwise().sum() / total_weight;
 }
 
-Vec3f EllipsoidHarmonics::evaluateColorFromDirection(
-    const Eigen::MatrixXf& sh_mat, const Vec3f& dir) const {
+void EllipsoidHarmonics::evaluateColorFromDirection(
+    const Eigen::MatrixXf& sh_mat, const Vec3f& dir, Vec3f& color) const {
   Vec3f n = dir.normalized();
   float x = n(0), y = n(1), z = n(2);
   float theta = std::acos(std::clamp(z, -1.0f, 1.0f));
@@ -84,14 +84,16 @@ Vec3f EllipsoidHarmonics::evaluateColorFromDirection(
   if (phi < 0.0f) phi += 2.0f * M_PI;
 
   Eigen::VectorXf Y(n_coeffs_);
-  int idx = 0;
-  for (int l = 0; l <= l_max_; ++l)
-    for (int m = -l; m <= l; ++m) Y(idx++) = SH(l, m, theta, phi);
+#pragma omp parallel for
+  for (int l = 0; l < l_max_ + 1; l++) {
+#pragma omp parallel for
+    for (int m = -l; m < l + 1; m++) {
+      int c_idx = l * l + (m + l);
+      Y(c_idx) = SH(l, m, theta, phi);
+    }
+  }
 
-  Vec3f color;
-  for (int c = 0; c < 3; ++c) color[c] = sh_mat.row(c).dot(Y);
-
-  return color;
+  color = sh_mat.rowwise().dot(Y);
 }
 
 void EllipsoidHarmonics::ellipsoidPointFromDir(const Vec3f& dir,
@@ -114,9 +116,10 @@ void EllipsoidHarmonics::dirFromEllipsoidPoint(const Vec3f& pt,
   dir.normalize();                    // Normalize to get direction
 }
 
-Vec3f EllipsoidHarmonics::findDirectionMatchingColor(
+void EllipsoidHarmonics::findDirectionMatchingColor(
     const Eigen::MatrixXf& sh_mat, const Vec3f& target_color,
-    const Vec3f& initial_dir, int max_iters, float epsilon) const {
+    const Vec3f& initial_dir, Vec3f& out_dir, int max_iters,
+    float epsilon) const {
   float theta_f, phi_f;
 
   cartesianToSpherical(initial_dir, theta_f, phi_f);
@@ -129,9 +132,14 @@ Vec3f EllipsoidHarmonics::findDirectionMatchingColor(
       dual2nd t = vars(0), p = vars(1);
       Eigen::VectorX<dual2nd> Y(n_coeffs_);
 
-      int idx = 0;
-      for (int l = 0; l <= l_max_; ++l)
-        for (int m = -l; m <= l; ++m) Y(idx++) = SH(l, m, val(t), val(p));
+#pragma omp parallel for
+      for (int l = 0; l < l_max_ + 1; l++) {
+#pragma omp parallel for
+        for (int m = -l; m < l + 1; m++) {
+          int c_idx = l * l + (m + l);
+          Y(c_idx) = SH(l, m, val(t), val(p));
+        }
+      }
 
       dual2nd loss = 0.0;
       for (int c = 0; c < 3; ++c) {
@@ -173,8 +181,9 @@ Vec3f EllipsoidHarmonics::findDirectionMatchingColor(
 
   float th = val(theta);
   float ph = val(phi);
-  return Vec3f(std::sin(th) * std::cos(ph), std::sin(th) * std::sin(ph),
-               std::cos(th));
+
+  out_dir << std::sin(th) * std::cos(ph), std::sin(th) * std::sin(ph),
+      std::cos(th);
 }
 
 void EllipsoidHarmonics::cartesianToSpherical(const Vec3f& dir, float& theta,

@@ -45,15 +45,16 @@ class EllipsoidHarmonics {
   void finalizeCoefficients(SHCoeffs& coeffs, Eigen::MatrixXf& sh_mat) const;
 
   // Evaluate color from direction vector on unit sphere
-  Vec3f evaluateColorFromDirection(const Eigen::MatrixXf& sh_mat,
-                                   const Vec3f& dir) const;
+  void evaluateColorFromDirection(const Eigen::MatrixXf& sh_mat,
+                                  const Vec3f& dir, Vec3f& color) const;
 
   // Find direction that best matches a target color using autodiff Newton
   // optimization
-  Vec3f findDirectionMatchingColor(const Eigen::MatrixXf& sh_mat,
-                                   const Vec3f& target_color,
-                                   const Vec3f& initial_dir, int max_iters = 20,
-                                   float epsilon = 1e-6f) const;
+  void findDirectionMatchingColor(const Eigen::MatrixXf& sh_mat,
+                                  const Vec3f& target_color,
+                                  const Vec3f& initial_dir, Vec3f& out_dir,
+                                  int max_iters = 20,
+                                  float epsilon = 1e-6f) const;
 
   void dirFromNeighbouringPoint(const Eigen::Vector3f& target_pt,
                                 const Eigen::Vector3f& neigh_pt,
