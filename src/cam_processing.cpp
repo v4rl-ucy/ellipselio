@@ -98,7 +98,9 @@ bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
   x_vals << std::floor(x), std::ceil(x);
   y_vals << std::floor(y), std::ceil(y);
 
+#pragma omp parallel for
   for (int i = 0; i < 2; i++) {
+#pragma omp parallel for
     for (int j = 0; j < 2; j++) {
       int x_i = x_vals(i);
       int y_j = y_vals(j);

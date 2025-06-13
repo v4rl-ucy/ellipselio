@@ -269,7 +269,9 @@ void ImuProcess::GetMatchingImages(
 void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
                                Eigen::Isometry3d &T_world_pt,
                                Eigen::Isometry3d &T_imu_lidar) {
-  int min_pt_col = 765;
+  Eigen::MatrixXi cam_cols;
+
+  cam_cols = Eigen::MatrixXi::Zero(cams.size(), 3);
 
   pt.r = 0;
   pt.g = 0;
@@ -277,6 +279,7 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
   pt.a = 0;
   pt.has_rgb = false;
 
+#pragma omp parallel for
   for (size_t i = 0; i < cams.size(); i++) {
     Eigen::Vector3i pt_col;
     Eigen::Vector3d pt_img;
@@ -288,15 +291,17 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
              T_world_pt * T_imu_lidar * pt.getVector3fMap().cast<double>();
 
     if (cams[i]->ColorPoint(pt_img, pt_col)) {
-      if (pt_col.sum() < min_pt_col) {
-        pt.r = pt_col(0);
-        pt.g = pt_col(1);
-        pt.b = pt_col(2);
-        pt.a = 255;
-        pt.has_rgb = true;
-        min_pt_col = pt_col.sum();
-      }
+      cam_cols.row(i) = pt_col;
     }
+  }
+
+  pt.r = cam_cols.col(0).mean();
+  pt.g = cam_cols.col(1).mean();
+  pt.b = cam_cols.col(2).mean();
+
+  if (pt.r + pt.g + pt.b > 0 && pt.r + pt.g + pt.b < 765) {
+    pt.a = 255;
+    pt.has_rgb = true;
   }
 }
 
