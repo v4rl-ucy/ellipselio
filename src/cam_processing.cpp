@@ -81,12 +81,13 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
 // Project the lidar point to the camera image and get the color
 bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
   float x, y;
-  cv::Vec3b color;
-  Eigen::Vector3i tmp_col;
+  int cols, rows;
+  Eigen::MatrixXi pt_cols;
   Eigen::Vector2i x_vals, y_vals;
-  int x_i, y_j, cols, rows, min_pt_col;
 
   if (pt_img(2) <= 0) return false;
+
+  pt_cols = Eigen::MatrixXi::Zero(4, 3);
 
   cols = matched_img_.img->image.cols;
   rows = matched_img_.img->image.rows;
@@ -97,24 +98,22 @@ bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
   x_vals << std::floor(x), std::ceil(x);
   y_vals << std::floor(y), std::ceil(y);
 
-  min_pt_col = 765;
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
-      x_i = x_vals(i);
-      y_j = y_vals(j);
+      int x_i = x_vals(i);
+      int y_j = y_vals(j);
 
       if (x_i >= 0 && x_i < cols && y_j >= 0 && y_j < rows) {
-        color = matched_img_.img->image.at<cv::Vec3b>(y_j, x_i);
-        tmp_col << color[2], color[1], color[0];
-        if (tmp_col.sum() > 0 && tmp_col.sum() < min_pt_col) {
-          pt_col = tmp_col;
-          min_pt_col = tmp_col.sum();
-        }
+        cv::Vec3b color = matched_img_.img->image.at<cv::Vec3b>(y_j, x_i);
+        pt_cols(i * 2 + j, 0) = color[2];
+        pt_cols(i * 2 + j, 1) = color[1];
+        pt_cols(i * 2 + j, 2) = color[0];
       }
     }
   }
+  pt_col = pt_cols.colwise().mean();
 
-  if (min_pt_col > 0 && min_pt_col < 765) return true;
+  if (pt_col.sum() > 0 && pt_col.sum() < 765) return true;
 
   return false;
 }

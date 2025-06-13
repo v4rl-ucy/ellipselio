@@ -1,5 +1,6 @@
 #include <common_lib.h>
 #include <common_pcl.h>
+#include <ellipsoid_harmonics.h>
 #include <imu_processing.h>
 #include <ioctree.h>
 #include <lidar_processing.h>
@@ -11,6 +12,7 @@
 
 #include <Eigen/Core>
 #include <chrono>
+#include <ellipse_lio/msg/ellipse_lio_analytics.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -22,8 +24,6 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-
-#include "ellipse_lio/msg/ellipse_lio_analytics.hpp"
 
 namespace ellipselio {
 
@@ -98,6 +98,8 @@ class MappingNode : public rclcpp::Node {
   std::vector<Eigen::ArrayXd> ekfom_data_h_v;
   std::vector<Eigen::MatrixXd> ekfom_data_h_x_v;
 
+  std::vector<Eigen::MatrixXf> sh_mats;
+
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
   std::vector<M3F> eigenvectors;
@@ -144,15 +146,14 @@ class MappingNode : public rclcpp::Node {
   std::mutex map_mutex_;
   std::mutex odom_mutex_;
 
-  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_ =
-      ellipse_lio::msg::EllipseLioAnalytics();
-  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_ =
-      ellipse_lio::msg::EllipseLioAnalytics();
+  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_;
+  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
   rclcpp::Time last_pub_time;
 
+  CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;
   std::shared_ptr<LidarProcess> lid_process;
-  CamProcessVec cams_process;
+  std::shared_ptr<EllipsoidHarmonics> ellipsoid_harmonics;
 };
 }  // namespace ellipselio

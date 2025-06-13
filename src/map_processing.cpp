@@ -812,6 +812,7 @@ MappingNode::MappingNode(
       map_cloud(new EllipseLioPointCloud()),
       scan_cloud(new EllipseLioPointCloud()),
       scan_cloud_pub(new EllipseLioPointCloud()),
+      ellipsoid_harmonics(new EllipsoidHarmonics()),
       kf_(new Ikfom()) {
   this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
@@ -920,6 +921,10 @@ MappingNode::MappingNode(
   ekfom_data_h_x_v =
       std::vector<Eigen::MatrixXd>(3, Eigen::MatrixXd(MAX_PROC_POINTS, 6));
 
+  sh_mats = std::vector<Eigen::MatrixXf>(
+      MAX_MAP_POINTS,
+      Eigen::MatrixXf(3, ellipsoid_harmonics->getCoefficientCount()));
+
   last_reg.reserve(MAX_MAP_POINTS);
   valid_reg.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);
@@ -939,6 +944,9 @@ MappingNode::MappingNode(
   new_neighbours_size = std::vector<std::atomic<int>>(MAX_SCAN_POINTS);
   new_neighbours = std::vector<std::vector<int>>(
       MAX_SCAN_POINTS, std::vector<int>(MAX_NEIGHBOURS));
+
+  analytics_msg_ = ellipse_lio::msg::EllipseLioAnalytics();
+  analytics_msg_pub_ = ellipse_lio::msg::EllipseLioAnalytics();
 
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
   if (r_imu_lidar.size() == 9) {
