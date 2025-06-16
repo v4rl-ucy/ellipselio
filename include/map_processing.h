@@ -37,10 +37,13 @@ class MappingNode : public rclcpp::Node {
 
   void compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass);
   void compute_tensor_eigen(int i, M3F &tensor, bool first_pass);
+
   void tensor_vote_pass_1(int old_map_size, std::vector<int> &added_idxs,
                           std::vector<int> &updated_idxs);
   void tensor_vote_pass_2(std::vector<int> &added_idxs,
                           std::vector<int> &updated_idxs);
+
+  void compute_harmonics(int map_i, int map_j, int loop_idx, SHCoeffs &SH);
   void compute_geometric_primitive(int map_i, int sali_idx, V3F &p_world,
                                    V3F &norm_vec);
 
@@ -98,6 +101,8 @@ class MappingNode : public rclcpp::Node {
   std::vector<Eigen::ArrayXd> ekfom_data_h_v;
   std::vector<Eigen::MatrixXd> ekfom_data_h_x_v;
 
+  std::vector<Eigen::Vector3f> colors;
+  std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::MatrixXf> sh_mats;
 
   std::vector<M3F> tensors_p1;
@@ -154,6 +159,6 @@ class MappingNode : public rclcpp::Node {
   CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;
   std::shared_ptr<LidarProcess> lid_process;
-  std::shared_ptr<EllipsoidHarmonics> ellipsoid_harmonics;
+  std::shared_ptr<EllipsoidHarmonics> harmonics;
 };
 }  // namespace ellipselio

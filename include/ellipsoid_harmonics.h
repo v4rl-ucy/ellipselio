@@ -24,18 +24,23 @@ struct SHCoeffs {
   Eigen::MatrixXf b_coeffs;
 
   SHCoeffs() = default;
-  SHCoeffs(int p_num, int l_max)
+  SHCoeffs(int p_num, int c_num)
       : weights(p_num),
-        r_coeffs(p_num, (l_max + 1) * (l_max + 1)),
-        g_coeffs(p_num, (l_max + 1) * (l_max + 1)),
-        b_coeffs(p_num, (l_max + 1) * (l_max + 1)) {}
+        r_coeffs(p_num, c_num),
+        g_coeffs(p_num, c_num),
+        b_coeffs(p_num, c_num) {
+    weights.setZero();
+    r_coeffs.setZero();
+    g_coeffs.setZero();
+    b_coeffs.setZero();
+  }
 };
 
 class EllipsoidHarmonics {
  public:
   EllipsoidHarmonics(int l_max = 3);
 
-  int getCoefficientCount() const;
+  int getNumCoeffs() const;
 
   // compute SH coefficients in parallel
   void computeCoefficients(const Vec3f& dir, const Vec3f& color,

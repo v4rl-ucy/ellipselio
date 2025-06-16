@@ -17,6 +17,7 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
   union {
     struct {
       uint32_t bin_idx;
+      uint32_t scan_idx;
       uint32_t has_rgb;
     };
     float data_n[4];

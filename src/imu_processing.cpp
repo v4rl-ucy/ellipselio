@@ -245,6 +245,7 @@ void ImuProcess::GetMatchingImages(
     Eigen::Isometry3d T_world_img;
 
     cams[i]->GetMatchingImageTime(match_time, img_time);
+    if (!cams[i]->has_img_match_) continue;
 
     GetTimeMatch(tail_idx, img_time, imu_states);
     head_idx = max(tail_idx - 1, 0);
@@ -269,9 +270,9 @@ void ImuProcess::GetMatchingImages(
 void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
                                Eigen::Isometry3d &T_world_pt,
                                Eigen::Isometry3d &T_imu_lidar) {
+  int valid_num;
   Eigen::MatrixXi cam_cols;
-
-  cam_cols = Eigen::MatrixXi::Zero(cams.size(), 3);
+  Eigen::Vector3i cam_col, cam_sum;
 
   pt.r = 0;
   pt.g = 0;
@@ -279,14 +280,20 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
   pt.a = 0;
   pt.has_rgb = false;
 
+  if (!cams.size()) return;
+  cam_cols = Eigen::MatrixXi::Zero(cams.size(), 3);
+
 #pragma omp parallel for
   for (size_t i = 0; i < cams.size(); i++) {
     Eigen::Vector3i pt_col;
     Eigen::Vector3d pt_img;
 
+    if (!cams[i]->has_img_match_) continue;
+
     Eigen::Isometry3d &T_cam_lidar = cams[i]->T_cam_lidar_;
     Eigen::Isometry3d &T_world_img = cams[i]->T_world_img_;
 
+    pt_col = Eigen::Vector3i::Zero();
     pt_img = T_cam_lidar * T_imu_lidar.inverse() * T_world_img.inverse() *
              T_world_pt * T_imu_lidar * pt.getVector3fMap().cast<double>();
 
@@ -295,12 +302,20 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
     }
   }
 
-  pt.r = cam_cols.col(0).mean();
-  pt.g = cam_cols.col(1).mean();
-  pt.b = cam_cols.col(2).mean();
+  cam_col = cam_cols.colwise().sum();
+  cam_sum = (cam_cols.array() > 0 && cam_cols.array() < 255)
+                .rowwise()
+                .all()
+                .cast<int>();
+  valid_num = cam_sum.count();
 
-  if (pt.r + pt.g + pt.b > 0 && pt.r + pt.g + pt.b < 765) {
+  if (valid_num) {
+    cam_col /= valid_num;
+
     pt.a = 255;
+    pt.r = cam_col(0);
+    pt.g = cam_col(1);
+    pt.b = cam_col(2);
     pt.has_rgb = true;
   }
 }

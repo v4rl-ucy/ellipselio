@@ -162,6 +162,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     count_reg[map_i] = 0;
     updated_pt[map_i] = 0;
     map_cloud->points[map_i].intensity = 0;
+    colors[map_i] =
+        map_cloud->points[map_i].getRGBVector3i().cast<float>() / 255.0f;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
@@ -302,7 +304,8 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 
 #pragma omp parallel for
   for (int i = 0; i < total_size; i++) {
-    V3F old_sali;
+    SHCoeffs SH;
+    V3F old_sali, dir, color;
     bool old_filter;
     Eigen::MatrixXf K;
     Eigen::VectorXi K_filter;
@@ -324,6 +327,13 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
     K_filter = Eigen::VectorXi::Zero(loop_cnt);
 
+    if (num_cams) {
+      SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
+    }
+    if (map_cloud->points[map_i].has_rgb) {
+      compute_harmonics(map_i, map_i, loop_cnt, SH);
+    }
+
 #pragma omp parallel for
     for (int j = 0; j < loop_cnt; j++) {
       int map_j = neighbours[map_i][j];
@@ -333,6 +343,10 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
       compute_tensor_vote(map_i, map_j, A_j, false);
       K.row(j) = A_j.reshaped(1, 9);
       K_filter(j) = 1;
+
+      if (map_cloud->points[map_j].has_rgb) {
+        compute_harmonics(map_i, map_j, j, SH);
+      }
     }
 
     filter_cnt = K_filter.sum();
@@ -341,7 +355,32 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     tensor_i2 = K.colwise().sum().reshaped(3, 3);
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
+
+    if (num_cams) {
+      dir = poses[map_cloud->points[map_i].scan_idx];
+      dir -= map_cloud->points[map_i].getVector3fMap();
+      dir.normalize();
+      harmonics->finalizeCoefficients(SH, sh_mats[map_i]);
+      harmonics->evaluateColorFromDirection(sh_mats[map_i], dir, color);
+      map_cloud->points[map_i].r = color(0) * 255.0f;
+      map_cloud->points[map_i].g = color(1) * 255.0f;
+      map_cloud->points[map_i].b = color(2) * 255.0f;
+    }
   }
+}
+
+void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
+                                    SHCoeffs &SH) {
+  Eigen::Vector3f dir;
+
+  const Eigen::Vector3f &pose = poses[map_cloud->points[map_j].scan_idx];
+  const Eigen::Vector3f &p_i = map_cloud->points[map_i].getVector3fMap();
+  const Eigen::Vector3f &p_j = map_cloud->points[map_j].getVector3fMap();
+  const float &search_rad =
+      lid_process->search_radii_[map_cloud->points[map_i].bin_idx];
+
+  harmonics->dirFromNeighbouringPoint(p_i, p_j, pose, dir, search_rad);
+  harmonics->computeCoefficients(dir, colors[map_j], SH, loop_idx);
 }
 
 // Add new points to the map and update geometric primitives
@@ -349,8 +388,11 @@ void MappingNode::map_incremental() {
   int start_idx, end_idx;
   std::vector<int> new_idxs, updated_idxs, added_idxs_i, new_idxs_i;
 
+  poses[map_counter] = kf_state_.state.pos.cast<float>();
+
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
+    scan_cloud->points[i].scan_idx = map_counter;
     const int &bin_idx = scan_cloud->points[i].bin_idx;
     scan_cloud->points[i].bin_idx = fmax(bin_idx, start_bin);
     scan_cloud->points[i].getVector3fMap() =
@@ -384,6 +426,8 @@ void MappingNode::map_incremental() {
   valid_reg.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
+  poses.resize(map_cloud->size(), V3F::Zero());
+  colors.resize(map_cloud->size(), Eigen::Vector3f::Zero());
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(2, false));
 
@@ -812,7 +856,7 @@ MappingNode::MappingNode(
       map_cloud(new EllipseLioPointCloud()),
       scan_cloud(new EllipseLioPointCloud()),
       scan_cloud_pub(new EllipseLioPointCloud()),
-      ellipsoid_harmonics(new EllipsoidHarmonics()),
+      harmonics(new EllipsoidHarmonics()),
       kf_(new Ikfom()) {
   this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
@@ -916,15 +960,19 @@ MappingNode::MappingNode(
   ekfom_data_w_x = Eigen::ArrayXd(MAX_PROC_POINTS);
   ekfom_data_h_x = Eigen::MatrixXd(MAX_PROC_POINTS, 6);
   ekfom_data_h_x_R = Eigen::MatrixXd(6, MAX_PROC_POINTS);
+
   ekfom_data_h_v =
       std::vector<Eigen::ArrayXd>(3, Eigen::ArrayXd(MAX_PROC_POINTS));
   ekfom_data_h_x_v =
       std::vector<Eigen::MatrixXd>(3, Eigen::MatrixXd(MAX_PROC_POINTS, 6));
 
-  sh_mats = std::vector<Eigen::MatrixXf>(
-      MAX_MAP_POINTS,
-      Eigen::MatrixXf(3, ellipsoid_harmonics->getCoefficientCount()));
+  if (num_cams) {
+    sh_mats = std::vector<Eigen::MatrixXf>(
+        MAX_MAP_POINTS, Eigen::MatrixXf(3, harmonics->getNumCoeffs()));
+  }
 
+  colors.reserve(MAX_MAP_POINTS);
+  poses.reserve(MAX_MAP_POINTS);
   last_reg.reserve(MAX_MAP_POINTS);
   valid_reg.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);

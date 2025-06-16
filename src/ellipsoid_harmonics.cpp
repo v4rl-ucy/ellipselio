@@ -3,7 +3,7 @@
 EllipsoidHarmonics::EllipsoidHarmonics(int l_max)
     : l_max_(l_max), n_coeffs_((l_max + 1) * (l_max + 1)) {}
 
-int EllipsoidHarmonics::getCoefficientCount() const { return n_coeffs_; }
+int EllipsoidHarmonics::getNumCoeffs() const { return n_coeffs_; }
 
 float EllipsoidHarmonics::K(int l, int m) const {
   return std::sqrt((2 * l + 1) * std::tgamma(l - m + 1) /
@@ -93,7 +93,7 @@ void EllipsoidHarmonics::evaluateColorFromDirection(
     }
   }
 
-  color = sh_mat.rowwise().dot(Y);
+  color = (sh_mat.array().rowwise() * Y.transpose().array()).rowwise().sum();
 }
 
 void EllipsoidHarmonics::ellipsoidPointFromDir(const Vec3f& dir,
@@ -130,7 +130,7 @@ void EllipsoidHarmonics::findDirectionMatchingColor(
   for (int iter = 0; iter < max_iters; ++iter) {
     auto loss_fn = [&](const auto& vars) {
       dual2nd t = vars(0), p = vars(1);
-      Eigen::VectorX<dual2nd> Y(n_coeffs_);
+      Eigen::VectorXf Y(n_coeffs_);
 
 #pragma omp parallel for
       for (int l = 0; l < l_max_ + 1; l++) {
@@ -141,11 +141,10 @@ void EllipsoidHarmonics::findDirectionMatchingColor(
         }
       }
 
-      dual2nd loss = 0.0;
-      for (int c = 0; c < 3; ++c) {
-        auto col = sh_mat.row(c).cast<dual2nd>().dot(Y);
-        loss += pow(col - target_color[c], 2);
-      }
+      Vec3f col =
+          (sh_mat.array().rowwise() * Y.transpose().array()).rowwise().sum();
+      dual2nd loss = (col - target_color).cwiseAbs2().sum();
+
       return loss;
     };
 
@@ -214,6 +213,5 @@ void EllipsoidHarmonics::dirFromNeighbouringPoint(
   t.cwiseAbs().minCoeff(&t_idx);
 
   inter_pt = sensor_pt + t[t_idx] * ray_dir;
-  out_dir = inter_pt - target_pt;
-  out_dir.normalize();
+  out_dir = (inter_pt - target_pt).normalized();
 }

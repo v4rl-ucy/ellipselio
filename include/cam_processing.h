@@ -38,6 +38,8 @@ class CamProcess {
   bool ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col);
 
   bool cam_has_data_;
+  bool has_img_match_;
+
   std::atomic<int> cam_counter_;
   Eigen::Isometry3d T_cam_lidar_, T_world_img_;
   rclcpp::Time img_start_time_, img_end_time_;

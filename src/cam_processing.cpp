@@ -52,12 +52,14 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
   bool match_flag = false;
 
   cam_mutex_.lock();
+
+  has_img_match_ = false;
   time_diff = (match_time - img_buffer_.front().time).seconds();
   match_idx = std::floor(time_diff * params_.rate);
   match_idx = std::max(match_idx, 0);
   match_idx = std::min(match_idx, (int)img_buffer_.size() - 1);
 
-  while (!match_flag) {
+  while (!match_flag && match_idx >= 0) {
     if (img_buffer_[match_idx].time < match_time) {
       if (match_idx == img_buffer_.size() - 1) {
         match_flag = true;
@@ -73,16 +75,20 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
     }
   }
 
-  img_time = img_buffer_[match_idx].time;
-  matched_img_ = img_buffer_[match_idx];
+  if (match_idx >= 0) {
+    has_img_match_ = true;
+    img_time = img_buffer_[match_idx].time;
+    matched_img_ = img_buffer_[match_idx];
+  }
   cam_mutex_.unlock();
 }
 
 // Project the lidar point to the camera image and get the color
 bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
   float x, y;
-  int cols, rows;
+  int cols, rows, valid_num;
   Eigen::MatrixXi pt_cols;
+  Eigen::Vector3i pt_sum;
   Eigen::Vector2i x_vals, y_vals;
 
   if (pt_img(2) <= 0) return false;
@@ -113,9 +119,16 @@ bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
       }
     }
   }
-  pt_col = pt_cols.colwise().mean();
 
-  if (pt_col.sum() > 0 && pt_col.sum() < 765) return true;
+  pt_col = pt_cols.colwise().sum();
+  pt_sum = (pt_cols.array() > 0 && pt_cols.array() < 255)
+               .rowwise()
+               .all()
+               .cast<int>();
 
-  return false;
+  valid_num = pt_sum.count();
+  if (!valid_num) return false;
+
+  pt_col /= valid_num;
+  return true;
 }
