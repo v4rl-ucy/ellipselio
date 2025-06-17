@@ -292,25 +292,16 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 // Compute second pass tensor voting for new and existing points
 void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
-  std::vector<Eigen::MatrixXf> sali_vals;
-  std::vector<Eigen::VectorXi> sali_filter;
-  int num_bins = lid_process->num_bins_;
   int total_size = added_idxs.size() + updated_idxs.size();
-
-  sali_vals = std::vector<Eigen::MatrixXf>(
-      num_bins, Eigen::MatrixXf::Zero(total_size, 3));
-  sali_filter =
-      std::vector<Eigen::VectorXi>(num_bins, Eigen::VectorXi::Zero(total_size));
 
 #pragma omp parallel for
   for (int i = 0; i < total_size; i++) {
     SHCoeffs SH;
-    V3F old_sali, dir, color;
-    bool old_filter;
-    Eigen::MatrixXf K;
-    Eigen::VectorXi K_filter;
     M3F tensor_i2;
-    int map_i, loop_cnt, filter_cnt;
+    Eigen::MatrixXf K;
+    V3F sh_dir, sh_color;
+    Eigen::VectorXi K_filter, SH_filter;
+    int map_i, loop_cnt, filter_cnt, color_cnt;
 
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
@@ -328,9 +319,11 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     K_filter = Eigen::VectorXi::Zero(loop_cnt);
 
     if (num_cams) {
+      SH_filter = Eigen::VectorXi::Zero(loop_cnt + 1);
       SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
     }
     if (map_cloud->points[map_i].has_rgb) {
+      SH_filter(loop_cnt) = 1;
       compute_harmonics(map_i, map_i, loop_cnt, SH);
     }
 
@@ -345,6 +338,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
       K_filter(j) = 1;
 
       if (map_cloud->points[map_j].has_rgb) {
+        SH_filter(j) = 1;
         compute_harmonics(map_i, map_j, j, SH);
       }
     }
@@ -357,14 +351,16 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     compute_tensor_eigen(map_i, tensor_i2, false);
 
     if (num_cams) {
-      dir = poses[map_cloud->points[map_i].scan_idx];
-      dir -= map_cloud->points[map_i].getVector3fMap();
-      dir.normalize();
+      color_cnt = SH_filter.sum();
+      if (color_cnt < min_neigh) continue;
+
+      sh_dir = poses[map_cloud->points[map_i].scan_idx];
+      sh_dir -= map_cloud->points[map_i].getVector3fMap();
       harmonics->finalizeCoefficients(SH, sh_mats[map_i]);
-      harmonics->evaluateColorFromDirection(sh_mats[map_i], dir, color);
-      map_cloud->points[map_i].r = color(0) * 255.0f;
-      map_cloud->points[map_i].g = color(1) * 255.0f;
-      map_cloud->points[map_i].b = color(2) * 255.0f;
+      harmonics->evaluateColorFromDirection(sh_mats[map_i], sh_dir, sh_color);
+      map_cloud->points[map_i].r = sh_color(0) * 255.0f;
+      map_cloud->points[map_i].g = sh_color(1) * 255.0f;
+      map_cloud->points[map_i].b = sh_color(2) * 255.0f;
     }
   }
 }
@@ -373,11 +369,11 @@ void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
                                     SHCoeffs &SH) {
   Eigen::Vector3f dir;
 
+  const int &bin_idx = map_cloud->points[map_i].bin_idx;
+  const float &search_rad = bin_idx;
   const Eigen::Vector3f &pose = poses[map_cloud->points[map_j].scan_idx];
   const Eigen::Vector3f &p_i = map_cloud->points[map_i].getVector3fMap();
   const Eigen::Vector3f &p_j = map_cloud->points[map_j].getVector3fMap();
-  const float &search_rad =
-      lid_process->search_radii_[map_cloud->points[map_i].bin_idx];
 
   harmonics->dirFromNeighbouringPoint(p_i, p_j, pose, dir, search_rad);
   harmonics->computeCoefficients(dir, colors[map_j], SH, loop_idx);

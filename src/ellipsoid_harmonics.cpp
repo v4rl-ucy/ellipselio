@@ -94,6 +94,7 @@ void EllipsoidHarmonics::evaluateColorFromDirection(
   }
 
   color = (sh_mat.array().rowwise() * Y.transpose().array()).rowwise().sum();
+  color = color.cwiseMin(1.0f).cwiseMax(0.0f);
 }
 
 void EllipsoidHarmonics::ellipsoidPointFromDir(const Vec3f& dir,
