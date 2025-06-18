@@ -210,7 +210,7 @@ void LidarProcess::SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
 void LidarProcess::SetPoint(VelodynePoint &in_pt, EllipseLioPoint &out_pt,
                             rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.intensity;
-  point_time += rclcpp::Duration(0, in_pt.time * 1e3);
+  point_time += rclcpp::Duration(0, in_pt.time);
 }
 
 // Set the point intensity and time for ouster points
