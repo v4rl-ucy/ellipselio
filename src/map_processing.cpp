@@ -635,6 +635,7 @@ void MappingNode::tensor_registration(
   }
 
   t0 = omp_get_wtime();
+  const int &max_start_bin = lid_process->max_start_bin_;
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -647,8 +648,7 @@ void MappingNode::tensor_registration(
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
-    V3F sali_vals, eig_vals, scores, p_world, n_world, p_dash, q, q_dash,
-        norm_vec;
+    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
 
     const EllipseLioPoint &pt = scan_cloud->points[i];
 
@@ -673,14 +673,13 @@ void MappingNode::tensor_registration(
                                 scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
 
     sali_vals = salivalues[map_i] / salivalues[map_i].sum();
-    eig_vals = eigenvalues[map_i] / eigenvalues[map_i].sum();
 
     // Point to plane
-    scores(0) = sali_vals(0);  // * (1.0 - eig_vals(2));
+    scores(0) = sali_vals(0);
     //  Point to line
-    scores(1) = sali_vals(1);  // * ((eig_vals(0) - eig_vals(1)) / eig_vals(0));
+    scores(1) = sali_vals(1);
     //  Point to point
-    scores(2) = sali_vals(2);  // * (1 - (eig_vals(0) - eig_vals(2)));
+    scores(2) = sali_vals(2);
     scores /= scores.sum();
 
     n_world = map_cloud->points[map_i].getVector3fMap();
@@ -703,7 +702,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, (start_bin + 1) / 11.0);
+    time_score = pow(time_score, (start_bin + 1) / (max_start_bin + 1));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -715,7 +714,7 @@ void MappingNode::tensor_registration(
     scores(2) = ellipse_score;
     scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
     scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
-    total_score = 1.0 / fmin(time_score, 1.0);
+    total_score = 1.0 / fmin(scores.sum(), 1.0);
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
@@ -760,7 +759,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz;
-    float std_p, std_e, mean_cnt;
+    float std_p, std_e;
 
     if (!cnts(i)) continue;
 
@@ -772,13 +771,16 @@ void MappingNode::tensor_registration(
     }
 
     if (stds(i + 3) && stds(i + 6)) {
-      ekfom_data_c.col(i).head(cnts(i)) *= (11.0 - start_bin) / 11.0;
+      ekfom_data_c.col(i).head(cnts(i)) *= max_start_bin - start_bin + 1;
+      ekfom_data_c.col(i).head(cnts(i)) /= max_start_bin + 1;
       ekfom_data_c.col(i).head(cnts(i)) += 1.0;
 
-      hit_mean(i) = fmin(ekfom_data_c.col(i).head(cnts(i)).mean(), 4);
+      hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
 
       std_p = stds(i + 3) * hit_mean(i);
+      std_p = fmin(std_p, (maxs(i + 3) - means(i + 3)) * 0.99);
       std_e = stds(i + 6) * hit_mean(i);
+      std_e = fmin(std_e, (maxs(i + 6) - means(i + 6)) * 0.99);
 
       ekfom_data_v.col(i).head(cnts(i)) =
           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&

@@ -25,6 +25,8 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   num_bins_ = ceil(params_.max_range / params_.bin_size);
+  max_start_bin_ = floor(params_.map_resolution /
+                         (params_.bin_size * params_.downsample_factor));
 
   bin_pcs_sizes_ = std::vector<int>(num_bins_, 0);
   bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
@@ -277,5 +279,6 @@ void LidarProcess::PointCloudHandler(
   range_std = sqrt(range_std / (in_pc_size - 1));
   range_std = floor(range_std / params_.bin_size);
 
-  start_bin_ = fmin(floor(range_mean * fmax(range_std, 1) / 2.0), 10);
+  start_bin_ = floor(range_mean * fmax(range_std, 1) / 2.0);
+  start_bin_ = fmin(start_bin_, max_start_bin_);
 }

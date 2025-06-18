@@ -33,6 +33,7 @@ class LidarProcess {
                      std::vector<int> &bin_pc_sizes, int &start_bin);
 
   int num_bins_;
+  int max_start_bin_;
   bool lidar_has_data_;
   std::atomic<int> lidar_counter_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
