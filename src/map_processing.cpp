@@ -702,7 +702,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, (start_bin + 1) / (max_start_bin + 1));
+    time_score = pow(time_score, (start_bin + 1.0) / (max_start_bin + 1.0));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -771,8 +771,8 @@ void MappingNode::tensor_registration(
     }
 
     if (stds(i + 3) && stds(i + 6)) {
-      ekfom_data_c.col(i).head(cnts(i)) *= max_start_bin - start_bin + 1;
-      ekfom_data_c.col(i).head(cnts(i)) /= max_start_bin + 1;
+      ekfom_data_c.col(i).head(cnts(i)) *= max_start_bin - start_bin + 1.0;
+      ekfom_data_c.col(i).head(cnts(i)) /= max_start_bin + 1.0;
       ekfom_data_c.col(i).head(cnts(i)) += 1.0;
 
       hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
