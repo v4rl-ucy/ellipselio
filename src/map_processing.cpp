@@ -159,7 +159,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     valid_reg[map_i] = 1;
-    count_reg[map_i] = 0;
+    count_reg[map_i] = 1;
     updated_pt[map_i] = 0;
     map_cloud->points[map_i].intensity = 0;
     colors[map_i] =
@@ -306,7 +306,6 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
     valid_reg[map_i] = 1;
-    count_reg[map_i] = 0;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &min_neigh = lid_process->min_neighbours_[bin_idx];
@@ -777,16 +776,10 @@ void MappingNode::tensor_registration(
     }
 
     if (stds(i + 3) && stds(i + 6)) {
-      ekfom_data_c.col(i).head(cnts(i)) *= max_start_bin - start_bin + 1.0;
-      ekfom_data_c.col(i).head(cnts(i)) /= max_start_bin + 1.0;
-      ekfom_data_c.col(i).head(cnts(i)) += 1.0;
-
       hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
 
-      std_p = stds(i + 3) * hit_mean(i);
-      std_p = fmin(std_p, (maxs(i + 3) - means(i + 3)) * 0.99);
-      std_e = stds(i + 6) * hit_mean(i);
-      std_e = fmin(std_e, (maxs(i + 6) - means(i + 6)) * 0.99);
+      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / 3.0);
+      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / 3.0);
 
       ekfom_data_v.col(i).head(cnts(i)) =
           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
