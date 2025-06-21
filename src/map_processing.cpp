@@ -442,8 +442,6 @@ void MappingNode::map_incremental() {
   analytics_msg_.oct_num = ioctree.octant_size();
   analytics_msg_.new_idxs = new_idxs.size();
   analytics_msg_.upd_idxs = updated_idxs.size();
-
-  map_counter++;
 }
 
 void MappingNode::split_map(const sensor_msgs::msg::PointCloud2 &input,
@@ -478,6 +476,8 @@ void MappingNode::split_map(const sensor_msgs::msg::PointCloud2 &input,
 
 // Publish map point cloud
 void MappingNode::publish_map() {
+  if (!map_counter) return;
+
   sensor_msgs::msg::PointCloud2 map_msg;
   std::vector<sensor_msgs::msg::PointCloud2> map_parts;
   if (!map_cloud->size()) return;
@@ -499,6 +499,8 @@ void MappingNode::publish_map() {
 
 // Publish scan point cloud
 void MappingNode::publish_scan() {
+  if (!map_counter) return;
+
   sensor_msgs::msg::PointCloud2 scan_msg;
   pcl::toROSMsg(*scan_cloud_pub, scan_msg);
   scan_msg.header.stamp = kf_state_pub_.time;
@@ -508,6 +510,8 @@ void MappingNode::publish_scan() {
 
 // Publish geometric primitive markers
 void MappingNode::publish_markers() {
+  if (!map_counter) return;
+
   std::atomic<int> marker_idx = 0;
   visualization_msgs::msg::MarkerArray marker_array;
 
@@ -580,6 +584,8 @@ void MappingNode::publish_markers() {
 
 // Publish odometry transform
 void MappingNode::publish_odometry() {
+  if (!map_counter) return;
+
   if (last_pub_time == kf_state_pub_.time) return;
   odom_mutex_.lock();
   last_pub_time = kf_state_pub_.time;
@@ -1174,10 +1180,10 @@ void MappingNode::timer_callback() {
     analytics_msg_.map_time = map_time;
     analytics_msg_.total_time = total_time;
 
-    analytics_msg_.imu_mean = mean_imu_time / map_counter;
-    analytics_msg_.state_mean = mean_state_time / map_counter;
-    analytics_msg_.map_mean = mean_map_time / map_counter;
-    analytics_msg_.total_mean = mean_total_time / map_counter;
+    analytics_msg_.imu_mean = mean_imu_time / (map_counter + 1);
+    analytics_msg_.state_mean = mean_state_time / (map_counter + 1);
+    analytics_msg_.map_mean = mean_map_time / (map_counter + 1);
+    analytics_msg_.total_mean = mean_total_time / (map_counter + 1);
 
     analytics_msg_.imu_max = max_imu_time;
     analytics_msg_.state_max = max_state_time;
@@ -1189,6 +1195,8 @@ void MappingNode::timer_callback() {
     *scan_cloud_pub = *scan_cloud;
     analytics_msg_pub_ = analytics_msg_;
     odom_mutex_.unlock();
+
+    map_counter++;
   }
 }
 

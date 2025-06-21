@@ -51,17 +51,17 @@ class LidarProcess {
   void SetMinMaxTime(int bin_idx);
   void ClearBins();
 
-  void SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
+  void SetPoint(LivoxPoint &in_pt0, LivoxPoint &in_pt, EllipseLioPoint &out_pt,
                 rclcpp::Time &point_time);
-  void SetPoint(VelodynePoint &in_pt, EllipseLioPoint &out_pt,
-                rclcpp::Time &point_time);
-  void SetPoint(OusterPoint &in_pt, EllipseLioPoint &out_pt,
-                rclcpp::Time &point_time);
-  void SetPoint(HesaiPoint &in_pt, EllipseLioPoint &out_pt,
+  void SetPoint(VelodynePoint &in_pt0, VelodynePoint &in_pt,
+                EllipseLioPoint &out_pt, rclcpp::Time &point_time);
+  void SetPoint(OusterPoint &in_pt0, OusterPoint &in_pt,
+                EllipseLioPoint &out_pt, rclcpp::Time &point_time);
+  void SetPoint(HesaiPoint &in_pt0, HesaiPoint &in_pt, EllipseLioPoint &out_pt,
                 rclcpp::Time &point_time);
 
   template <typename InPtType>
-  void ConvertPoint(InPtType &in_pt, EllipseLioPoint &out_pt,
+  void ConvertPoint(pcl::PointCloud<InPtType> &in_pc, int pt_idx,
                     rclcpp::Time &point_time);
   template <typename InPtType>
   void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg);

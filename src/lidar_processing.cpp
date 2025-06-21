@@ -202,42 +202,46 @@ void LidarProcess::SetMinMaxTime(int bin_idx) {
 }
 
 // Set the point intensity and time for livox points
-void LidarProcess::SetPoint(LivoxPoint &in_pt, EllipseLioPoint &out_pt,
-                            rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(LivoxPoint &in_pt0, LivoxPoint &in_pt,
+                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time = rclcpp::Time(in_pt.timestamp, RCL_ROS_TIME);
 }
 
 // Set the point intensity and time for velodyne points
-void LidarProcess::SetPoint(VelodynePoint &in_pt, EllipseLioPoint &out_pt,
-                            rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(VelodynePoint &in_pt0, VelodynePoint &in_pt,
+                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.intensity;
-  point_time += rclcpp::Duration(0, in_pt.time);
+  point_time += rclcpp::Duration(0, (in_pt.time - in_pt0.time) * 1e3);
 }
 
 // Set the point intensity and time for ouster points
-void LidarProcess::SetPoint(OusterPoint &in_pt, EllipseLioPoint &out_pt,
-                            rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(OusterPoint &in_pt0, OusterPoint &in_pt,
+                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time += rclcpp::Duration(0, in_pt.t);
 }
 
 // Set the point intensity and time for hesai points
-void LidarProcess::SetPoint(HesaiPoint &in_pt, EllipseLioPoint &out_pt,
-                            rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(HesaiPoint &in_pt0, HesaiPoint &in_pt,
+                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time = rclcpp::Time(in_pt.timestamp * 1e9, RCL_ROS_TIME);
 }
 
 // Convert the input point type to an ellipselio point
 template <typename InPtType>
-void LidarProcess::ConvertPoint(InPtType &in_pt, EllipseLioPoint &out_pt,
+void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType> &in_pc, int pt_idx,
                                 rclcpp::Time &point_time) {
+  InPtType &in_pt0 = in_pc.points[0];
+  InPtType &in_pt = in_pc.points[pt_idx];
+  EllipseLioPoint &out_pt = process_pc_->points[pt_idx];
+
   out_pt.x = in_pt.x;
   out_pt.y = in_pt.y;
   out_pt.z = in_pt.z;
 
-  SetPoint(in_pt, out_pt, point_time);
+  SetPoint(in_pt0, in_pt, out_pt, point_time);
 
   builtin_interfaces::msg::Time msg_time = point_time;
   out_pt.time_secs = msg_time.sec;
@@ -258,7 +262,7 @@ void LidarProcess::PointCloudHandler(
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc_size; i++) {
     rclcpp::Time point_time = msg->header.stamp;
-    ConvertPoint<InPtType>(in_pc.points[i], process_pc_->points[i], point_time);
+    ConvertPoint<InPtType>(in_pc, i, point_time);
     float range = sqrt(process_pc_->points[i].x * process_pc_->points[i].x +
                        process_pc_->points[i].y * process_pc_->points[i].y +
                        process_pc_->points[i].z * process_pc_->points[i].z);
