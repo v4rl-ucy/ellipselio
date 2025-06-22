@@ -778,8 +778,8 @@ void MappingNode::tensor_registration(
     if (stds(i + 3) && stds(i + 6)) {
       hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
 
-      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / 3.0);
-      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / 3.0);
+      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / 4.0);
+      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / 4.0);
 
       ekfom_data_v.col(i).head(cnts(i)) =
           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
