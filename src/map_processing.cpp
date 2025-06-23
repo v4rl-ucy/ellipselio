@@ -764,7 +764,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz;
-    float std_p, std_e;
+    float std_p, std_e, hit_bin;
 
     if (!cnts(i)) continue;
 
@@ -778,8 +778,9 @@ void MappingNode::tensor_registration(
     if (stds(i + 3) && stds(i + 6)) {
       hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
 
-      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / 4.0);
-      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / 4.0);
+      hit_bin = fmax(start_bin / 3.0, 1.0);
+      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / hit_bin);
+      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / hit_bin);
 
       ekfom_data_v.col(i).head(cnts(i)) =
           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
