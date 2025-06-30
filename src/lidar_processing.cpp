@@ -24,7 +24,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  num_bins_ = ceil(params_.max_range / params_.bin_size);
+  num_bins_ = ceil(params_.max_range / params_.bin_size) + 1;
   max_start_bin_ = floor(params_.map_resolution /
                          (params_.bin_size * params_.downsample_factor));
 
