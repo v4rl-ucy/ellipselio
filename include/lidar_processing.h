@@ -29,8 +29,9 @@ class LidarProcess {
   ~LidarProcess();
   LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  void GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &end_time,
-                     std::vector<int> &bin_pc_sizes, int &start_bin);
+  void GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &start_time,
+                     rclcpp::Time &end_time, std::vector<int> &bin_pc_sizes,
+                     int &start_bin);
 
   int num_bins_;
   int max_start_bin_;

@@ -9,11 +9,6 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
   rclcpp::SubscriptionOptions cam_opt;
   cam_opt.callback_group = cam_callback_group_;
 
-  cam_sub_ = image_transport::create_subscription(
-      node_.get(), params_.topic,
-      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1),
-      params_.transport, rmw_qos_profile_sensor_data, cam_opt);
-
   T_cam_lidar_.linear() = params_.r_cam_lidar;
   T_cam_lidar_.translation() = params_.t_cam_lidar;
   cam_intrinsics_ = params_.cam_intrinsics;
@@ -21,6 +16,11 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
   cam_has_data_ = false;
   img_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   img_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
+  cam_sub_ = image_transport::create_subscription(
+      node_.get(), params_.topic,
+      std::bind(&CamProcess::CamCallback, this, std::placeholders::_1),
+      params_.transport, rmw_qos_profile_sensor_data, cam_opt);
 }
 
 // Callback for camera messages

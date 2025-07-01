@@ -12,17 +12,13 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
       params_(params),
       kf_(kf),
       node_(node),
-      imu_states_(params.rate) {
+      imu_states_(params.rate),
+      imu_time_offset_(0, 0) {
   imu_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
   rclcpp::SubscriptionOptions imu_opt;
   imu_opt.callback_group = imu_callback_group_;
-
-  sub_imu_ = node_->create_subscription<sensor_msgs::msg::Imu>(
-      params.topic, rclcpp::SensorDataQoS(),
-      std::bind(&ImuProcess::ImuCallback, this, std::placeholders::_1),
-      imu_opt);
 
   imu_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   imu_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -37,6 +33,11 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
   Q.block<3, 3>(3, 3).diagonal() = acc_noise;
   Q.block<3, 3>(6, 6).diagonal() = gyr_bias;
   Q.block<3, 3>(9, 9).diagonal() = acc_bias;
+
+  sub_imu_ = node_->create_subscription<sensor_msgs::msg::Imu>(
+      params.topic, rclcpp::SensorDataQoS(),
+      std::bind(&ImuProcess::ImuCallback, this, std::placeholders::_1),
+      imu_opt);
 }
 
 // Callback for imu messages
@@ -44,7 +45,7 @@ void ImuProcess::ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in) {
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
   imu_counter_++;
 
-  if (rclcpp::Time(msg->header.stamp) <= imu_end_time_) {
+  if (rclcpp::Time(msg->header.stamp) < imu_end_time_) {
     RCLCPP_INFO_STREAM(node_->get_logger(), "Imu time out of order");
     return;
   }
@@ -179,6 +180,7 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 // Undistort the lidar point cloud using the kalman filter imu states
 void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
                                      KfState &kf_state,
+                                     rclcpp::Time &lidar_start_time,
                                      rclcpp::Time &lidar_end_time,
                                      CamProcessVec &cams) {
   int match_idx;
@@ -189,7 +191,7 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
   imu_states = imu_states_;
   imu_mutex_.unlock();
 
-  GetMatchingImages(lidar_end_time, cams, imu_states);
+  GetMatchingImages(lidar_start_time, lidar_end_time, cams, imu_states);
   GetTimeMatch(match_idx, lidar_end_time, imu_states);
 
   kf_state = imu_states[match_idx].state;
@@ -236,7 +238,7 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
 
 // Compute the camera pose at the time of the closest matching image
 void ImuProcess::GetMatchingImages(
-    rclcpp::Time &match_time, CamProcessVec &cams,
+    rclcpp::Time &min_time, rclcpp::Time &match_time, CamProcessVec &cams,
     boost::circular_buffer<ImuState> &imu_states) {
 #pragma omp parallel for
   for (size_t i = 0; i < cams.size(); i++) {
@@ -244,6 +246,10 @@ void ImuProcess::GetMatchingImages(
     int head_idx, tail_idx;
     Eigen::Isometry3d T_world_img;
 
+    if (cams[i]->img_end_time_ < min_time) {
+      cams[i]->has_img_match_ = false;
+      continue;
+    }
     cams[i]->GetMatchingImageTime(match_time, img_time);
     if (!cams[i]->has_img_match_) continue;
 

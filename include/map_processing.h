@@ -61,6 +61,9 @@ class MappingNode : public rclcpp::Node {
   void init_cam_process();
   void map_incremental();
 
+  void filter_scan_with_imu(rclcpp::Time &lidar_start_time,
+                            rclcpp::Time &lidar_end_time);
+
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
@@ -111,7 +114,12 @@ class MappingNode : public rclcpp::Node {
   std::vector<V3F> eigenvalues;
   std::vector<V3F> salivalues;
 
+  std::vector<int> raw_cloud_bins;
   std::vector<int> scan_cloud_bins;
+  std::vector<int> remain_cloud_bins;
+  std::vector<std::atomic<int>> scan_bin_sizes;
+  std::vector<std::atomic<int>> filter_bin_sizes;
+
   std::vector<int> new_neighbours_map_idx;
   std::vector<std::atomic<int>> count_reg;
   std::vector<std::atomic<int>> updated_pt;
@@ -128,16 +136,19 @@ class MappingNode : public rclcpp::Node {
   int num_cams;
   string cam_transport;
   std::vector<string> cam_topics;
-  std::vector<double> cam_intrinsics;
   std::vector<double> t_cam_lidars;
   std::vector<double> r_cam_lidars;
+  std::vector<double> cam_intrinsics;
   std::vector<long int> cam_frame_rates;
 
   std::vector<double> t_imu_lidar;
   std::vector<double> r_imu_lidar;
 
   EllipseLioPointCloudPtr map_cloud;
+  EllipseLioPointCloudPtr raw_cloud;
   EllipseLioPointCloudPtr scan_cloud;
+  EllipseLioPointCloudPtr filter_cloud;
+  EllipseLioPointCloudPtr remain_cloud;
   EllipseLioPointCloudPtr scan_cloud_pub;
 
   iOctree::Octree ioctree;

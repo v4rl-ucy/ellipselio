@@ -7,8 +7,9 @@ int64 map_size
 int64 oct_num
 int64 new_idxs
 int64 upd_idxs
-int64 scan_size
 int64 start_bin
+int64 scan_size
+int64 remain_size
 
 int64 num_feats
 int64 num_reject

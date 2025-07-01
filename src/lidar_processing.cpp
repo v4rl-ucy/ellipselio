@@ -16,11 +16,6 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   rclcpp::SubscriptionOptions lidar_opt;
   lidar_opt.callback_group = lidar_callback_group_;
 
-  sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-      params.topic, rclcpp::SensorDataQoS(),
-      std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
-      lidar_opt);
-
   lidar_has_data_ = false;
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -72,6 +67,11 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_octants(0.1 * MAX_SCAN_POINTS);
   }
+
+  sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
+      params.topic, rclcpp::SensorDataQoS(),
+      std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
+      lidar_opt);
 }
 
 // Callback for lidar point clouds
@@ -171,6 +171,7 @@ void LidarProcess::ClearPointCloud() {
 
 // Get the current combined point cloud
 void LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
+                                 rclcpp::Time &start_time,
                                  rclcpp::Time &end_time,
                                  std::vector<int> &bin_pcs_sizes,
                                  int &start_bin) {
@@ -178,6 +179,7 @@ void LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
   *pc = *ellipselio_pc_;
   start_bin = start_bin_;
   end_time = lidar_end_time_;
+  start_time = lidar_start_time_;
   bin_pcs_sizes = bin_pcs_sizes_;
   ClearBins();
   lidar_has_data_ = false;
