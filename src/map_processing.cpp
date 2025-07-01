@@ -77,6 +77,7 @@ bool MappingNode::sync_packages() {
 
   analytics_msg_.imu_freq = cur_imu_freq;
   analytics_msg_.lid_freq = cur_lid_freq;
+  analytics_msg_.lid_offset = lid_process->lidar_time_offset_.seconds();
 
   analytics_msg_.cams_freq.clear();
   for (int i = 0; i < num_cams; i++) {
@@ -1034,7 +1035,8 @@ MappingNode::MappingNode(
       "/visualization_marker", rclcpp::SensorDataQoS());
 
   loop_timer_ = rclcpp::create_timer(
-      this, this->get_clock(), std::chrono::milliseconds(10),
+      this, this->get_clock(),
+      std::chrono::milliseconds(1000 / imu_params.rate),
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
   pub_odo_timer_ = rclcpp::create_timer(
       this, this->get_clock(),

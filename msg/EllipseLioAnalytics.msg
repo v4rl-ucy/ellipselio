@@ -39,3 +39,5 @@ float64 map_max
 float64 total_max
 
 float64 run_time
+float64 lid_offset
+float64 imu_offset

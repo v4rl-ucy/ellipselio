@@ -8,7 +8,8 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
       node_(node),
       lidar_counter_(0),
       process_pc_(new EllipseLioPointCloud()),
-      ellipselio_pc_(new EllipseLioPointCloud()) {
+      ellipselio_pc_(new EllipseLioPointCloud()),
+      lidar_time_offset_(0, 0) {
   lidar_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -81,15 +82,14 @@ void LidarProcess::LidarCallback(
 
   lidar_counter_++;
 
+  lidar_time_offset_ = rclcpp::Duration(0, 0);
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
-    RCLCPP_ERROR_STREAM(
-        node_->get_logger(),
-        "New message time: " << rclcpp::Time(msg->header.stamp).nanoseconds());
-    RCLCPP_ERROR_STREAM(
-        node_->get_logger(),
-        "Last lidar end time: " << lidar_end_time_.nanoseconds());
-    RCLCPP_INFO_STREAM(node_->get_logger(), "Lidar time out of order");
-    return;
+    rcl_duration_t time_offset;
+    time_offset.nanoseconds =
+        (lidar_end_time_ - rclcpp::Time(msg->header.stamp)).nanoseconds();
+    lidar_time_offset_ = rclcpp::Duration(time_offset);
+    RCLCPP_ERROR_STREAM_ONCE(node_->get_logger(),
+                             "WARNING: Lidar time offset detected!");
   }
 
   lidar_mutex_.lock();
@@ -262,6 +262,7 @@ void LidarProcess::PointCloudHandler(
 #pragma omp parallel for
   for (size_t i = 0; i < in_pc_size; i++) {
     rclcpp::Time point_time = msg->header.stamp;
+    point_time += lidar_time_offset_;
     ConvertPoint<InPtType>(in_pc, i, point_time);
     float range = sqrt(process_pc_->points[i].x * process_pc_->points[i].x +
                        process_pc_->points[i].y * process_pc_->points[i].y +

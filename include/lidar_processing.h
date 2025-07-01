@@ -36,6 +36,7 @@ class LidarProcess {
   int max_start_bin_;
   bool lidar_has_data_;
   std::atomic<int> lidar_counter_;
+  rclcpp::Duration lidar_time_offset_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
 
   std::vector<int> bucket_sizes_;
