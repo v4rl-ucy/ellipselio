@@ -1085,12 +1085,17 @@ void MappingNode::filter_scan_with_imu(rclcpp::Time &lidar_start_time,
   rclcpp::Time imu_end_time = imu_process->imu_end_time_;
   rclcpp::Time imu_start_time = imu_process->imu_start_time_;
 
+  if (!remain_cloud->empty()) lidar_start_time = remain_start_time_;
   if (imu_end_time < lidar_end_time || imu_start_time > lidar_start_time) {
     rcl_duration_t time_offset;
     time_offset.nanoseconds = (lidar_end_time - imu_end_time).nanoseconds();
     imu_process->imu_time_offset_ = rclcpp::Duration(time_offset);
 
-    if (imu_end_time < lidar_end_time) lidar_end_time = imu_end_time;
+    if (imu_end_time < lidar_end_time) {
+      remain_end_time_ = lidar_end_time;
+      remain_start_time_ = imu_end_time;
+      lidar_end_time = imu_end_time;
+    }
     if (imu_start_time > lidar_start_time) lidar_start_time = imu_start_time;
 
     std::fill(scan_bin_sizes.begin(), scan_bin_sizes.end(), 0);

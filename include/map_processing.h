@@ -166,6 +166,7 @@ class MappingNode : public rclcpp::Node {
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
   rclcpp::Time last_pub_time;
+  rclcpp::Time remain_start_time_, remain_end_time_;
 
   CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;
