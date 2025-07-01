@@ -963,6 +963,9 @@ MappingNode::MappingNode(
   analytics_msg_ = ellipse_lio::msg::EllipseLioAnalytics();
   analytics_msg_pub_ = ellipse_lio::msg::EllipseLioAnalytics();
 
+  remain_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  remain_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
   if (r_imu_lidar.size() == 9) {
     imu_params.r_imu_lidar << MAT_FROM_ARRAY(r_imu_lidar);
