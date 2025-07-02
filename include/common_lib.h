@@ -14,8 +14,8 @@
 
 using namespace std;
 
-#define MIN_NEIGHBOURS (6)
-#define MAX_NEIGHBOURS (60)
+#define MIN_NEIGHBOURS (3)
+#define MAX_NEIGHBOURS (30)
 #define MIN_BIN_SIZE (1.0)
 #define MIN_BIN_RESOLUTION (0.01)
 #define MIN_MAP_RESOLUTION (0.1)

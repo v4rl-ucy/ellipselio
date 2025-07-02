@@ -23,6 +23,11 @@ bool MappingNode::sync_packages() {
     }
     return false;
   }
+  if (lid_process->lidar_start_time_ < imu_process->imu_start_time_ &&
+      !map_counter) {
+    lid_process->ClearPointCloud();
+    return false;
+  }
   if (imu_process->imu_end_time_ < lid_process->lidar_end_time_ &&
       (inter_sync_time < 1.0 / lidar_params.rate || !map_counter)) {
     return false;
@@ -116,8 +121,10 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
                                      std::vector<int> &updated_idxs) {
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
   int num_bins = lid_process->num_bins_;
-  Eigen::ArrayXi n_cnt = Eigen::ArrayXi::Zero(added_idxs.size());
-  Eigen::ArrayXXi n_bins = Eigen::ArrayXXi::Zero(added_idxs.size(), num_bins);
+  Eigen::ArrayXf n_stds = Eigen::ArrayXf::Zero(num_bins);
+  Eigen::ArrayXf n_means = Eigen::ArrayXf::Zero(num_bins);
+  Eigen::ArrayXf n_cnts = Eigen::ArrayXf::Zero(added_idxs.size(), num_bins);
+  Eigen::ArrayXXf n_bins = Eigen::ArrayXXf::Zero(added_idxs.size(), num_bins);
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -139,23 +146,24 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
                             bucket_size);
     neighbours[map_i] = N_idxs;
-    n_cnt(i) = N_idxs.size();
     n_bins(i, bin_idx) = 1;
+    n_cnts(i, bin_idx) = N_idxs.size();
   }
 
 #pragma omp parallel for
   for (int i = 0; i < num_bins; i++) {
-    Eigen::ArrayXi n_cnt_bin = n_cnt * n_bins.col(i);
-    if (!n_cnt_bin.sum()) continue;
-    int n_mean = lid_process->min_neighbours_[i];
-    n_mean *= lid_process->cnt_neighbours_[i];
-    n_mean += n_cnt_bin.sum();
-    n_mean /= lid_process->cnt_neighbours_[i] + n_bins.col(i).sum();
-    lid_process->min_neighbours_[i] =
-        fmin(fmax(n_mean, MIN_NEIGHBOURS), MAX_NEIGHBOURS);
-    lid_process->max_neighbours_[i] =
-        fmin(2 * lid_process->min_neighbours_[i], MAX_NEIGHBOURS);
-    lid_process->cnt_neighbours_[i] += n_bins.col(i).sum();
+    float n_min, n_max;
+    float n_bins_sum = n_bins.col(i).sum();
+    if (!n_bins_sum) continue;
+    n_means(i) = n_cnts.col(i).sum() / n_bins_sum;
+    if (n_bins_sum > 1) {
+      n_stds(i) = ((n_cnts.col(i) - n_means(i)) * n_bins.col(i)).square().sum();
+      n_stds(i) = sqrt(n_stds(i) / (n_bins_sum - 1));
+    }
+    n_min = fmin(fmax(n_means(i) - n_stds(i), MIN_NEIGHBOURS), MAX_NEIGHBOURS);
+    n_max = fmin(fmax(n_means(i) + n_stds(i), MIN_NEIGHBOURS), MAX_NEIGHBOURS);
+    lid_process->min_neighbours_[i] = floor(n_min);
+    lid_process->max_neighbours_[i] = ceil(n_max);
   }
 
 #pragma omp parallel for
@@ -584,8 +592,8 @@ void MappingNode::tensor_registration(
 
   V3F hit_mean;
   Eigen::Array3i feats_num(3), cnts(3);
-  std::vector<std::atomic<int>> prim_cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
+  std::vector<std::atomic<int>> prim_cnts(3);
 
   prim_cnts[0] = 0;
   prim_cnts[1] = 0;
@@ -632,12 +640,12 @@ void MappingNode::tensor_registration(
     const float &search_rad = lid_process->search_radii_[scan_bin_idx];
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
+
     if (N_idxs.size() == 0) continue;
     if (!filters[N_idxs[0]][1]) continue;
+    if (!valid_reg[N_idxs[0]]) continue;
 
     map_i = N_idxs[0];
-    if (!valid_reg[map_i]) continue;
-
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
                      map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
@@ -706,12 +714,19 @@ void MappingNode::tensor_registration(
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
   feat_tot = cnts.sum();
 
+  if (!feat_tot) {
+    RCLCPP_ERROR_STREAM(this->get_logger(), "All scan points rejected!");
+    ekfom_data.valid = false;
+    return;
+  }
+
 #pragma omp parallel for
   for (int i = 0; i < 9; i++) {
     if (!cnts(i % 3)) continue;
     means(i) = ekfom_data_w.col(i).head(cnts(i % 3)).mean();
     mins(i) = ekfom_data_w.col(i).head(cnts(i % 3)).minCoeff();
     maxs(i) = ekfom_data_w.col(i).head(cnts(i % 3)).maxCoeff();
+    if (cnts(i % 3) < 2) continue;
     stds(i) = (ekfom_data_w.col(i).head(cnts(i % 3)) - means(i)).square().sum();
     stds(i) = sqrt(stds(i) / (cnts(i % 3) - 1));
   }
@@ -1106,12 +1121,13 @@ void MappingNode::filter_scan_with_imu(rclcpp::Time &lidar_start_time,
     }
   } else {
     if (imu_end_time < lidar_end_time) {
-      buffer_end_time_ = lidar_end_time;
-      buffer_start_time_ = imu_end_time;
-      lidar_end_time = imu_end_time;
       rcl_duration_t time_offset;
       time_offset.nanoseconds = (lidar_end_time - imu_end_time).nanoseconds();
       imu_process->imu_time_offset_ = rclcpp::Duration(time_offset);
+
+      buffer_end_time_ = lidar_end_time;
+      buffer_start_time_ = imu_end_time;
+      lidar_end_time = imu_end_time;
     }
     if (imu_start_time > lidar_start_time) lidar_start_time = imu_start_time;
 
