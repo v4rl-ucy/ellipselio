@@ -822,7 +822,7 @@ MappingNode::MappingNode(
       raw_cloud(new EllipseLioPointCloud()),
       scan_cloud(new EllipseLioPointCloud()),
       filter_cloud(new EllipseLioPointCloud()),
-      remain_cloud(new EllipseLioPointCloud()),
+      buffer_cloud(new EllipseLioPointCloud()),
       scan_cloud_pub(new EllipseLioPointCloud()),
       harmonics(new EllipsoidHarmonics()),
       kf_(new Ikfom()) {
@@ -915,7 +915,7 @@ MappingNode::MappingNode(
   raw_cloud->reserve(MAX_PROC_POINTS);
   scan_cloud->reserve(MAX_PROC_POINTS);
   filter_cloud->reserve(MAX_PROC_POINTS);
-  remain_cloud->reserve(MAX_PROC_POINTS);
+  buffer_cloud->reserve(MAX_PROC_POINTS);
 
   ioctree.set_bucket_size(1);
   ioctree.set_min_extent(map_resolution);
@@ -967,8 +967,8 @@ MappingNode::MappingNode(
   analytics_msg_ = ellipse_lio::msg::EllipseLioAnalytics();
   analytics_msg_pub_ = ellipse_lio::msg::EllipseLioAnalytics();
 
-  remain_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  remain_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  buffer_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  buffer_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   imu_params.t_imu_lidar << VEC_FROM_ARRAY(t_imu_lidar);
   if (r_imu_lidar.size() == 9) {
@@ -1091,23 +1091,33 @@ void MappingNode::filter_scan_with_imu(rclcpp::Time &lidar_start_time,
   std::atomic<int> scan_idx = 0, filter_idx = 0;
   rclcpp::Time imu_end_time = imu_process->imu_end_time_;
   rclcpp::Time imu_start_time = imu_process->imu_start_time_;
+  imu_process->imu_time_offset_ = rclcpp::Duration(0, 0);
 
-  if (!remain_cloud->empty()) lidar_start_time = remain_start_time_;
-  if (imu_end_time < lidar_end_time || imu_start_time > lidar_start_time) {
-    rcl_duration_t time_offset;
-    time_offset.nanoseconds = (lidar_end_time - imu_end_time).nanoseconds();
-    imu_process->imu_time_offset_ = rclcpp::Duration(time_offset);
+  if (!buffer_cloud->empty()) lidar_start_time = buffer_start_time_;
+  if (imu_end_time > lidar_end_time && imu_start_time < lidar_start_time) {
+    *scan_cloud = *buffer_cloud;
+    *scan_cloud += *raw_cloud;
+    buffer_cloud->clear();
 
+#pragma omp parallel for
+    for (int i = 0; i < scan_bin_sizes.size(); i++) {
+      scan_cloud_bins[i] = buffer_cloud_bins[i] + raw_cloud_bins[i];
+      buffer_cloud_bins[i] = 0;
+    }
+  } else {
     if (imu_end_time < lidar_end_time) {
-      remain_end_time_ = lidar_end_time;
-      remain_start_time_ = imu_end_time;
+      buffer_end_time_ = lidar_end_time;
+      buffer_start_time_ = imu_end_time;
       lidar_end_time = imu_end_time;
+      rcl_duration_t time_offset;
+      time_offset.nanoseconds = (lidar_end_time - imu_end_time).nanoseconds();
+      imu_process->imu_time_offset_ = rclcpp::Duration(time_offset);
     }
     if (imu_start_time > lidar_start_time) lidar_start_time = imu_start_time;
 
     std::fill(scan_bin_sizes.begin(), scan_bin_sizes.end(), 0);
     std::fill(filter_bin_sizes.begin(), filter_bin_sizes.end(), 0);
-    total_size = remain_cloud->size() + raw_cloud->size();
+    total_size = buffer_cloud->size() + raw_cloud->size();
 
     scan_cloud->resize(total_size);
     filter_cloud->resize(total_size);
@@ -1115,46 +1125,34 @@ void MappingNode::filter_scan_with_imu(rclcpp::Time &lidar_start_time,
 #pragma omp parallel for
     for (int i = 0; i < total_size; i++) {
       const EllipseLioPoint &pt =
-          i < remain_cloud->size()
-              ? remain_cloud->points[i]
-              : raw_cloud->points[i - remain_cloud->size()];
+          i < buffer_cloud->size()
+              ? buffer_cloud->points[i]
+              : raw_cloud->points[i - buffer_cloud->size()];
       rclcpp::Time pt_time =
           rclcpp::Time(pt.time_secs, pt.time_nsecs, RCL_ROS_TIME);
       if (pt_time < lidar_start_time) continue;
-      if (pt_time < lidar_end_time) {
-        scan_bin_sizes[pt.bin_idx]++;
-        scan_cloud->points[scan_idx++] = pt;
-      } else {
+      if (pt_time > lidar_end_time) {
         filter_bin_sizes[pt.bin_idx]++;
         filter_cloud->points[filter_idx++] = pt;
+      } else {
+        scan_bin_sizes[pt.bin_idx]++;
+        scan_cloud->points[scan_idx++] = pt;
       }
     }
 
     scan_cloud->resize(scan_idx);
     filter_cloud->resize(filter_idx);
-    *remain_cloud = *filter_cloud;
+    *buffer_cloud = *filter_cloud;
 
 #pragma omp parallel for
     for (int i = 0; i < scan_bin_sizes.size(); i++) {
       scan_cloud_bins[i] = scan_bin_sizes[i];
-      remain_cloud_bins[i] = filter_bin_sizes[i];
+      buffer_cloud_bins[i] = filter_bin_sizes[i];
     }
-  } else {
-    *scan_cloud = *remain_cloud;
-    *scan_cloud += *raw_cloud;
-    remain_cloud->clear();
-
-#pragma omp parallel for
-    for (int i = 0; i < scan_bin_sizes.size(); i++) {
-      scan_cloud_bins[i] = remain_cloud_bins[i] + raw_cloud_bins[i];
-      remain_cloud_bins[i] = 0;
-    }
-
-    imu_process->imu_time_offset_ = rclcpp::Duration(0, 0);
   }
 
   analytics_msg_.scan_size = scan_cloud->size();
-  analytics_msg_.remain_size = remain_cloud->size();
+  analytics_msg_.buffer_size = buffer_cloud->size();
   analytics_msg_.imu_offset = imu_process->imu_time_offset_.seconds();
   analytics_msg_.lid_offset = lid_process->lidar_time_offset_.seconds();
 }
@@ -1171,7 +1169,7 @@ void MappingNode::timer_callback() {
 
     raw_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
     scan_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
-    remain_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
+    buffer_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
     scan_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
     filter_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
   }

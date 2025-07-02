@@ -9,7 +9,7 @@ int64 new_idxs
 int64 upd_idxs
 int64 start_bin
 int64 scan_size
-int64 remain_size
+int64 buffer_size
 
 int64 num_feats
 int64 num_reject

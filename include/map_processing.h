@@ -116,7 +116,7 @@ class MappingNode : public rclcpp::Node {
 
   std::vector<int> raw_cloud_bins;
   std::vector<int> scan_cloud_bins;
-  std::vector<int> remain_cloud_bins;
+  std::vector<int> buffer_cloud_bins;
   std::vector<std::atomic<int>> scan_bin_sizes;
   std::vector<std::atomic<int>> filter_bin_sizes;
 
@@ -148,7 +148,7 @@ class MappingNode : public rclcpp::Node {
   EllipseLioPointCloudPtr raw_cloud;
   EllipseLioPointCloudPtr scan_cloud;
   EllipseLioPointCloudPtr filter_cloud;
-  EllipseLioPointCloudPtr remain_cloud;
+  EllipseLioPointCloudPtr buffer_cloud;
   EllipseLioPointCloudPtr scan_cloud_pub;
 
   iOctree::Octree ioctree;
@@ -166,7 +166,7 @@ class MappingNode : public rclcpp::Node {
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
   rclcpp::Time last_pub_time;
-  rclcpp::Time remain_start_time_, remain_end_time_;
+  rclcpp::Time buffer_start_time_, buffer_end_time_;
 
   CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;
