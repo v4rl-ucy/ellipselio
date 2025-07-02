@@ -213,15 +213,13 @@ void LidarProcess::SetPoint(LivoxPoint &in_pt0, LivoxPoint &in_pt,
 // Set the point intensity and time for velodyne points
 void LidarProcess::SetPoint(VelodynePoint &in_pt0, VelodynePoint &in_pt,
                             EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
-  int time_nsecs;
   out_pt.intensity = in_pt.intensity;
-
-  if (in_pt.time < 1.0) {
-    time_nsecs = (fmax(in_pt.time, 0) - fmax(in_pt0.time, 0)) * 1e9;
-    point_time += rclcpp::Duration(0, time_nsecs);
+  if (in_pt.time < 0.0) {
+    point_time -= rclcpp::Duration(0, fabs(in_pt.time) * 1e9);
+  } else if (in_pt.time < 1.0) {
+    point_time += rclcpp::Duration(0, in_pt.time * 1e9);
   } else {
-    time_nsecs = (fmax(in_pt.time, 0) - fmax(in_pt0.time, 0)) * 1e3;
-    point_time += rclcpp::Duration(0, time_nsecs);
+    point_time += rclcpp::Duration(0, (in_pt.time - in_pt0.time) * 1e3);
   }
 }
 
