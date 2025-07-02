@@ -23,6 +23,10 @@ bool MappingNode::sync_packages() {
     }
     return false;
   }
+  if (imu_process->imu_end_time_ < lid_process->lidar_end_time_ &&
+      (inter_sync_time < 1.0 / lidar_params.rate || !map_counter)) {
+    return false;
+  }
   for (int i = 0; i < num_cams; i++) {
     if (!cams_process[i]->cam_has_data_) {
       if (int(ceil(inter_sync_time / 0.01)) % 100 == 0) {
