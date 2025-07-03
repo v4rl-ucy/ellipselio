@@ -13,7 +13,7 @@ int64 buffer_size
 
 int64 kf_iterations
 int64 std_neighbours
-int64 mean_neighhbours
+int64 mean_neighbours
 
 int64 num_feats
 int64 num_reject
