@@ -1214,14 +1214,15 @@ void MappingNode::timer_callback() {
     imu_process->UndistortPointCloud(scan_cloud, kf_state_, lidar_start_time,
                                      lidar_end_time, cams_process);
 
-    if (scan_cloud->empty() || (scan_cloud == NULL)) {
+    if (scan_cloud->empty()) {
       RCLCPP_WARN(this->get_logger(), "No points skipping scan");
       return;
     }
 
     t2 = omp_get_wtime();
 
-    if (mean_neighbours >= MIN_NEIGHBOURS) {
+    if (map_cloud->size() > 1e3 && scan_cloud->size() > 1e3 &&
+        mean_neighbours >= MIN_NEIGHBOURS) {
       ekfom_iter_cnt = 0;
       ekfom_iter_time = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
