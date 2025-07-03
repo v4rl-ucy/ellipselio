@@ -126,8 +126,8 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
 void MappingNode::tensor_vote_pass_1(int old_map_size,
                                      std::vector<int> &added_idxs,
                                      std::vector<int> &updated_idxs) {
-  std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
   int added_size = added_idxs.size();
+  std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
 
 #pragma omp parallel for
   for (int i = 0; i < added_size; i++) {
@@ -149,6 +149,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
                             bucket_size);
     neighbours[map_i] = N_idxs;
+
     n_bins.row(i).setZero();
     n_cnts.row(i).setZero();
     n_bins(i, bin_idx) = 1;
@@ -157,28 +158,19 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
 #pragma omp parallel for
   for (int i = 0; i < lid_process->num_bins_; i++) {
-    float n_min, n_max;
-    float n_bins_sum = n_bins.col(i).head(added_size).sum();
+    int n_bins_sum = n_bins.col(i).head(added_size).sum();
+    int tot_sum = lid_process->cnt_neighbours_[i] + n_bins_sum;
     if (!n_bins_sum) continue;
-    n_means(i) = n_cnts.col(i).head(added_size).sum() / n_bins_sum;
-    if (n_bins_sum > 1) {
-      n_stds(i) = ((n_cnts.col(i).head(added_size) - n_means(i)) *
-                   n_bins.col(i).head(added_size))
-                      .square()
-                      .sum();
-      n_stds(i) = 0.5 * sqrt(n_stds(i) / (n_bins_sum - 1));
-    }
-    n_min = fmin(fmax(n_means(i) - n_stds(i), MIN_NEIGHBOURS), MAX_NEIGHBOURS);
-    n_max = fmin(fmax(n_means(i) + n_stds(i), MIN_NEIGHBOURS), MAX_NEIGHBOURS);
-    lid_process->min_neighbours_[i] = floor(n_min);
-    lid_process->max_neighbours_[i] = ceil(n_max);
+    n_means(i) = floor(n_means(i) * lid_process->cnt_neighbours_[i]);
+    n_means(i) += n_cnts.col(i).head(added_size).sum();
+    n_means(i) = floor(n_means(i) / tot_sum);
+    n_means(i) = fmin(fmax(n_means(i), MIN_NEIGHBOURS), MAX_NEIGHBOURS);
+    lid_process->min_neighbours_[i] = n_means(i);
+    lid_process->max_neighbours_[i] = fmin(2 * n_means(i), MAX_NEIGHBOURS);
+    lid_process->cnt_neighbours_[i] += n_bins_sum;
   }
 
-  std_neighbours = n_stds.sum() / n_stds.count();
   mean_neighbours = n_means.sum() / n_means.count();
-
-  analytics_msg_.std_neighbours = std_neighbours;
-  analytics_msg_.mean_neighbours = mean_neighbours;
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -629,7 +621,6 @@ void MappingNode::tensor_registration(
   }
 
   t0 = omp_get_wtime();
-  const int &max_start_bin = lid_process->max_start_bin_;
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -696,7 +687,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, (start_bin + 1.0) / (max_start_bin + 1.0));
+    time_score = pow(time_score, (start_bin + 1.0) / 11.0);
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -870,11 +861,14 @@ MappingNode::MappingNode(
 
   this->declare_parameter<int>("lidar.type", 0);
   this->declare_parameter<int>("lidar.rate", 10);
+  this->declare_parameter<int>("lidar.scan_lines", 64);
   this->declare_parameter<double>("lidar.min_range", 1.0);
   this->declare_parameter<double>("lidar.max_range", 100.0);
   this->declare_parameter<double>("lidar.bin_size", 1.0);
   this->declare_parameter<double>("lidar.downsample_factor", 0.01);
+  this->declare_parameter<double>("lidar.vertical_fov", 64.0);
   this->declare_parameter<string>("lidar.topic", "");
+
   this->declare_parameter<vector<double>>("lidar.t_imu_lidar",
                                           vector<double>());
   this->declare_parameter<vector<double>>("lidar.r_imu_lidar",
@@ -908,6 +902,7 @@ MappingNode::MappingNode(
 
   this->get_parameter_or<int>("lidar.type", lidar_params.type, 0);
   this->get_parameter_or<int>("lidar.rate", lidar_params.rate, 10);
+  this->get_parameter_or<int>("lidar.scan_lines", lidar_params.scan_lines, 64);
   this->get_parameter_or<string>("lidar.topic", lidar_params.topic, "");
   this->get_parameter_or<double>("lidar.min_range", lidar_params.min_range,
                                  1.0);
@@ -916,6 +911,9 @@ MappingNode::MappingNode(
   this->get_parameter_or<double>("lidar.bin_size", lidar_params.bin_size, 1.0);
   this->get_parameter_or<double>("lidar.downsample_factor",
                                  lidar_params.downsample_factor, 0.01);
+  this->get_parameter_or<double>("lidar.vertical_fov",
+                                 lidar_params.vertical_fov, 64.0);
+
   this->get_parameter_or<vector<double>>("lidar.t_imu_lidar", t_imu_lidar,
                                          vector<double>());
   this->get_parameter_or<vector<double>>("lidar.r_imu_lidar", r_imu_lidar,
@@ -934,13 +932,6 @@ MappingNode::MappingNode(
   this->get_parameter_or<vector<double>>("cameras.r_cam_lidars", r_cam_lidars,
                                          vector<double>());
 
-  map_resolution = fmax(map_resolution, MIN_MAP_RESOLUTION);
-  map_search_radius = fmax(map_search_radius, MIN_SEARCH_RADIUS);
-
-  lidar_params.bin_size = fmax(lidar_params.bin_size, MIN_BIN_SIZE);
-  lidar_params.map_search_radius = map_search_radius;
-  lidar_params.map_resolution = map_resolution;
-
   map_cloud->reserve(MAX_MAP_POINTS);
   raw_cloud->reserve(MAX_PROC_POINTS);
   scan_cloud->reserve(MAX_PROC_POINTS);
@@ -948,7 +939,6 @@ MappingNode::MappingNode(
   buffer_cloud->reserve(MAX_PROC_POINTS);
 
   ioctree.set_bucket_size(1);
-  ioctree.set_min_extent(map_resolution);
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_PROC_POINTS);
 
@@ -1198,10 +1188,11 @@ void MappingNode::timer_callback() {
         std::make_shared<LidarProcess>(lidar_params, shared_from_this());
     init_cam_process();
 
-    n_stds = Eigen::ArrayXf::Zero(lid_process->num_bins_);
-    n_means = Eigen::ArrayXf::Zero(lid_process->num_bins_);
-    n_cnts = Eigen::ArrayXXf::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
-    n_bins = Eigen::ArrayXXf::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
+    ioctree.set_min_extent(lid_process->map_resolution_);
+
+    n_means = Eigen::ArrayXi::Zero(lid_process->num_bins_);
+    n_cnts = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
+    n_bins = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
 
     raw_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
     scan_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);

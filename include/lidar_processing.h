@@ -15,12 +15,14 @@ enum LID_TYPE { LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4 };
 struct LidarParams {
   int type;
   int rate;
+  int scan_lines;
   double min_range;
   double max_range;
   double bin_size;
   double map_resolution;
   double map_search_radius;
   double downsample_factor;
+  double vertical_fov;
   std::string topic;
 };
 
@@ -34,8 +36,9 @@ class LidarProcess {
                      int &start_bin);
 
   int num_bins_;
-  int max_start_bin_;
   bool lidar_has_data_;
+  float map_resolution_;
+
   std::atomic<int> lidar_counter_;
   rclcpp::Duration lidar_time_offset_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
@@ -72,7 +75,7 @@ class LidarProcess {
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
-  Eigen::ArrayXf ranges_;
+  Eigen::ArrayXf ranges_, range_wts_;
   std::vector<int> bin_pcs_sizes_;
   std::vector<std::vector<int>> bin_idxs_;
   std::vector<std::atomic<int>> bin_sizes_;
