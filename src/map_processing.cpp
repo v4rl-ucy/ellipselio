@@ -1172,6 +1172,19 @@ void MappingNode::filter_scan_with_imu(rclcpp::Time &lidar_start_time,
     }
   }
 
+  if (scan_cloud->size() < 1e3) {
+#pragma omp parallel for
+    for (int i = 0; i < scan_bin_sizes.size(); i++) {
+      buffer_cloud_bins[i] += scan_cloud_bins[i];
+      scan_cloud_bins[i] = 0;
+    }
+    if (lidar_start_time < buffer_start_time_)
+      buffer_start_time_ = lidar_start_time;
+    if (lidar_end_time > buffer_end_time_) buffer_end_time_ = lidar_end_time;
+    *buffer_cloud += *scan_cloud;
+    scan_cloud->clear();
+  }
+
   analytics_msg_.scan_size = scan_cloud->size();
   analytics_msg_.buffer_size = buffer_cloud->size();
   analytics_msg_.imu_offset = imu_process->imu_time_offset_.seconds();
@@ -1215,14 +1228,13 @@ void MappingNode::timer_callback() {
                                      lidar_end_time, cams_process);
 
     if (scan_cloud->empty()) {
-      RCLCPP_WARN(this->get_logger(), "No points skipping scan");
+      RCLCPP_WARN_ONCE(this->get_logger(), "No points skipping scan");
       return;
     }
 
     t2 = omp_get_wtime();
 
-    if (map_cloud->size() > 1e3 && scan_cloud->size() > 1e3 &&
-        mean_neighbours >= MIN_NEIGHBOURS) {
+    if (mean_neighbours >= MIN_NEIGHBOURS && map_cloud->size() >= 1e3) {
       ekfom_iter_cnt = 0;
       ekfom_iter_time = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);
