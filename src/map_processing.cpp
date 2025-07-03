@@ -170,7 +170,7 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     lid_process->cnt_neighbours_[i] += n_bins_sum;
   }
 
-  mean_neighbours = n_means.sum() / n_means.count();
+  mean_neighbours = floor(n_means.sum() / n_means.count());
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -1221,7 +1221,7 @@ void MappingNode::timer_callback() {
 
     t2 = omp_get_wtime();
 
-    if (mean_neighbours > MIN_NEIGHBOURS) {
+    if (mean_neighbours >= MIN_NEIGHBOURS) {
       ekfom_iter_cnt = 0;
       ekfom_iter_time = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, lidar_end_time);

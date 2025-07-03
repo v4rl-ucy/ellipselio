@@ -83,13 +83,12 @@ class MappingNode : public rclcpp::Node {
          mean_state_time = 0, mean_map_time = 0, mean_total_time = 0;
 
   double map_resolution, map_search_radius;
-  int kf_iterations, map_bucket_size, pub_map_n_secs;
+  int kf_iterations, map_bucket_size, mean_neighbours = 0, pub_map_n_secs;
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   int start_bin;
   double start_time;
   bool initialized = false;
-  double mean_neighbours = 0.0;
 
   int ekfom_iter_cnt;
   double max_ekfom_time, ekfom_iter_time;
