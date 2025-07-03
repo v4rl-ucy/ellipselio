@@ -89,9 +89,16 @@ class MappingNode : public rclcpp::Node {
   int start_bin;
   double start_time;
   bool initialized = false;
+  double std_neighbours = 0.0;
+  double mean_neighbours = 0.0;
 
   int ekfom_iter_cnt;
   double max_ekfom_time, ekfom_iter_time;
+
+  Eigen::ArrayXf n_stds;
+  Eigen::ArrayXf n_means;
+  Eigen::ArrayXXf n_cnts;
+  Eigen::ArrayXXf n_bins;
 
   Eigen::ArrayXXi ekfom_data_i;
   Eigen::ArrayXXd ekfom_data_c;
