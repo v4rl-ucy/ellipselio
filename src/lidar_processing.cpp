@@ -271,7 +271,7 @@ template <typename InPtType>
 void LidarProcess::PointCloudHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   int in_pc_size;
-  float range_mean, range_wt_mean, range_wt_sum;
+  float range_wt_mean, range_wt_sum;
 
   pcl::PointCloud<InPtType> in_pc;
   pcl::fromROSMsg(*msg, in_pc);
@@ -302,10 +302,9 @@ void LidarProcess::PointCloudHandler(
     process_pc_->points[i].bin_idx = bin_idx;
   }
 
-  range_mean = ranges_.head(in_pc_size).mean();
   range_wt_sum = range_wts_.head(in_pc_size).sum();
-  range_wts_.head(in_pc_size) *= ranges_.head(in_pc_size);
-  range_wt_mean = range_wts_.head(in_pc_size).sum() / range_wt_sum;
+  ranges_.head(in_pc_size) *= range_wts_.head(in_pc_size);
+  range_wt_mean = ranges_.head(in_pc_size).sum() / range_wt_sum;
 
   start_bin_ = fmin(floor(range_wt_mean / params_.bin_size), 10);
 }
