@@ -185,6 +185,8 @@ void LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
                                  rclcpp::Time &end_time,
                                  std::vector<int> &bin_pcs_sizes,
                                  int &start_bin) {
+  if (!lidar_has_data_) return;
+
   lidar_mutex_.lock();
   *pc = *ellipselio_pc_;
   start_bin = start_bin_;

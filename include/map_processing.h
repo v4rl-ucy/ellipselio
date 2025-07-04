@@ -61,8 +61,7 @@ class MappingNode : public rclcpp::Node {
   void init_cam_process();
   void map_incremental();
 
-  void filter_scan_with_imu(rclcpp::Time &lidar_start_time,
-                            rclcpp::Time &lidar_end_time);
+  void sync_raw_cloud_with_imu();
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
@@ -170,6 +169,8 @@ class MappingNode : public rclcpp::Node {
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
   rclcpp::Time last_pub_time;
+  rclcpp::Time raw_start_time_, raw_end_time_;
+  rclcpp::Time scan_start_time_, scan_end_time_;
   rclcpp::Time buffer_start_time_, buffer_end_time_;
 
   CamProcessVec cams_process;
