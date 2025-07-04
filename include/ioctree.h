@@ -237,7 +237,8 @@ class Octree {
     int dim_ = 3;
     points.resize(pts_num, 0);
     size_t cloud_index = 0;
-    float min[3], max[3];
+    float max_extent = 0.01f;
+    float min[3], max[3], ctr[3], extent[3];
 
     for (size_t i = 0; i < pts_num; ++i) {
       const float &x = pts_[filter_idxs[i]].x;
@@ -264,29 +265,39 @@ class Octree {
       }
       cloud_index++;
     }
+    if (cloud_index == 0) return;
+    points.resize(cloud_index);
 
-    for (size_t i = 1; i < 3; ++i) {
+    if (print_debug) {
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / m_minExtent) * m_minExtent;
       max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
-      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
-        min[i] += 0.5 * m_minExtent;
-        max[i] -= 0.5 * m_minExtent;
-      }
+      if (int(min[i] / m_minExtent) % 2 != 0) min[i] += m_minExtent;
+      if (int(max[i] / m_minExtent) % 2 != 0) max[i] -= m_minExtent;
+      extent[i] = 0.5f * (max[i] - min[i]);
+      max_extent = fmax(max_extent, extent[i]);
+      ctr[i] = min[i] + extent[i];
     }
 
-    points.resize(cloud_index);
-    float ctr[3] = {min[0], min[1], min[2]};
-    float maxextent = 0.5f * (max[0] - min[0]);
-    maxextent = std::max(maxextent, 0.01f);
-    ctr[0] += maxextent;
-
-    for (size_t i = 1; i < 3; ++i) {
-      float extent = 0.5f * (max[i] - min[i]);
-      ctr[i] += extent;
-      if (extent > maxextent) maxextent = extent;
+    if (print_debug) {
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
+      std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
-    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points,
+    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], max_extent, points,
                            added_idxs, new_idxs);
   }
 
@@ -308,7 +319,8 @@ class Octree {
     int dim_ = 3;
     points.resize(pts_num, 0);
     size_t cloud_index = 0;
-    float min[3], max[3];
+    float max_extent = 0.01f;
+    float min[3], max[3], ctr[3], extent[3];
 
     for (size_t i = start_idx; i < end_idx; ++i) {
       const float &x = pts_[i].x;
@@ -335,49 +347,38 @@ class Octree {
       }
       cloud_index++;
     }
+    points.resize(cloud_index);
 
     if (print_debug) {
-      std::cerr << "min: " << min[0] << " " << min[1] << " " << min[2]
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
                 << std::endl;
-      std::cerr << "max: " << max[0] << " " << max[1] << " " << max[2]
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
                 << std::endl;
     }
 
-    for (size_t i = 1; i < 3; ++i) {
+    for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / m_minExtent) * m_minExtent;
       max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
-      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
-        min[i] += 0.5 * m_minExtent;
-        max[i] -= 0.5 * m_minExtent;
-      }
+      if (int(min[i] / m_minExtent) % 2 != 0) min[i] += m_minExtent;
+      if (int(max[i] / m_minExtent) % 2 != 0) max[i] -= m_minExtent;
+      extent[i] = 0.5f * (max[i] - min[i]);
+      max_extent = fmax(max_extent, extent[i]);
+      ctr[i] = min[i] + extent[i];
     }
 
     if (print_debug) {
-      std::cerr << "min: " << min[0] << " " << min[1] << " " << min[2]
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
                 << std::endl;
-      std::cerr << "max: " << max[0] << " " << max[1] << " " << max[2]
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
                 << std::endl;
-    }
-
-    points.resize(cloud_index);
-    float ctr[3] = {min[0], min[1], min[2]};
-    float maxextent = 0.5f * (max[0] - min[0]);
-    maxextent = std::max(maxextent, 0.01f);
-    ctr[0] += maxextent;
-
-    for (size_t i = 1; i < 3; ++i) {
-      float extent = 0.5f * (max[i] - min[i]);
-      ctr[i] += extent;
-      if (extent > maxextent) maxextent = extent;
-    }
-
-    if (print_debug) {
       std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
                 << std::endl;
-      std::cerr << "maxextent: " << maxextent << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
+      std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
-    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], maxextent, points,
+    m_root_ = createOctant(ctr[0], ctr[1], ctr[2], max_extent, points,
                            added_idxs, new_idxs);
   }
 
@@ -398,11 +399,12 @@ class Octree {
     added_idxs.reserve(pts_num);
     new_idxs.reserve(pts_num);
     m_downSize = down_size;
-    std::vector<float *> points_tmp;
+    std::vector<float *> points;
     int dim_ = 3;
-    points_tmp.resize(pts_num, 0);
+    points.resize(pts_num, 0);
     size_t cloud_index = 0;
-    float min[3], max[3];
+    float max_extent = 0.01f;
+    float min[3], max[3], ctr[3], extent[3];
 
     for (size_t i = 0; i < pts_num; ++i) {
       const float &x = pts_[filter_idxs[i]].x;
@@ -414,7 +416,7 @@ class Octree {
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
       cloud_ptr[3] = -(filter_idxs[i] + 1);
-      points_tmp[cloud_index] = cloud_ptr;
+      points[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
         min[1] = max[1] = y;
@@ -430,15 +432,34 @@ class Octree {
       cloud_index++;
     }
     if (cloud_index == 0) return;
-    points_tmp.resize(cloud_index);
+    points.resize(cloud_index);
 
-    for (size_t i = 1; i < 3; ++i) {
+    if (print_debug) {
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+    }
+    for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / m_minExtent) * m_minExtent;
       max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
-      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
-        min[i] += 0.5 * m_minExtent;
-        max[i] -= 0.5 * m_minExtent;
-      }
+      if (int(min[i] / m_minExtent) % 2 != 0) min[i] += m_minExtent;
+      if (int(max[i] / m_minExtent) % 2 != 0) max[i] -= m_minExtent;
+      extent[i] = 0.5f * (max[i] - min[i]);
+      max_extent = fmax(max_extent, extent[i]);
+      ctr[i] = min[i] + extent[i];
+    }
+
+    if (print_debug) {
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
+      std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
     static const float factor[] = {-0.5f, 0.5f};
@@ -486,8 +507,7 @@ class Octree {
       m_root_ = octant;
     }
 
-    if (points_tmp.size() == 0) return;
-    updateOctant(m_root_, points_tmp, added_idxs, new_idxs);
+    updateOctant(m_root_, points, added_idxs, new_idxs);
   }
 
   template <typename ContainerT>
@@ -507,11 +527,12 @@ class Octree {
     added_idxs.reserve(pts_num);
     new_idxs.reserve(pts_num);
     m_downSize = down_size;
-    std::vector<float *> points_tmp;
+    std::vector<float *> points;
     int dim_ = 3;
-    points_tmp.resize(pts_num, 0);
+    points.resize(pts_num, 0);
     size_t cloud_index = 0;
-    float min[3], max[3];
+    float max_extent = 0.01f;
+    float min[3], max[3], ctr[3], extent[3];
 
     for (size_t i = start_idx; i < end_idx; ++i) {
       const float &x = pts_[i].x;
@@ -523,7 +544,7 @@ class Octree {
       cloud_ptr[1] = y;
       cloud_ptr[2] = z;
       cloud_ptr[3] = -((int)i + 1);
-      points_tmp[cloud_index] = cloud_ptr;
+      points[cloud_index] = cloud_ptr;
       if (cloud_index == 0) {
         min[0] = max[0] = x;
         min[1] = max[1] = y;
@@ -539,19 +560,38 @@ class Octree {
       cloud_index++;
     }
     if (cloud_index == 0) return;
-    points_tmp.resize(cloud_index);
+    points.resize(cloud_index);
 
-    for (size_t i = 1; i < 3; ++i) {
+    if (print_debug) {
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / m_minExtent) * m_minExtent;
       max[i] = ceil(max[i] / m_minExtent) * m_minExtent;
-      if (int((max[i] - min[i]) / m_minExtent) % 2 != 0) {
-        min[i] += 0.5 * m_minExtent;
-        max[i] -= 0.5 * m_minExtent;
-      }
+      if (int(min[i] / m_minExtent) % 2 != 0) min[i] += m_minExtent;
+      if (int(max[i] / m_minExtent) % 2 != 0) max[i] -= m_minExtent;
+      extent[i] = 0.5f * (max[i] - min[i]);
+      max_extent = fmax(max_extent, extent[i]);
+      ctr[i] = min[i] + extent[i];
+    }
+
+    if (print_debug) {
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
+      std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
     static const float factor[] = {-0.5f, 0.5f};
-
     while (std::abs(max[0] - m_root_->x) > m_root_->extent ||
            std::abs(max[1] - m_root_->y) > m_root_->extent ||
            std::abs(max[2] - m_root_->z) > m_root_->extent) {
@@ -596,8 +636,7 @@ class Octree {
       m_root_ = octant;
     }
 
-    if (points_tmp.size() == 0) return;
-    updateOctant(m_root_, points_tmp, added_idxs, new_idxs);
+    updateOctant(m_root_, points, added_idxs, new_idxs);
   }
 
   void clear() {
