@@ -19,6 +19,7 @@ using namespace std;
 #define MIN_BIN_SIZE (1.0)
 #define MIN_BIN_RES (0.01)
 #define MIN_MAP_RES (0.1)
+#define MIN_SCAN_RES (0.1)
 #define MIN_SEARCH_RADIUS (1.0)
 #define MAX_SCAN_POINTS (200000)
 #define MAX_PROC_POINTS (30000)

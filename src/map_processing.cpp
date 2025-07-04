@@ -16,7 +16,7 @@ bool MappingNode::sync_packages() {
     }
     return false;
   }
-  if (!lid_process->lidar_has_data_ && buffer_cloud->size() < MIN_PROC_POINTS) {
+  if (!lid_process->lidar_has_data_ && buffer_cloud->size() < min_scan_size) {
     if (inter_sync_time > 1.0) {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000, "Lidar has no data");
     }
@@ -42,10 +42,15 @@ bool MappingNode::sync_packages() {
 
   lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
                              raw_cloud_bins, start_bin);
+
+  scan_num_cnt++;
+  scan_pts_cnt += raw_cloud->size();
+  min_scan_size = fmax(MIN_PROC_POINTS, 0.25 * scan_pts_cnt / scan_num_cnt);
+
   sync_raw_cloud_with_imu();
   if (scan_cloud->empty()) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), clk, 1000,
-                         "No points, skipping scan");
+                         "Insufficient points, skipping scan");
     return false;
   }
 
@@ -95,13 +100,6 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   Eigen::SelfAdjointEigenSolver<M3F> eig_solver;
 
   eig_solver.computeDirect(tensor);
-
-  if (eig_solver.info() != Eigen::Success) {
-    RCLCPP_ERROR_STREAM(this->get_logger(),
-                        "Eigen decomposition failed for point " << i);
-    return;
-  }
-
   eig_vec = eig_solver.eigenvectors();
   eig_val = eig_solver.eigenvalues().cwiseAbs();
 
@@ -120,6 +118,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     sali_val(2) = eig_val(0);
     sali_val.maxCoeff(&saliency_idxs[i]);
 
+    valid_map_pts++;
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
@@ -897,8 +896,8 @@ MappingNode::MappingNode(
   this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);
   this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs, 1);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution, 0.1);
-  this->get_parameter_or<double>("mapping.map_search_radius", map_search_radius,
-                                 1.0);
+  this->get_parameter_or<double>("mapping.map_search_radius",
+                                 lidar_params.map_search_radius, 1.0);
 
   this->get_parameter_or<int>("imu.rate", imu_params.rate, 100);
   this->get_parameter_or<double>("imu.gyr_noise", imu_params.gyr_noise, 0.1);
@@ -948,6 +947,7 @@ MappingNode::MappingNode(
   ioctree.set_bucket_size(1);
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_PROC_POINTS);
+  ioctree.set_min_extent(fmax(map_resolution, MIN_MAP_RES));
 
   max_ekfom_time = 0.5 * (1.0 / lidar_params.rate);
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
@@ -1186,7 +1186,7 @@ void MappingNode::sync_raw_cloud_with_imu() {
     }
   }
 
-  if (scan_cloud->size() < MIN_PROC_POINTS) {
+  if (scan_cloud->size() < min_scan_size) {
 #pragma omp parallel for
     for (int i = 0; i < scan_bin_sizes.size(); i++) {
       buffer_cloud_bins[i] += scan_cloud_bins[i];
@@ -1211,14 +1211,13 @@ void MappingNode::sync_raw_cloud_with_imu() {
 // Main mapping loop
 void MappingNode::timer_callback() {
   if (!initialized) {
+    valid_map_pts = 0;
     initialized = true;
     imu_process =
         std::make_shared<ImuProcess>(kf_, imu_params, shared_from_this());
     lid_process =
         std::make_shared<LidarProcess>(lidar_params, shared_from_this());
     init_cam_process();
-
-    ioctree.set_min_extent(lid_process->map_resolution_);
 
     n_means = Eigen::ArrayXi::Zero(lid_process->num_bins_);
     n_cnts = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
@@ -1241,8 +1240,7 @@ void MappingNode::timer_callback() {
 
     t2 = omp_get_wtime();
 
-    if (mean_neighbours >= MIN_NEIGHBOURS &&
-        map_cloud->size() >= MIN_PROC_POINTS) {
+    if (valid_map_pts > min_scan_size) {
       ekfom_iter_cnt = 0;
       ekfom_iter_time = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_);

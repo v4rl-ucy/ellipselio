@@ -20,16 +20,10 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  map_resolution_ = (M_PI * 10.0 * params_.vertical_fov);
-  map_resolution_ /= 180.0 * params_.scan_lines;
-  map_resolution_ = floor(map_resolution_ * 10.0) / 10.0;
-  map_resolution_ = fmax(map_resolution_, MIN_MAP_RES);
-
-  params_.map_resolution = map_resolution_;
-  params_.map_search_radius = 10.0 * map_resolution_;
-  params_.bin_size = fmax(params_.bin_size, MIN_BIN_SIZE);
-
-  num_bins_ = ceil(params_.max_range / params_.bin_size) + 1;
+  scan_res_ = M_PI * (params_.vertical_fov / params_.scan_lines) / 180.0;
+  min_scan_res_ = fmax(floor(scan_res_ * 1000.0) / 100.0, MIN_SCAN_RES);
+  max_search_rad_ = 10.0 * min_scan_res_;
+  num_bins_ = ceil(params_.max_range + 1);
 
   bin_pcs_sizes_ = std::vector<int>(num_bins_, 0);
   bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
@@ -51,23 +45,19 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   cnt_neighbours_ = std::vector<int>(num_bins_, 1);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
   max_neighbours_ = std::vector<int>(num_bins_, MAX_NEIGHBOURS);
-  search_radii_ = std::vector<float>(num_bins_, params_.map_search_radius);
-  octree_resolutions_ = std::vector<float>(num_bins_, params_.map_resolution);
+  search_radii_ = std::vector<float>(num_bins_, max_search_rad_);
+  octree_resolutions_ = std::vector<float>(num_bins_, min_scan_res_);
 
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
-    float scan_arc, octree_res, search_rad, bucket_size;
+    float octree_res, search_rad, bucket_size;
 
-    scan_arc = M_PI * params_.vertical_fov / (180.0 * params_.scan_lines);
-    scan_arc *= (i + 1) * params_.bin_size;
-    scan_arc = floor(scan_arc * 100.0) / 100.0;
-
-    octree_res = fmin(fmax(scan_arc, MIN_BIN_RES), params_.map_resolution);
-    search_rad =
-        fmin(fmax(10.0 * scan_arc, MIN_MAP_RES), params_.map_search_radius);
-    bucket_size = fmax(
-        ceil((1.0 - (octree_res / params_.map_resolution)) * MIN_NEIGHBOURS),
-        1);
+    octree_res = (i + 1) * scan_res_;
+    octree_res = floor(octree_res * 100.0) / 100.0;
+    octree_res = fmin(fmax(octree_res, MIN_BIN_RES), min_scan_res_);
+    search_rad = fmin(fmax(10.0 * octree_res, MIN_SCAN_RES), max_search_rad_);
+    bucket_size = ceil((1.0 - (octree_res / min_scan_res_)) * MIN_NEIGHBOURS);
+    bucket_size = fmax(bucket_size, 1.0);
 
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_rad;
@@ -291,14 +281,13 @@ void LidarProcess::PointCloudHandler(
                        process_pc_->points[i].z * process_pc_->points[i].z);
 
     ranges_(i) = range;
-    range_wts_(i) = floor(range) * M_PI * params_.vertical_fov /
-                    (180.0 * params_.scan_lines);
+    range_wts_(i) = floor(range) * scan_res_;
 
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
 
-    int bin_idx = floor(range / params_.bin_size);
+    int bin_idx = floor(range);
     bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
 
     process_pc_->points[i].bin_idx = bin_idx;
@@ -308,5 +297,5 @@ void LidarProcess::PointCloudHandler(
   ranges_.head(in_pc_size) *= range_wts_.head(in_pc_size);
   range_wt_mean = ranges_.head(in_pc_size).sum() / range_wt_sum;
 
-  start_bin_ = fmin(floor(range_wt_mean / params_.bin_size), 10);
+  start_bin_ = fmin(floor(range_wt_mean), 10);
 }

@@ -37,7 +37,10 @@ class LidarProcess {
 
   int num_bins_;
   bool lidar_has_data_;
-  float map_resolution_;
+
+  float scan_res_;
+  float min_scan_res_;
+  float max_search_rad_;
 
   std::atomic<int> lidar_counter_;
   rclcpp::Duration lidar_time_offset_;
