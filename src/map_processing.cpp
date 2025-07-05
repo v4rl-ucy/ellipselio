@@ -607,6 +607,7 @@ void MappingNode::tensor_registration(
   int feat_tot, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
+  V3F hit_mean;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
   std::vector<std::atomic<int>> prim_cnts(3);
@@ -620,6 +621,7 @@ void MappingNode::tensor_registration(
   stds.setZero();
   cnts.setZero();
   means.setZero();
+  hit_mean.setZero();
   feats_num.setZero();
 
   t0 = omp_get_wtime();
@@ -689,7 +691,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, (start_bin + 1.0) / 11.0);
+    time_score = pow(time_score, fmin(mean_bin, 10.0) / 10.0);
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -754,6 +756,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz;
+    float std_p, std_e, hit_bin;
 
     if (!cnts(i)) continue;
 
@@ -764,13 +767,16 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     }
 
-    if (stds(i + 3) && stds(i + 6) && !ekfom_iter_cnt) {
+    if (stds(i + 3) && stds(i + 6)) {
+      hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
+
+      hit_bin = fmax(fmin(mean_bin, 10) / 3.0, 1.0);
+      std_p = stds(i + 3) * hit_mean(i);
+      std_e = stds(i + 6) * hit_mean(i);
+
       ekfom_data_v.col(i).head(cnts(i)) =
-          (ekfom_data_w.col(i + 3).head(cnts(i)) <
-               means(i + 3) +
-                   (ekfom_data_c.col(i).head(cnts(i)) * stds(i + 3)) &&
-           ekfom_data_w.col(i + 6).head(cnts(i)) <
-               means(i + 6) + (ekfom_data_c.col(i).head(cnts(i)) * stds(i + 6)))
+          (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
+           ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
               .cast<double>();
       feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
       ekfom_data_w.col(i).head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
@@ -784,6 +790,7 @@ void MappingNode::tensor_registration(
         }
         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
       }
+      analytics_msg_.hit_mean = round(hit_mean.mean());
     }
 
     if (i == 0) {
