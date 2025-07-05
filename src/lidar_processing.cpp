@@ -174,11 +174,12 @@ void LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
                                  rclcpp::Time &start_time,
                                  rclcpp::Time &end_time,
                                  std::vector<int> &bin_pcs_sizes,
-                                 int &start_bin) {
+                                 int &start_bin, int &mean_bin) {
   if (!lidar_has_data_) return;
 
   lidar_mutex_.lock();
   *pc = *ellipselio_pc_;
+  mean_bin = mean_bin_;
   start_bin = start_bin_;
   end_time = lidar_end_time_;
   start_time = lidar_start_time_;
@@ -263,6 +264,7 @@ template <typename InPtType>
 void LidarProcess::PointCloudHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   int in_pc_size;
+  std::atomic<int> in_pts_cnt = 0;
   float range_wt_mean, range_wt_sum;
 
   pcl::PointCloud<InPtType> in_pc;
@@ -280,12 +282,13 @@ void LidarProcess::PointCloudHandler(
                        process_pc_->points[i].y * process_pc_->points[i].y +
                        process_pc_->points[i].z * process_pc_->points[i].z);
 
-    ranges_(i) = range;
-    range_wts_(i) = floor(range) * scan_res_;
-
     if (range < params_.min_range || range > params_.max_range) {
       continue;
     }
+
+    int idx = in_pts_cnt++;
+    ranges_(idx) = range;
+    range_wts_(idx) = floor(range) * scan_res_;
 
     int bin_idx = floor(range);
     bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
@@ -293,9 +296,11 @@ void LidarProcess::PointCloudHandler(
     process_pc_->points[i].bin_idx = bin_idx;
   }
 
+  in_pc_size = in_pts_cnt.load();
+
+  mean_bin_ = floor(ranges_.head(in_pc_size).mean());
   range_wt_sum = range_wts_.head(in_pc_size).sum();
   ranges_.head(in_pc_size) *= range_wts_.head(in_pc_size);
   range_wt_mean = ranges_.head(in_pc_size).sum() / range_wt_sum;
-
   start_bin_ = fmin(floor(range_wt_mean), 10);
 }

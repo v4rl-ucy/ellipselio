@@ -512,8 +512,8 @@ class Octree {
 
   template <typename ContainerT>
   void update(ContainerT &pts_, std::vector<int> &added_idxs,
-              std::vector<int> &new_idxs, bool down_size = true,
-              int start_idx = 0, int end_idx = 0) {
+              std::vector<int> &new_idxs, int start_idx, int end_idx, float res,
+              bool down_size = true) {
     if (m_root_ == 0) {
       initialize(pts_, added_idxs, new_idxs, down_size, start_idx, end_idx);
       return;
@@ -532,6 +532,7 @@ class Octree {
     points.resize(pts_num, 0);
     size_t cloud_index = 0;
     float max_extent = 0.01f;
+    float tmp_res = m_minExtent;
     float min[3], max[3], ctr[3], extent[3];
 
     for (size_t i = start_idx; i < end_idx; ++i) {
@@ -636,7 +637,9 @@ class Octree {
       m_root_ = octant;
     }
 
+    m_minExtent = res;
     updateOctant(m_root_, points, added_idxs, new_idxs);
+    m_minExtent = tmp_res;
   }
 
   void clear() {

@@ -10,6 +10,7 @@ int64 upd_idxs
 int64 start_bin
 int64 scan_size
 int64 buffer_size
+float64 map_res
 
 int64 num_feats
 int64 num_reject

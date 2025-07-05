@@ -41,7 +41,7 @@ bool MappingNode::sync_packages() {
   }
 
   lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
-                             raw_cloud_bins, start_bin);
+                             raw_cloud_bins, start_bin, mean_bin);
 
   scan_num_cnt++;
   scan_pts_cnt += raw_cloud->size();
@@ -368,7 +368,7 @@ void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
 // Add new points to the map and update geometric primitives
 void MappingNode::map_incremental() {
   int start_idx, end_idx;
-  std::vector<int> new_idxs, updated_idxs, added_idxs_i, new_idxs_i;
+  std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
 
   poses[map_counter] = kf_state_.state.pos.cast<float>();
 
@@ -390,16 +390,21 @@ void MappingNode::map_incremental() {
   end_idx = 0;
   old_map_size = map_cloud->size();
 
+  float res = lid_process->min_scan_res_;
+  if (mean_bin < start_bin) res = map_resolution;
+  analytics_msg_.map_res = res;
+
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
     end_idx += scan_cloud_bins[i];
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
 
-    ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
-    ioctree.update(*scan_cloud, added_idxs_i, new_idxs_i, true, start_idx,
-                   end_idx);
-    *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs_i);
-    new_idxs.insert(new_idxs.end(), new_idxs_i.begin(), new_idxs_i.end());
+    const int &bucket_size = lid_process->bucket_sizes_[fmax(i, start_bin)];
+
+    ioctree.set_bucket_size(bucket_size);
+    ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx, res);
+    *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs);
+    new_idxs.insert(new_idxs.end(), map_idxs.begin(), map_idxs.end());
     start_idx = end_idx;
   }
   new_map_size = map_cloud->size();
