@@ -607,7 +607,6 @@ void MappingNode::tensor_registration(
   int feat_tot, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
-  V3F hit_mean;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
   std::vector<std::atomic<int>> prim_cnts(3);
@@ -621,7 +620,6 @@ void MappingNode::tensor_registration(
   stds.setZero();
   cnts.setZero();
   means.setZero();
-  hit_mean.setZero();
   feats_num.setZero();
 
   t0 = omp_get_wtime();
@@ -722,6 +720,7 @@ void MappingNode::tensor_registration(
 
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
   feat_tot = cnts.sum();
+  feats_num = cnts;
 
   if (!feat_tot) {
     RCLCPP_ERROR_STREAM(this->get_logger(), "All scan points rejected!");
@@ -755,7 +754,6 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz;
-    float std_p, std_e, hit_bin;
 
     if (!cnts(i)) continue;
 
@@ -766,16 +764,13 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     }
 
-    if (stds(i + 3) && stds(i + 6)) {
-      hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
-
-      hit_bin = fmax(start_bin / 3.0, 1.0);
-      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / hit_bin);
-      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / hit_bin);
-
+    if (stds(i + 3) && stds(i + 6) && !ekfom_iter_cnt) {
       ekfom_data_v.col(i).head(cnts(i)) =
-          (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
-           ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
+          (ekfom_data_w.col(i + 3).head(cnts(i)) <
+               means(i + 3) +
+                   (ekfom_data_c.col(i).head(cnts(i)) * stds(i + 3)) &&
+           ekfom_data_w.col(i + 6).head(cnts(i)) <
+               means(i + 6) + (ekfom_data_c.col(i).head(cnts(i)) * stds(i + 6)))
               .cast<double>();
       feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
       ekfom_data_w.col(i).head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
@@ -820,6 +815,12 @@ void MappingNode::tensor_registration(
   res_mean /= feat_tot;
   reject_cnt = scan_cloud->size() - feat_tot;
 
+  if (!feat_tot) {
+    RCLCPP_ERROR_STREAM(this->get_logger(), "All scan points filtered!");
+    ekfom_data.valid = false;
+    return;
+  }
+
   ekfom_iter_cnt++;
 
   analytics_msg_.num_planes = cnts[0];
@@ -836,7 +837,6 @@ void MappingNode::tensor_registration(
   analytics_msg_.start_bin = start_bin;
   analytics_msg_.num_feats = feat_tot;
   analytics_msg_.num_reject = reject_cnt;
-  analytics_msg_.hit_mean = hit_mean.mean();
   analytics_msg_.kf_iterations = ekfom_iter_cnt;
 }
 

@@ -27,7 +27,6 @@ float64 wt_max
 float64 rng_min
 float64 rng_max
 float64 rng_mean
-float64 hit_mean
 
 float64 imu_time
 float64 state_time
