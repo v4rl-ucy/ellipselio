@@ -1765,10 +1765,8 @@ class esekf {
     vectorized_state dx_new = vectorized_state::Zero();
 
     double solve_time = 0;
+    double solve_start = omp_get_wtime();
     for (int i = -1; i < maximum_iter; i++) {
-      if (solve_time > 0.5 * max_solve_time) {
-        break;
-      }
       dyn_share.valid = true;
       h_dyn_share(x_, dyn_share);
 
@@ -1782,7 +1780,6 @@ class esekf {
       Eigen::Matrix<scalar_type, Eigen::Dynamic, 6> h_x_ = dyn_share.h_x;
       Eigen::Matrix<scalar_type, 6, Eigen::Dynamic> h_x_R_ = dyn_share.h_x_R;
 #endif
-      double solve_start = omp_get_wtime();
       dof_Measurement = h_x_.rows();
       vectorized_state dx;
       x_.boxminus(dx, x_propagated);
@@ -1897,7 +1894,8 @@ class esekf {
         dyn_share.converge = true;
       }
 
-      if (t > 1 || i == maximum_iter - 1) {
+      solve_time = omp_get_wtime() - solve_start;
+      if (t > 1 || i == maximum_iter - 1 || solve_time > 0.5 * max_solve_time) {
         L_ = P_;
         Matrix<scalar_type, 3, 3> res_temp_SO3;
         MTK::vect<3, scalar_type> seg_SO3;
@@ -1961,10 +1959,8 @@ class esekf {
 
         P_ =
             L_ - K_x.template block<n, 6>(0, 0) * P_.template block<6, n>(0, 0);
-        solve_time += omp_get_wtime() - solve_start;
         return;
       }
-      solve_time += omp_get_wtime() - solve_start;
     }
   }
 
