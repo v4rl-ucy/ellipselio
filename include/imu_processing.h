@@ -47,7 +47,8 @@ class ImuProcess {
   void UndistortPointCloud(EllipseLioPointCloudPtr pc, KfState &kf_state,
                            rclcpp::Time &lidar_start_time,
                            rclcpp::Time &lidar_end_time, CamProcessVec &cams);
-  void UpdateStatesWithLidar(KfState &kf_state, rclcpp::Time &lidar_end_time);
+  void UpdateStatesWithLidar(KfState &kf_state, rclcpp::Time &lidar_end_time,
+                             double max_solve_time);
   void GetKfState(KfState &kf_state);
 
   void set_gyr_cov(const V3D &gyr_cov);

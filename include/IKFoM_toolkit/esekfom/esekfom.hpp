@@ -1751,7 +1751,7 @@ class esekf {
     }
   }
 
-  void update_iterated_dyn_share_modified_R(double R, double max_solve_time) {
+  void update_iterated_dyn_share_modified_R(double R, double &max_solve_time) {
     dyn_share_datastruct<scalar_type> dyn_share;
     dyn_share.valid = true;
     dyn_share.converge = true;

@@ -1239,7 +1239,7 @@ void MappingNode::compute_ram_usage() {
   vm_usage = vsize / 1024.0;
   resident_set = rss * page_size_kb;
 
-  analytics_msg_.ram_usage = resident_set / 1000.0;
+  analytics_msg_.ram_usage = round(resident_set / 1000.0);
 }
 
 void MappingNode::compute_cpu_usage() {
@@ -1261,7 +1261,7 @@ void MappingNode::compute_cpu_usage() {
   lastSysCPU = timeSample.tms_stime;
   lastUserCPU = timeSample.tms_utime;
 
-  analytics_msg_.cpu_usage = cpu_percent;
+  analytics_msg_.cpu_usage = round(cpu_percent);
 }
 
 // Main mapping loop
@@ -1298,7 +1298,8 @@ void MappingNode::timer_callback() {
 
     if (valid_map_pts > min_scan_size) {
       ekfom_iter_cnt = 0;
-      imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_);
+      imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
+                                         0.5 / lidar_params.rate);
     }
 
     t3 = omp_get_wtime();
@@ -1327,7 +1328,7 @@ void MappingNode::timer_callback() {
     compute_ram_usage();
     compute_cpu_usage();
 
-    analytics_msg_.run_time = t4 - start_time;
+    analytics_msg_.run_time = round(t4 - start_time);
 
     analytics_msg_.imu_time = imu_time;
     analytics_msg_.state_time = state_time;

@@ -3,6 +3,7 @@ int64 lid_freq
 int64 odom_freq
 int64[] cams_freq
 
+float64 map_res
 int64 map_size
 int64 oct_num
 int64 new_idxs
@@ -10,14 +11,13 @@ int64 upd_idxs
 int64 start_bin
 int64 scan_size
 int64 buffer_size
-float64 map_res
 
+float64 res_mean
 int64 num_planes
 int64 num_lines
 int64 num_balls
 int64 num_feats
 int64 num_reject
-float64 res_mean
 int64 kf_iterations
 
 float64 wt_mean
@@ -44,9 +44,9 @@ float64 state_max
 float64 map_max
 float64 total_max
 
-float64 run_time
 float64 lid_offset
 float64 imu_offset
 
-float64 ram_usage
-float64 cpu_usage
+int64 run_time
+int64 ram_usage
+int64 cpu_usage

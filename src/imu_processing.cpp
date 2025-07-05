@@ -329,7 +329,8 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
 // Update the kalman filter state with the latest lidar point cloud tensor
 // registration and recompute newer imu states
 void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
-                                       rclcpp::Time &lidar_end_time) {
+                                       rclcpp::Time &lidar_end_time,
+                                       double max_solve_time) {
   int match_idx;
   double solve_time;
   IkfomSPtr kf(new Ikfom());
@@ -340,7 +341,7 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
 
   kf->change_x(kf_state.state);
   kf->change_P(kf_state.cov);
-  kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, 0.5 / params_.rate);
+  kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, max_solve_time);
 
   imu_mutex_.lock();
 
