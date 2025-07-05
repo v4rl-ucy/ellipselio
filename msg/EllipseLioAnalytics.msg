@@ -12,6 +12,9 @@ int64 scan_size
 int64 buffer_size
 float64 map_res
 
+int64 num_planes
+int64 num_lines
+int64 num_balls
 int64 num_feats
 int64 num_reject
 float64 res_mean
@@ -44,3 +47,6 @@ float64 total_max
 float64 run_time
 float64 lid_offset
 float64 imu_offset
+
+float64 ram_usage
+float64 cpu_usage

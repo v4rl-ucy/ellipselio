@@ -340,7 +340,7 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
 
   kf->change_x(kf_state.state);
   kf->change_P(kf_state.cov);
-  kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, solve_time);
+  kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, 0.5 / params_.rate);
 
   imu_mutex_.lock();
 

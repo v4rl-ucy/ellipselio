@@ -8,6 +8,7 @@
 #include <omp.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <project_ellipse.h>
+#include <sys/times.h>
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <Eigen/Core>
@@ -61,6 +62,9 @@ class MappingNode : public rclcpp::Node {
   void init_cam_process();
   void map_incremental();
 
+  void compute_ram_usage();
+  void compute_cpu_usage();
+
   void sync_raw_cloud_with_imu();
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
@@ -88,6 +92,9 @@ class MappingNode : public rclcpp::Node {
   double map_resolution;
   int start_bin, mean_bin;
 
+  int numProcessors;
+  clock_t lastCPU, lastSysCPU, lastUserCPU;
+
   int scan_num_cnt = 0;
   long scan_pts_cnt = 0;
   int min_scan_size = MIN_PROC_POINTS;
@@ -95,7 +102,6 @@ class MappingNode : public rclcpp::Node {
 
   int ekfom_iter_cnt;
   std::atomic<int> valid_map_pts;
-  double max_ekfom_time, ekfom_iter_time;
 
   Eigen::ArrayXi n_means;
   Eigen::ArrayXXi n_cnts;

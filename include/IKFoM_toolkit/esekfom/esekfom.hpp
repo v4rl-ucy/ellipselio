@@ -1751,7 +1751,7 @@ class esekf {
     }
   }
 
-  void update_iterated_dyn_share_modified_R(double R, double &solve_time) {
+  void update_iterated_dyn_share_modified_R(double R, double max_solve_time) {
     dyn_share_datastruct<scalar_type> dyn_share;
     dyn_share.valid = true;
     dyn_share.converge = true;
@@ -1762,9 +1762,13 @@ class esekf {
 
     Matrix<scalar_type, n, 1> K_h;
     Matrix<scalar_type, n, n> K_x;
-
     vectorized_state dx_new = vectorized_state::Zero();
+
+    double solve_time = 0;
     for (int i = -1; i < maximum_iter; i++) {
+      if (solve_time > 0.5 * max_solve_time) {
+        break;
+      }
       dyn_share.valid = true;
       h_dyn_share(x_, dyn_share);
 

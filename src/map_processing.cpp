@@ -624,13 +624,6 @@ void MappingNode::tensor_registration(
   hit_mean.setZero();
   feats_num.setZero();
 
-  if (ekfom_iter_cnt > 0) {
-    if (ekfom_iter_time > 0.5 * max_ekfom_time) {
-      ekfom_data.valid = false;
-      return;
-    }
-  }
-
   t0 = omp_get_wtime();
 
 #pragma omp parallel for
@@ -828,9 +821,10 @@ void MappingNode::tensor_registration(
   reject_cnt = scan_cloud->size() - feat_tot;
 
   ekfom_iter_cnt++;
-  t1 = omp_get_wtime();
-  ekfom_iter_time += t1 - t0;
 
+  analytics_msg_.num_planes = cnts[0];
+  analytics_msg_.num_lines = cnts[1];
+  analytics_msg_.num_balls = cnts[2];
   analytics_msg_.wt_std = wt_std;
   analytics_msg_.wt_min = wt_min;
   analytics_msg_.wt_max = wt_max;
@@ -954,7 +948,6 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(fmax(map_resolution, MIN_MAP_RES));
 
-  max_ekfom_time = 0.5 * (1.0 / lidar_params.rate);
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_c = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
@@ -1022,7 +1015,7 @@ MappingNode::MappingNode(
   kf_->init_dyn_share(get_f, df_dx, df_dw,
                       std::bind(&MappingNode::tensor_registration, this,
                                 std::placeholders::_1, std::placeholders::_2),
-                      kf_iterations, epsi);
+                      10, epsi);
 
   last_pub_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
@@ -1056,6 +1049,20 @@ MappingNode::MappingNode(
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&MappingNode::publish_map, this), pub_map_callback_group_);
+
+  char line[128];
+  struct tms timeSample;
+  lastCPU = times(&timeSample);
+  lastSysCPU = timeSample.tms_stime;
+  lastUserCPU = timeSample.tms_utime;
+
+  FILE *file;
+  file = fopen("/proc/cpuinfo", "r");
+  numProcessors = 0;
+  while (fgets(line, 128, file) != nullptr) {
+    if (strncmp(line, "processor", 9) == 0) numProcessors++;
+  }
+  fclose(file);
 
   start_time = omp_get_wtime();
   RCLCPP_INFO(this->get_logger(), "Node init finished.");
@@ -1213,6 +1220,50 @@ void MappingNode::sync_raw_cloud_with_imu() {
   analytics_msg_.lid_offset = lid_process->lidar_time_offset_.seconds();
 }
 
+void MappingNode::compute_ram_usage() {
+  double vm_usage = 0.0;
+  double resident_set = 0.0;
+  std::ifstream stat_stream("/proc/self/stat", std::ios_base::in);
+  std::string pid, comm, state, ppid, pgrp, session, tty_nr;
+  std::string tpgid, flags, minflt, cminflt, majflt, cmajflt;
+  std::string utime, stime, cutime, cstime, priority, nice;
+  std::string num_threads, itrealvalue, starttime;
+  unsigned long vsize;
+  long rss;
+  stat_stream >> pid >> comm >> state >> ppid >> pgrp >> session >> tty_nr >>
+      tpgid >> flags >> minflt >> cminflt >> majflt >> cmajflt >> utime >>
+      stime >> cutime >> cstime >> priority >> nice >> num_threads >>
+      itrealvalue >> starttime >> vsize >> rss;
+  stat_stream.close();
+  long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024;
+  vm_usage = vsize / 1024.0;
+  resident_set = rss * page_size_kb;
+
+  analytics_msg_.ram_usage = resident_set / 1000.0;
+}
+
+void MappingNode::compute_cpu_usage() {
+  struct tms timeSample;
+  clock_t now;
+  double cpu_percent;
+  now = times(&timeSample);
+  if (now <= lastCPU || timeSample.tms_stime < lastSysCPU ||
+      timeSample.tms_utime < lastUserCPU) {
+    cpu_percent = -1.0;
+  } else {
+    cpu_percent = (timeSample.tms_stime - lastSysCPU) +
+                  (timeSample.tms_utime - lastUserCPU);
+    cpu_percent /= (now - lastCPU);
+    cpu_percent /= numProcessors;
+    cpu_percent *= 100.;
+  }
+  lastCPU = now;
+  lastSysCPU = timeSample.tms_stime;
+  lastUserCPU = timeSample.tms_utime;
+
+  analytics_msg_.cpu_usage = cpu_percent;
+}
+
 // Main mapping loop
 void MappingNode::timer_callback() {
   if (!initialized) {
@@ -1247,7 +1298,6 @@ void MappingNode::timer_callback() {
 
     if (valid_map_pts > min_scan_size) {
       ekfom_iter_cnt = 0;
-      ekfom_iter_time = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_);
     }
 
@@ -1273,6 +1323,9 @@ void MappingNode::timer_callback() {
     mean_state_time += state_time;
     mean_map_time += map_time;
     mean_total_time += total_time;
+
+    compute_ram_usage();
+    compute_cpu_usage();
 
     analytics_msg_.run_time = t4 - start_time;
 
