@@ -691,7 +691,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, fmin(mean_bin, 10.0) / 10.0);
+    time_score = pow(time_score, fmin(start_bin, 10) / 10.0);
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -756,7 +756,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz;
-    float std_p, std_e, hit_bin;
+    float std_p, std_e, bin_filter, pts_filter, hit_bin;
 
     if (!cnts(i)) continue;
 
@@ -770,9 +770,12 @@ void MappingNode::tensor_registration(
     if (stds(i + 3) && stds(i + 6)) {
       hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
 
-      hit_bin = fmax(fmin(mean_bin, 10) / 3.0, 1.0);
-      std_p = stds(i + 3) * hit_mean(i);
-      std_e = stds(i + 6) * hit_mean(i);
+      bin_filter = fmax(fmin(start_bin, 10) / 3.0, 1.0);
+      pts_filter = fmax(fmin(feat_tot, 4e3) / 1e3, 1.0);
+      hit_bin = fmin(bin_filter, pts_filter);
+
+      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / hit_bin);
+      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / hit_bin);
 
       ekfom_data_v.col(i).head(cnts(i)) =
           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
