@@ -1023,7 +1023,8 @@ MappingNode::MappingNode(
         "Lidar to IMU rotation is not a valid quaternion or rotation matrix");
   }
 
-  double epsi[23] = {0.001};
+  double epsi[23];
+  std::fill_n(epsi, 23, 0.001);
   kf_->init_dyn_share(get_f, df_dx, df_dw,
                       std::bind(&MappingNode::tensor_registration, this,
                                 std::placeholders::_1, std::placeholders::_2),
