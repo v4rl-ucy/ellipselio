@@ -44,8 +44,9 @@ bool MappingNode::sync_packages() {
                              raw_cloud_bins, start_bin, mean_bin);
 
   scan_num_cnt++;
-  scan_pts_cnt += raw_cloud->size();
-  min_scan_size = fmax(MIN_PROC_POINTS, 0.25 * scan_pts_cnt / scan_num_cnt);
+  scan_pts_cnt += fmax(MIN_PROC_POINTS, 0.25 * raw_cloud->size());
+  min_scan_size = fmin(scan_pts_cnt / scan_num_cnt, raw_cloud->size());
+  min_scan_size = fmax(min_scan_size, MIN_PROC_POINTS);
 
   sync_raw_cloud_with_imu();
   if (scan_cloud->empty()) {
@@ -844,6 +845,7 @@ void MappingNode::tensor_registration(
   analytics_msg_.rng_max = rng_max;
   analytics_msg_.rng_mean = rng_mean;
   analytics_msg_.res_mean = res_mean;
+  analytics_msg_.mean_bin = mean_bin;
   analytics_msg_.start_bin = start_bin;
   analytics_msg_.num_feats = feat_tot;
   analytics_msg_.num_reject = reject_cnt;
@@ -1306,7 +1308,7 @@ void MappingNode::timer_callback() {
 
     t2 = omp_get_wtime();
 
-    if (valid_map_pts > min_scan_size) {
+    if (valid_map_pts > mean_bin * 1e3) {
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);
