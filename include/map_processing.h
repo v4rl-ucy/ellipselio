@@ -85,7 +85,7 @@ class MappingNode : public rclcpp::Node {
          max_map_time = 0, max_total_time = 0, mean_imu_time = 0,
          mean_state_time = 0, mean_map_time = 0, mean_total_time = 0;
 
-  int kf_iterations, map_bucket_size, mean_neighbours = 0, pub_map_n_secs;
+  int pub_map_n_secs;
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   double start_time;
@@ -100,7 +100,7 @@ class MappingNode : public rclcpp::Node {
   int scan_num_cnt = 0;
   long scan_pts_cnt = 0;
   int min_scan_size = MIN_PROC_POINTS;
-  bool initialized = false, can_publish = false;
+  bool initialized = false;
 
   int ekfom_iter_cnt;
   std::atomic<int> valid_map_pts;

@@ -63,7 +63,7 @@ bool MappingNode::sync_packages() {
   sync_raw_cloud_with_imu();
   if (scan_cloud->empty()) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), clk, 1000,
-                         "Insufficient points, skipping scan");
+                         "Insufficient points, waiting for more");
     return false;
   }
 
@@ -191,8 +191,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     lid_process->max_neighbours_[i] = fmin(2 * n_means(i), MAX_NEIGHBOURS);
     lid_process->cnt_neighbours_[i] += n_bins_sum;
   }
-
-  mean_neighbours = floor(n_means.sum() / n_means.count());
 
 #pragma omp parallel for
   for (int i = 0; i < added_idxs.size(); i++) {
@@ -895,7 +893,6 @@ MappingNode::MappingNode(
       scan_cloud_pub(new EllipseLioPointCloud()),
       harmonics(new EllipsoidHarmonics()),
       kf_(new Ikfom()) {
-  this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
   this->declare_parameter<double>("mapping.map_resolution", 0.1);
 
@@ -932,7 +929,6 @@ MappingNode::MappingNode(
   this->declare_parameter<vector<double>>("cameras.r_cam_lidars",
                                           vector<double>());
 
-  this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);
   this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs, 1);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution, 0.1);
 
