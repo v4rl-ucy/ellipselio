@@ -605,12 +605,14 @@ void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   double t0, t1, res_mean;
   float wt_min, wt_max, wt_mean, wt_std;
-  int feat_tot, plane_tot, line_tot, pt_tot, reject_cnt;
+  int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
-  V3F hit_mean;
+  V3F hit_mean, hit_max;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
+
+  std::atomic<int> matched_idxs = 0;
   std::vector<std::atomic<int>> prim_cnts(3);
 
   prim_cnts[0] = 0;
@@ -622,113 +624,124 @@ void MappingNode::tensor_registration(
   stds.setZero();
   cnts.setZero();
   means.setZero();
+  hit_max.setZero();
   hit_mean.setZero();
   feats_num.setZero();
 
   t0 = omp_get_wtime();
 
+  while (!feat_tot) {
 #pragma omp parallel for
-  for (int i = 0; i < scan_cloud->size(); i++) {
-    Eigen::VectorXd h_x_vec(6);
-    std::vector<int> N_idxs, N_p_idxs;
-    std::vector<float> N_dst, N_p_dst;
-    rclcpp::Time map_pt_time, scan_pt_time;
-    int sali_idx, map_i, feat_num, prim_num;
-    float residual, prim_score, time_score, ellipse_score, total_score;
+    for (int i = 0; i < scan_cloud->size(); i++) {
+      Eigen::VectorXd h_x_vec(6);
+      std::vector<int> N_idxs, N_p_idxs;
+      std::vector<float> N_dst, N_p_dst;
+      rclcpp::Time map_pt_time, scan_pt_time;
+      int sali_idx, map_i, feat_num, prim_num;
+      float residual, prim_score, time_score, ellipse_score, total_score;
 
-    M3D P_skew;
-    V3D p_lidar, p_imu, a;
-    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
+      M3D P_skew;
+      V3D p_lidar, p_imu, a;
+      V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
 
-    const EllipseLioPoint &pt = scan_cloud->points[i];
+      const EllipseLioPoint &pt = scan_cloud->points[i];
 
-    p_lidar = pt.getVector3fMap().cast<double>();
-    p_imu = s.offset_R_L_I * p_lidar + s.offset_T_L_I;
-    p_world = (s.rot * p_imu + s.pos).cast<float>();
+      p_lidar = pt.getVector3fMap().cast<double>();
+      p_imu = s.offset_R_L_I * p_lidar + s.offset_T_L_I;
+      p_world = (s.rot * p_imu + s.pos).cast<float>();
 
-    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
-    const float &search_rad = lid_process->search_radii_[scan_bin_idx];
+      const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
+      const float &search_rad = lid_process->search_radii_[scan_bin_idx];
 
-    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
+      ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
 
-    if (N_idxs.size() == 0) continue;
-    if (!filters[N_idxs[0]][1]) continue;
-    if (!valid_reg[N_idxs[0]]) continue;
+      if (N_idxs.size() == 0) continue;
+      map_i = N_idxs[0];
 
-    map_i = N_idxs[0];
-    map_pt_time =
-        rclcpp::Time(map_cloud->points[map_i].time_secs,
-                     map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
-    scan_pt_time = rclcpp::Time(scan_cloud->points[i].time_secs,
-                                scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
+      if (!filters[map_i][1]) continue;
+      scan_reg_idxs[matched_idxs++] = map_i;
 
-    sali_vals = salivalues[map_i] / salivalues[map_i].sum();
+      if (!valid_reg[map_i]) continue;
 
-    // Point to plane
-    scores(0) = sali_vals(0);
-    //  Point to line
-    scores(1) = sali_vals(1);
-    //  Point to point
-    scores(2) = sali_vals(2);
-    scores /= scores.sum();
+      map_pt_time =
+          rclcpp::Time(map_cloud->points[map_i].time_secs,
+                       map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
+      scan_pt_time =
+          rclcpp::Time(scan_cloud->points[i].time_secs,
+                       scan_cloud->points[i].time_nsecs, RCL_ROS_TIME);
 
-    n_world = map_cloud->points[map_i].getVector3fMap();
-    q = p_world - n_world;
+      sali_vals = salivalues[map_i] / salivalues[map_i].sum();
 
-    // Point to plane
-    q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
-    p_dash = scores(0) * (p_world - q_dash);
-    // Point to line
-    q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
-    p_dash += scores(1) * (n_world + q_dash);
-    // Point to point
-    p_dash += scores(2) * n_world;
+      // Point to plane
+      scores(0) = sali_vals(0);
+      //  Point to line
+      scores(1) = sali_vals(1);
+      //  Point to point
+      scores(2) = sali_vals(2);
+      scores /= scores.sum();
 
-    norm_vec = p_world - p_dash;
-    residual = norm_vec.norm();
-    norm_vec.normalize();
+      n_world = map_cloud->points[map_i].getVector3fMap();
+      q = p_world - n_world;
 
-    q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
+      // Point to plane
+      q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
+      p_dash = scores(0) * (p_world - q_dash);
+      // Point to line
+      q_dash = q.dot(eigenvectors[map_i].col(0)) * eigenvectors[map_i].col(0);
+      p_dash += scores(1) * (n_world + q_dash);
+      // Point to point
+      p_dash += scores(2) * n_world;
 
-    prim_score = 1 - scores.maxCoeff();
-    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, fmin(mean_bin, 10.0) / 10.0);
-    ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
+      norm_vec = p_world - p_dash;
+      residual = norm_vec.norm();
+      norm_vec.normalize();
 
-    prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
-    time_score = fmin(fmax(time_score, 1e-3), 1.0);
-    ellipse_score = fmin(fmax(ellipse_score, 1e-3), 1.0);
+      q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    scores(0) = time_score;
-    scores(1) = prim_score;
-    scores(2) = ellipse_score;
-    scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
-    scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
-    total_score = 1.0 / fmin(scores.sum(), 1.0);
+      prim_score = 1 - scores.maxCoeff();
+      time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
+      time_score = pow(time_score, fmin(mean_bin, 10.0) / 10.0);
+      ellipse_score =
+          q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
-    P_skew << SKEW_SYM_MATRIX(p_imu);
-    a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
-    h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
+      prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
+      time_score = fmin(fmax(time_score, 1e-3), 1.0);
+      ellipse_score = fmin(fmax(ellipse_score, 1e-3), 1.0);
 
-    prim_num = ++prim_cnts[saliency_idxs[map_i]];
-    ekfom_data_i(prim_num - 1, saliency_idxs[map_i]) = map_i;
-    ekfom_data_c(prim_num - 1, saliency_idxs[map_i]) = count_reg[map_i];
-    ekfom_data_w(prim_num - 1, saliency_idxs[map_i]) = total_score;
-    ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 3) = prim_score;
-    ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 6) = ellipse_score;
+      scores(0) = time_score;
+      scores(1) = prim_score;
+      scores(2) = ellipse_score;
+      scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
+      scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
+      total_score = 1.0 / fmin(scores.sum(), 1.0);
 
-    ekfom_data_h_v[saliency_idxs[map_i]](prim_num - 1) = -residual;
-    ekfom_data_h_x_v[saliency_idxs[map_i]].row(prim_num - 1) = h_x_vec;
-  }
+      P_skew << SKEW_SYM_MATRIX(p_imu);
+      a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
+      h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
-  cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
-  feat_tot = cnts.sum();
-  feats_num = cnts;
+      prim_num = ++prim_cnts[saliency_idxs[map_i]];
+      ekfom_data_i(prim_num - 1, saliency_idxs[map_i]) = map_i;
+      ekfom_data_c(prim_num - 1, saliency_idxs[map_i]) = count_reg[map_i];
+      ekfom_data_w(prim_num - 1, saliency_idxs[map_i]) = total_score;
+      ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 3) = prim_score;
+      ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 6) = ellipse_score;
 
-  if (!feat_tot) {
-    RCLCPP_ERROR_STREAM(this->get_logger(), "All scan points rejected!");
-    ekfom_data.valid = false;
-    return;
+      ekfom_data_h_v[saliency_idxs[map_i]](prim_num - 1) = -residual;
+      ekfom_data_h_x_v[saliency_idxs[map_i]].row(prim_num - 1) = h_x_vec;
+    }
+
+    cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
+    feat_tot = cnts.sum();
+
+    if (!feat_tot) {
+      RCLCPP_ERROR_STREAM(this->get_logger(),
+                          "All scan points rejected, resetting validity");
+
+#pragma omp parallel for
+      for (int i = 0; i < matched_idxs; i++) {
+        valid_reg[scan_reg_idxs[i]] = 1;
+      }
+    }
   }
 
 #pragma omp parallel for
@@ -756,8 +769,8 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
-    int st, sz;
-    float std_p, std_e, bin_filter, pts_filter, hit_bin;
+    int st, sz, scale;
+    float std_p, std_e;
 
     if (!cnts(i)) continue;
 
@@ -770,19 +783,27 @@ void MappingNode::tensor_registration(
 
     if (stds(i + 3) && stds(i + 6)) {
       hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
+      hit_max(i) = ekfom_data_c.col(i).head(cnts(i)).maxCoeff();
 
-      bin_filter = fmax(fmin(mean_bin, 10.0) / 3.0, 1.0);
-      pts_filter = fmax(fmin(feat_tot, 4e3) / 1e3, 1.0);
-      hit_bin = fmin(bin_filter, pts_filter);
+      std_p = stds(i + 3) * pow(hit_mean(i), 3.0 * hit_mean(i) / hit_max(i));
+      std_e = stds(i + 6) * pow(hit_mean(i), 3.0 * hit_mean(i) / hit_max(i));
 
-      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / hit_bin);
-      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / hit_bin);
+      scale = 1;
+      while (!feats_num(i)) {
+        ekfom_data_v.col(i).head(cnts(i)) =
+            (ekfom_data_w.col(i + 3).head(cnts(i)) <
+                 means(i + 3) + (scale * std_p) &&
+             ekfom_data_w.col(i + 6).head(cnts(i)) <
+                 means(i + 6) + (scale * std_e))
+                .cast<double>();
+        feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
 
-      ekfom_data_v.col(i).head(cnts(i)) =
-          (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
-           ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
-              .cast<double>();
-      feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
+        if (scale > 1) {
+          RCLCPP_ERROR_STREAM(this->get_logger(),
+                              "All scan points filtered, increasing tolerance");
+        }
+        scale *= 2;
+      }
       ekfom_data_w.col(i).head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
       ekfom_data_h_v[i].head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
 
@@ -794,6 +815,7 @@ void MappingNode::tensor_registration(
         }
         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
       }
+      analytics_msg_.hit_max = round(hit_max.mean());
       analytics_msg_.hit_mean = round(hit_mean.mean());
     }
 
@@ -825,12 +847,6 @@ void MappingNode::tensor_registration(
   feat_tot = feats_num.sum();
   res_mean /= feat_tot;
   reject_cnt = scan_cloud->size() - feat_tot;
-
-  if (!feat_tot) {
-    RCLCPP_ERROR_STREAM(this->get_logger(), "All scan points filtered!");
-    ekfom_data.valid = false;
-    return;
-  }
 
   ekfom_iter_cnt++;
 
@@ -960,6 +976,7 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(fmax(map_resolution, MIN_MAP_RES));
 
+  scan_reg_idxs = Eigen::ArrayXi(MAX_PROC_POINTS);
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_c = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);

@@ -21,6 +21,7 @@ int64 num_feats
 int64 num_reject
 int64 kf_iterations
 
+int64 hit_max
 int64 hit_mean
 float64 wt_mean
 float64 wt_std
