@@ -42,6 +42,18 @@ bool MappingNode::sync_packages() {
 
   lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
                              raw_cloud_bins, start_bin, mean_bin);
+  if (valid_map_pts > mean_bin * MIN_PROC_POINTS) {
+    if (mean_bin < start_bin) {
+      mean_bin_cnt++;
+    } else {
+      start_bin_cnt++;
+    }
+    if (mean_bin_cnt > start_bin_cnt) {
+      use_map_res = true;
+    } else {
+      use_map_res = false;
+    }
+  }
 
   scan_num_cnt++;
   scan_pts_cnt += fmax(MIN_PROC_POINTS, 0.25 * raw_cloud->size());
@@ -82,7 +94,8 @@ void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
   const int &bin_idx = map_cloud->points[i].bin_idx;
-  const float &search_rad = lid_process->search_radii_[bin_idx];
+  float search_rad = lid_process->search_radii_[bin_idx];
+  if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
   float d_ij = (p_i - p_j).norm();
   float c_ij = std::exp(-std::pow(d_ij, 2) / search_rad);
   V3F r_ij = (p_i - p_j).normalized();
@@ -105,6 +118,8 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   eig_val = eig_solver.eigenvalues().cwiseAbs();
 
   const int &bin_idx = map_cloud->points[i].bin_idx;
+  float search_rad = lid_process->search_radii_[bin_idx];
+  if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
   if (first_pass) {
     tensor_i2 =
@@ -123,9 +138,9 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
-    eigenvalues[i] *= lid_process->search_radii_[bin_idx];
+    eigenvalues[i] *= search_rad;
     eigenvectors[i] = eig_vec;
-    map_cloud->points[i].intensity = (saliency_idxs[i] + 1) * 85;
+    map_cloud->points[i].prim_type = (saliency_idxs[i] + 1) * 85;
   }
 }
 
@@ -144,13 +159,14 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     map_i = added_idxs[i];
     valid_reg[map_i] = 1;
     updated_pt[map_i] = 0;
-    map_cloud->points[map_i].intensity = 0;
+    map_cloud->points[map_i].prim_type = 0;
     colors[map_i] =
         map_cloud->points[map_i].getRGBVector3i().cast<float>() / 255.0f;
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
-    const float &search_rad = lid_process->search_radii_[bin_idx];
+    float search_rad = lid_process->search_radii_[bin_idx];
+    if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
                             bucket_size);
@@ -203,7 +219,9 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
       if (map_j >= old_map_size) continue;
 
       const int &bin_idx_j = map_cloud->points[map_j].bin_idx;
-      const float &search_rad_j = lid_process->search_radii_[bin_idx_j];
+      float search_rad_j = lid_process->search_radii_[bin_idx_j];
+      if (use_map_res) search_rad_j = fmin(search_rad_j, map_search_rad);
+
       EllipseLioPoint &pt_i = map_cloud->points[map_i];
       EllipseLioPoint &pt_j = map_cloud->points[map_j];
       float d_ij = (pt_i.getVector3fMap() - pt_j.getVector3fMap()).norm();
@@ -391,7 +409,7 @@ void MappingNode::map_incremental() {
   old_map_size = map_cloud->size();
 
   float res = lid_process->min_scan_res_;
-  if (mean_bin < start_bin) res = map_resolution;
+  if (use_map_res) res = map_resolution;
   analytics_msg_.map_res = res;
 
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
@@ -521,7 +539,6 @@ void MappingNode::publish_markers() {
 
     marker.id = map_idx;
     marker.frame_locked = true;
-    marker.ns = "map_primitives";
     marker.lifetime = rclcpp::Duration(0, 0);
     marker.header.frame_id = "odom_ellipselio";
     marker.header.stamp = kf_state_pub_.time;
@@ -545,6 +562,7 @@ void MappingNode::publish_markers() {
 
     switch (saliency_idxs[map_idx]) {
       case 0:
+        marker.ns = "plane";
         marker.type = visualization_msgs::msg::Marker::SPHERE;
         marker.scale.x = 2 * eigenvalues[map_idx](0);
         marker.scale.y = 2 * eigenvalues[map_idx](1);
@@ -552,6 +570,7 @@ void MappingNode::publish_markers() {
         marker.color.r = 1.0;
         break;
       case 1:
+        marker.ns = "line";
         marker.type = visualization_msgs::msg::Marker::SPHERE;
         marker.scale.x = 2 * eigenvalues[map_idx](0);
         marker.scale.y = 2 * eigenvalues[map_idx](1);
@@ -559,6 +578,7 @@ void MappingNode::publish_markers() {
         marker.color.g = 1.0;
         break;
       case 2:
+        marker.ns = "ball";
         marker.type = visualization_msgs::msg::Marker::SPHERE;
         marker.scale.x = 2 * eigenvalues[map_idx](0);
         marker.scale.y = 2 * eigenvalues[map_idx](1);
@@ -650,7 +670,8 @@ void MappingNode::tensor_registration(
       p_world = (s.rot * p_imu + s.pos).cast<float>();
 
       const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
-      const float &search_rad = lid_process->search_radii_[scan_bin_idx];
+      float search_rad = lid_process->search_radii_[scan_bin_idx];
+      if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
       ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
 
@@ -957,10 +978,13 @@ MappingNode::MappingNode(
   filter_cloud->reserve(MAX_PROC_POINTS);
   buffer_cloud->reserve(MAX_PROC_POINTS);
 
+  map_resolution = fmax(map_resolution, MIN_MAP_RES);
+  map_search_rad = 10 * map_resolution;
+
   ioctree.set_bucket_size(1);
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_PROC_POINTS);
-  ioctree.set_min_extent(fmax(map_resolution, MIN_MAP_RES));
+  ioctree.set_min_extent(map_resolution);
 
   scan_reg_idxs = Eigen::ArrayXi(MAX_PROC_POINTS);
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
@@ -1310,7 +1334,7 @@ void MappingNode::timer_callback() {
 
     t2 = omp_get_wtime();
 
-    if (valid_map_pts > mean_bin * 1e3) {
+    if (valid_map_pts > mean_bin * MIN_PROC_POINTS) {
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);

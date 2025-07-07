@@ -89,8 +89,10 @@ class MappingNode : public rclcpp::Node {
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   double start_time;
-  double map_resolution;
+  bool use_map_res = false;
   int start_bin, mean_bin;
+  int start_bin_cnt = 0, mean_bin_cnt = 0;
+  double map_resolution, map_search_rad;
 
   int numProcessors;
   clock_t lastCPU, lastSysCPU, lastUserCPU;
