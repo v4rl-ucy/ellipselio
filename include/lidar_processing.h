@@ -18,10 +18,6 @@ struct LidarParams {
   int scan_lines;
   double min_range;
   double max_range;
-  double bin_size;
-  double map_resolution;
-  double map_search_radius;
-  double downsample_factor;
   double vertical_fov;
   std::string topic;
 };

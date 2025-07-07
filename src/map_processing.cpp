@@ -877,7 +877,6 @@ MappingNode::MappingNode(
   this->declare_parameter<int>("mapping.kf_iterations", 1);
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
   this->declare_parameter<double>("mapping.map_resolution", 0.1);
-  this->declare_parameter<double>("mapping.map_search_radius", 1.0);
 
   this->declare_parameter<int>("imu.rate", 100);
   this->declare_parameter<double>("imu.gyr_noise", 0.1);
@@ -891,8 +890,6 @@ MappingNode::MappingNode(
   this->declare_parameter<int>("lidar.scan_lines", 64);
   this->declare_parameter<double>("lidar.min_range", 1.0);
   this->declare_parameter<double>("lidar.max_range", 100.0);
-  this->declare_parameter<double>("lidar.bin_size", 1.0);
-  this->declare_parameter<double>("lidar.downsample_factor", 0.01);
   this->declare_parameter<double>("lidar.vertical_fov", 64.0);
   this->declare_parameter<string>("lidar.topic", "");
 
@@ -917,8 +914,6 @@ MappingNode::MappingNode(
   this->get_parameter_or<int>("mapping.kf_iterations", kf_iterations, 1);
   this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs, 1);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution, 0.1);
-  this->get_parameter_or<double>("mapping.map_search_radius",
-                                 lidar_params.map_search_radius, 1.0);
 
   this->get_parameter_or<int>("imu.rate", imu_params.rate, 100);
   this->get_parameter_or<double>("imu.gyr_noise", imu_params.gyr_noise, 0.1);
@@ -935,9 +930,6 @@ MappingNode::MappingNode(
                                  1.0);
   this->get_parameter_or<double>("lidar.max_range", lidar_params.max_range,
                                  100.0);
-  this->get_parameter_or<double>("lidar.bin_size", lidar_params.bin_size, 1.0);
-  this->get_parameter_or<double>("lidar.downsample_factor",
-                                 lidar_params.downsample_factor, 0.01);
   this->get_parameter_or<double>("lidar.vertical_fov",
                                  lidar_params.vertical_fov, 64.0);
 
