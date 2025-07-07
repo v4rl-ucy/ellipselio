@@ -43,7 +43,7 @@ bool MappingNode::sync_packages() {
   lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
                              raw_cloud_bins, start_bin, mean_bin);
 
-  if (valid_map_pts > 0.5 * mean_bin * MIN_PROC_POINTS && !ekf_update_started) {
+  if (valid_map_pts > 0.9 * mean_bin * MIN_PROC_POINTS && !ekf_update_started) {
     ekf_update_started = true;
   }
   if (ekf_update_started) {
