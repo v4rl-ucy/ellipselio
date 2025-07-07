@@ -109,7 +109,6 @@ class MappingNode : public rclcpp::Node {
 
   Eigen::ArrayXi scan_reg_idxs;
   Eigen::ArrayXXi ekfom_data_i;
-  Eigen::ArrayXXd ekfom_data_c;
   Eigen::ArrayXXd ekfom_data_v;
   Eigen::ArrayXXd ekfom_data_w;
   Eigen::VectorXd ekfom_data_h;
@@ -136,7 +135,6 @@ class MappingNode : public rclcpp::Node {
   std::vector<std::atomic<int>> filter_bin_sizes;
 
   std::vector<int> new_neighbours_map_idx;
-  std::vector<std::atomic<int>> count_reg;
   std::vector<std::atomic<int>> updated_pt;
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;

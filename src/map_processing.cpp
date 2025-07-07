@@ -143,7 +143,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
     valid_reg[map_i] = 1;
-    count_reg[map_i] = 1;
     updated_pt[map_i] = 0;
     map_cloud->points[map_i].intensity = 0;
     colors[map_i] =
@@ -608,7 +607,7 @@ void MappingNode::tensor_registration(
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
-  V3F hit_mean, hit_max;
+  V3F hit_filter;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9);
 
@@ -624,13 +623,13 @@ void MappingNode::tensor_registration(
   stds.setZero();
   cnts.setZero();
   means.setZero();
-  hit_max.setZero();
-  hit_mean.setZero();
+  hit_filter.setZero();
   feats_num.setZero();
 
   t0 = omp_get_wtime();
 
   while (!feat_tot) {
+    matched_idxs = 0;
 #pragma omp parallel for
     for (int i = 0; i < scan_cloud->size(); i++) {
       Eigen::VectorXd h_x_vec(6);
@@ -720,7 +719,6 @@ void MappingNode::tensor_registration(
 
       prim_num = ++prim_cnts[saliency_idxs[map_i]];
       ekfom_data_i(prim_num - 1, saliency_idxs[map_i]) = map_i;
-      ekfom_data_c(prim_num - 1, saliency_idxs[map_i]) = count_reg[map_i];
       ekfom_data_w(prim_num - 1, saliency_idxs[map_i]) = total_score;
       ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 3) = prim_score;
       ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 6) = ellipse_score;
@@ -769,7 +767,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz, scale;
-    float std_p, std_e, hit_filter;
+    float std_p, std_e;
 
     if (!cnts(i)) continue;
 
@@ -780,17 +778,13 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     }
 
-    hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
-    hit_max(i) = ekfom_data_c.col(i).head(cnts(i)).maxCoeff();
-    analytics_msg_.hit_max = round(hit_max.mean());
-    analytics_msg_.hit_mean = round(hit_mean.mean());
-
     if (stds(i + 3) && stds(i + 6)) {
-      hit_filter = 3.0 * (hit_max(i) - hit_mean(i)) / hit_max(i);
-      hit_filter = fmax(hit_filter, 1.0);
+      hit_filter(i) = cnts(i) / (fmax(mean_bin, 1) * scan_cloud->size());
+      hit_filter(i) = fmin(hit_filter(i), 1);
+      hit_filter(i) = 1 + (3 * (1 - hit_filter(i)));
 
-      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / hit_filter);
-      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / hit_filter);
+      std_p = stds(i + 3) * hit_filter(i);
+      std_e = stds(i + 6) * hit_filter(i);
 
       scale = 1;
       while (!feats_num(i)) {
@@ -813,10 +807,6 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
       for (int j = 0; j < cnts(i); j++) {
-        if (last_reg[ekfom_data_i(j, i)] < map_counter) {
-          last_reg[ekfom_data_i(j, i)] = map_counter;
-          count_reg[ekfom_data_i(j, i)]++;
-        }
         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
       }
     } else {
@@ -869,6 +859,7 @@ void MappingNode::tensor_registration(
   analytics_msg_.num_feats = feat_tot;
   analytics_msg_.num_reject = reject_cnt;
   analytics_msg_.kf_iterations = ekfom_iter_cnt;
+  analytics_msg_.hit_filter = hit_filter.mean();
 }
 
 // Main mapping node
@@ -981,7 +972,6 @@ MappingNode::MappingNode(
 
   scan_reg_idxs = Eigen::ArrayXi(MAX_PROC_POINTS);
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
-  ekfom_data_c = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_w = Eigen::ArrayXXd(MAX_PROC_POINTS, 9);
   ekfom_data_h = Eigen::VectorXd(MAX_PROC_POINTS);
@@ -1014,7 +1004,6 @@ MappingNode::MappingNode(
   eigenvalues.reserve(MAX_MAP_POINTS);
   eigenvectors.reserve(MAX_MAP_POINTS);
 
-  count_reg = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);
   new_neighbours_size = std::vector<std::atomic<int>>(MAX_SCAN_POINTS);
