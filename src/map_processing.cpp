@@ -700,7 +700,6 @@ void MappingNode::tensor_registration(
 
       prim_score = 1 - scores.maxCoeff();
       time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-      time_score = pow(time_score, fmin(mean_bin, 10.0) / 10.0);
       ellipse_score =
           q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
@@ -770,7 +769,7 @@ void MappingNode::tensor_registration(
 #pragma omp parallel for
   for (int i = 0; i < 3; i++) {
     int st, sz, scale;
-    float std_p, std_e;
+    float std_p, std_e, hit_filter;
 
     if (!cnts(i)) continue;
 
@@ -781,12 +780,17 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     }
 
-    if (stds(i + 3) && stds(i + 6)) {
-      hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
-      hit_max(i) = ekfom_data_c.col(i).head(cnts(i)).maxCoeff();
+    hit_mean(i) = ekfom_data_c.col(i).head(cnts(i)).mean();
+    hit_max(i) = ekfom_data_c.col(i).head(cnts(i)).maxCoeff();
+    analytics_msg_.hit_max = round(hit_max.mean());
+    analytics_msg_.hit_mean = round(hit_mean.mean());
 
-      std_p = stds(i + 3) * pow(hit_mean(i), 3.0 * hit_mean(i) / hit_max(i));
-      std_e = stds(i + 6) * pow(hit_mean(i), 3.0 * hit_mean(i) / hit_max(i));
+    if (stds(i + 3) && stds(i + 6)) {
+      hit_filter = 3.0 * (hit_max(i) - hit_mean(i)) / hit_max(i);
+      hit_filter = fmax(hit_filter, 1.0);
+
+      std_p = stds(i + 3) * pow(hit_mean(i), 1.0 / hit_filter);
+      std_e = stds(i + 6) * pow(hit_mean(i), 1.0 / hit_filter);
 
       scale = 1;
       while (!feats_num(i)) {
@@ -815,8 +819,8 @@ void MappingNode::tensor_registration(
         }
         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
       }
-      analytics_msg_.hit_max = round(hit_max.mean());
-      analytics_msg_.hit_mean = round(hit_mean.mean());
+    } else {
+      feats_num(i) = cnts(i);
     }
 
     if (i == 0) {
@@ -843,7 +847,6 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
   res_mean = -ekfom_data_h.head(feat_tot).sum();
-
   feat_tot = feats_num.sum();
   res_mean /= feat_tot;
   reject_cnt = scan_cloud->size() - feat_tot;
