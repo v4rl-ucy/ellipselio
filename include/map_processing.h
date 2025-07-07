@@ -89,10 +89,11 @@ class MappingNode : public rclcpp::Node {
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   double start_time;
+  bool initialized = false;
   bool use_map_res = false;
   bool ekf_update_started = false;
+
   int start_bin, mean_bin;
-  int start_bin_cnt = 0, mean_bin_cnt = 0;
   double map_resolution, map_search_rad;
 
   int numProcessors;
@@ -101,16 +102,15 @@ class MappingNode : public rclcpp::Node {
   int scan_num_cnt = 0;
   long scan_pts_cnt = 0;
   int min_scan_size = MIN_PROC_POINTS;
-  bool initialized = false;
 
   int ekfom_iter_cnt;
   std::atomic<int> valid_map_pts;
 
+  Eigen::ArrayXf n_res;
   Eigen::ArrayXi n_means;
   Eigen::ArrayXXi n_cnts;
   Eigen::ArrayXXi n_bins;
 
-  Eigen::ArrayXi scan_reg_idxs;
   Eigen::ArrayXXi ekfom_data_i;
   Eigen::ArrayXXd ekfom_data_v;
   Eigen::ArrayXXd ekfom_data_w;

@@ -1751,12 +1751,11 @@ class esekf {
     }
   }
 
-  void update_iterated_dyn_share_modified_R(double R, double &max_solve_time) {
+  bool update_iterated_dyn_share_modified_R(double R, double &max_solve_time) {
     dyn_share_datastruct<scalar_type> dyn_share;
     dyn_share.valid = true;
     dyn_share.converge = true;
     int t = 0;
-    bool has_valid = false;
     state x_propagated = x_;
     cov P_propagated = P_;
     int dof_Measurement;
@@ -1773,7 +1772,6 @@ class esekf {
       h_dyn_share(x_, dyn_share);
 
       if (dyn_share.valid) {
-        has_valid = true;
 #ifdef USE_sparse
         spMt h_x_ = dyn_share.h_x.sparseView();
 #else
@@ -1897,12 +1895,11 @@ class esekf {
           dyn_share.converge = true;
         }
       } else {
-        std::cerr << "iEKF encountered an invalid iteration" << std::endl;
+        return false;
       }
 
       solve_time = omp_get_wtime() - solve_start;
-      if (t > 1 || i == maximum_iter - 1 || solve_time > 0.5 * max_solve_time ||
-          (!dyn_share.valid && has_valid)) {
+      if (t > 1 || i == maximum_iter - 1 || solve_time > 0.5 * max_solve_time) {
         L_ = P_;
         Matrix<scalar_type, 3, 3> res_temp_SO3;
         MTK::vect<3, scalar_type> seg_SO3;
@@ -1966,12 +1963,10 @@ class esekf {
 
         P_ =
             L_ - K_x.template block<n, 6>(0, 0) * P_.template block<6, n>(0, 0);
-        return;
-      } else if (!dyn_share.valid) {
-        std::cerr << "iEKF returned with zero valid iterations" << std::endl;
-        return;
+        return true;
       }
     }
+    return false;
   }
 
   // iterated error state EKF update modified for one specific system.

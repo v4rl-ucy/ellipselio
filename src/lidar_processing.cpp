@@ -148,6 +148,13 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     }
   }
   lidar_has_data_ = true;
+
+  if (ellipselio_pc_->size() < 1e-3 * process_pc_->size()) {
+    RCLCPP_WARN_STREAM(node_->get_logger(),
+                       "Processed pointcloud has insufficient points");
+    ClearBins();
+    lidar_has_data_ = false;
+  }
 }
 
 // Clear the point cloud bins

@@ -341,7 +341,11 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
 
   kf->change_x(kf_state.state);
   kf->change_P(kf_state.cov);
-  kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, max_solve_time);
+  if (!kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, max_solve_time)) {
+    RCLCPP_ERROR_STREAM(node_->get_logger(),
+                        "iEKF returned with zero valid iterations");
+    return;
+  }
 
   imu_mutex_.lock();
 
