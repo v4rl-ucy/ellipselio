@@ -90,6 +90,7 @@ class MappingNode : public rclcpp::Node {
 
   double start_time;
   bool use_map_res = false;
+  bool ekf_update_started = false;
   int start_bin, mean_bin;
   int start_bin_cnt = 0, mean_bin_cnt = 0;
   double map_resolution, map_search_rad;

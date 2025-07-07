@@ -42,7 +42,11 @@ bool MappingNode::sync_packages() {
 
   lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
                              raw_cloud_bins, start_bin, mean_bin);
-  if (valid_map_pts > mean_bin * MIN_PROC_POINTS) {
+
+  if (valid_map_pts > mean_bin * MIN_PROC_POINTS && !ekf_update_started) {
+    ekf_update_started = true;
+  }
+  if (ekf_update_started) {
     if (mean_bin < start_bin) {
       mean_bin_cnt++;
     } else {
@@ -1330,7 +1334,7 @@ void MappingNode::timer_callback() {
 
     t2 = omp_get_wtime();
 
-    if (valid_map_pts > mean_bin * MIN_PROC_POINTS) {
+    if (ekf_update_started) {
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);
