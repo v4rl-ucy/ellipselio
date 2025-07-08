@@ -334,6 +334,7 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
   int match_idx;
   double solve_time;
   IkfomSPtr kf(new Ikfom());
+  auto &clk = *node_->get_clock();
 
   imu_mutex_.lock();
   *kf = *kf_;
@@ -342,8 +343,8 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
   kf->change_x(kf_state.state);
   kf->change_P(kf_state.cov);
   if (!kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, max_solve_time)) {
-    RCLCPP_ERROR_STREAM(node_->get_logger(),
-                        "iEKF returned with zero valid iterations");
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), clk, 1000,
+                          "iEKF returned with zero valid iterations");
     return;
   }
 

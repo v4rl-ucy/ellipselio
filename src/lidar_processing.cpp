@@ -101,6 +101,8 @@ void LidarProcess::LidarCallback(
 
 // Process the lidar point cloud
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+  auto &clk = *node_->get_clock();
+
   switch (params_.type) {
     case LIVOX:
       PointCloudHandler<LivoxPoint>(msg);
@@ -152,8 +154,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_has_data_ = true;
 
   if (ellipselio_pc_->size() < 1e-3 * process_pc_->size()) {
-    RCLCPP_WARN_STREAM(node_->get_logger(),
-                       "Processed pointcloud has insufficient points");
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), clk, 1000,
+                          "Processed pointcloud has insufficient points");
     ClearBins();
     lidar_has_data_ = false;
   }
