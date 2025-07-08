@@ -20,7 +20,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  scan_res_ = M_PI * (params_.vertical_fov / params_.scan_lines) / 180.0;
+  scan_res_ = M_PI * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
   min_scan_res_ = fmax(floor(scan_res_ * 1000.0) / 100.0, MIN_SCAN_RES);
   max_search_rad_ = 10.0 * min_scan_res_;
   num_bins_ = ceil(params_.max_range + 1);
@@ -43,6 +43,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
   cnt_neighbours_ = std::vector<int>(num_bins_, 1);
+  scan_line_sep_ = std::vector<float>(num_bins_, scan_res_);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
   max_neighbours_ = std::vector<int>(num_bins_, MAX_NEIGHBOURS);
   search_radii_ = std::vector<float>(num_bins_, max_search_rad_);
@@ -62,6 +63,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_rad;
     octree_resolutions_[i] = octree_res;
+    scan_line_sep_[i] = (i + 1) * scan_res_;
 
     bin_pcs_[i].reserve(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);

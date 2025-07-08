@@ -47,6 +47,7 @@ class LidarProcess {
   std::vector<int> min_neighbours_;
   std::vector<int> max_neighbours_;
   std::vector<float> search_radii_;
+  std::vector<float> scan_line_sep_;
   std::vector<float> octree_resolutions_;
 
  private:

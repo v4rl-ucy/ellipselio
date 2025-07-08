@@ -3,7 +3,6 @@ int64 lid_freq
 int64 odom_freq
 int64[] cams_freq
 
-float64 map_res
 int64 map_size
 int64 oct_num
 int64 new_idxs
@@ -13,14 +12,18 @@ int64 start_bin
 int64 scan_size
 int64 buffer_size
 
+float64 map_res
+float64 line_sep
+
 float64 res_mean
+float64 hit_filter
+
 int64 num_planes
 int64 num_lines
 int64 num_balls
 int64 num_feats
 int64 num_reject
 int64 kf_iterations
-float64 hit_filter
 
 float64 wt_mean
 float64 wt_std

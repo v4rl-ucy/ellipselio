@@ -43,20 +43,15 @@ bool MappingNode::sync_packages() {
   lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
                              raw_cloud_bins, start_bin, mean_bin);
 
-  if (valid_map_pts > 0.9 * mean_bin * MIN_PROC_POINTS && !ekf_update_started) {
-    ekf_update_started = true;
+  if (mean_bin <= start_bin) {
+    n_res[scan_num_cnt % lidar_params.rate] = 1;
+  } else {
+    n_res[scan_num_cnt % lidar_params.rate] = 0;
   }
-  if (ekf_update_started) {
-    if (0.9 * mean_bin <= start_bin) {
-      n_res[scan_num_cnt % lidar_params.rate] = 1;
-    } else {
-      n_res[scan_num_cnt % lidar_params.rate] = 0;
-    }
-    if (n_res.sum() >= 0.5 * lidar_params.rate) {
-      use_map_res = true;
-    } else {
-      use_map_res = false;
-    }
+  if (n_res.sum() >= 0.5 * lidar_params.rate) {
+    use_map_res = true;
+  } else {
+    use_map_res = false;
   }
 
   scan_num_cnt++;
@@ -414,12 +409,18 @@ void MappingNode::map_incremental() {
   if (use_map_res) res = map_resolution;
   analytics_msg_.map_res = res;
 
+  const float &line_sep_mean = lid_process->scan_line_sep_[mean_bin];
+  analytics_msg_.line_sep = line_sep_mean;
+
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
     end_idx += scan_cloud_bins[i];
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
 
     const int &bucket_size = lid_process->bucket_sizes_[fmax(i, start_bin)];
+    if (10 * line_sep_mean > (poses[0] - poses[map_counter]).norm()) {
+      res = fmax(lid_process->scan_line_sep_[i], res);
+    }
 
     ioctree.set_bucket_size(bucket_size);
     ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx, res);
@@ -1288,7 +1289,7 @@ void MappingNode::timer_callback() {
     init_cam_process();
 
     n_res = Eigen::ArrayXf::Ones(lidar_params.rate);
-    n_res * 0.5;
+    n_res *= 0.5;
     n_means = Eigen::ArrayXi::Zero(lid_process->num_bins_);
     n_cnts = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
     n_bins = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
@@ -1310,7 +1311,7 @@ void MappingNode::timer_callback() {
 
     t2 = omp_get_wtime();
 
-    if (ekf_update_started) {
+    if (map_counter) {
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);
