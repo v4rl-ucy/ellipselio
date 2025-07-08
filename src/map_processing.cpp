@@ -409,8 +409,14 @@ void MappingNode::map_incremental() {
   if (use_map_res) res = map_resolution;
   analytics_msg_.map_res = res;
 
-  const float &line_sep_mean = lid_process->scan_line_sep_[mean_bin];
+  max_mean_bin = fmax(max_mean_bin, mean_bin);
+  const float pose_diff = (poses[0] - poses[map_counter]).norm();
+  const float &line_sep_mean = lid_process->scan_line_sep_[max_mean_bin];
   analytics_msg_.line_sep = line_sep_mean;
+
+  if (10 * lid_process->scan_line_sep_.back() > pose_diff) {
+    line_sep_res = false;
+  }
 
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
     end_idx += scan_cloud_bins[i];
@@ -418,7 +424,7 @@ void MappingNode::map_incremental() {
     if (end_idx > scan_cloud->size()) break;
 
     const int &bucket_size = lid_process->bucket_sizes_[fmax(i, start_bin)];
-    if (10 * line_sep_mean > (poses[0] - poses[map_counter]).norm()) {
+    if (10 * line_sep_mean > pose_diff && line_sep_res) {
       res = fmax(lid_process->scan_line_sep_[i], res);
     }
 

@@ -91,10 +91,11 @@ class MappingNode : public rclcpp::Node {
   double start_time;
   bool initialized = false;
   bool use_map_res = false;
+  bool line_sep_res = true;
   bool ekf_update_started = false;
 
-  int start_bin, mean_bin;
   double map_resolution, map_search_rad;
+  int start_bin, mean_bin, max_mean_bin = 0;
 
   int numProcessors;
   clock_t lastCPU, lastSysCPU, lastUserCPU;
