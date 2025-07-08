@@ -791,7 +791,7 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     }
 
-    if (stds(i + 3) && stds(i + 6)) {
+    if (stds(i + 3) && stds(i + 6) && !line_sep_res) {
       hit_filter(i) = 1.0 - (float(cnts(i)) / float(max_prim_cnts(i)));
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
