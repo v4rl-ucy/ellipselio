@@ -414,7 +414,7 @@ void MappingNode::map_incremental() {
   const float &line_sep_mean = lid_process->scan_line_sep_[max_mean_bin];
   analytics_msg_.line_sep = line_sep_mean;
 
-  if (10 * lid_process->scan_line_sep_.back() > pose_diff) {
+  if (10 * lid_process->scan_line_sep_.back() < pose_diff) {
     line_sep_res = false;
   }
 
@@ -751,6 +751,7 @@ void MappingNode::tensor_registration(
   }
 
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
+  max_prim_cnts = max_prim_cnts.max(cnts);
   feat_tot = cnts.sum();
 
 #pragma omp parallel for
@@ -791,9 +792,8 @@ void MappingNode::tensor_registration(
     }
 
     if (stds(i + 3) && stds(i + 6)) {
-      hit_filter(i) = cnts(i) / (fmax(mean_bin, 1) * scan_cloud->size());
-      hit_filter(i) = fmin(hit_filter(i), 1);
-      hit_filter(i) = 1 + (3 * (1 - hit_filter(i)));
+      hit_filter(i) = 1.0 - (float(cnts(i)) / float(max_prim_cnts(i)));
+      hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
       std_p = stds(i + 3) * hit_filter(i);
       std_e = stds(i + 6) * hit_filter(i);
@@ -969,6 +969,7 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
 
+  max_prim_cnts = Eigen::Array3i::Zero();
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_w = Eigen::ArrayXXd(MAX_PROC_POINTS, 9);
