@@ -631,6 +631,7 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
+  bool init_feats = false;
   double t0, t1, res_mean = 0;
   float wt_min, wt_max, wt_mean, wt_std;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
@@ -846,6 +847,9 @@ void MappingNode::tensor_registration(
   }
 
   ekfom_iter_cnt++;
+  ekfom_update_cnt++;
+  feat_tot_sum += feat_tot;
+  feat_tot_max = fmax(feat_tot_max, feat_tot);
 
   analytics_msg_.num_planes = cnts[0];
   analytics_msg_.num_lines = cnts[1];
@@ -865,7 +869,15 @@ void MappingNode::tensor_registration(
   analytics_msg_.kf_iterations = ekfom_iter_cnt;
   analytics_msg_.hit_filter = hit_filter.mean();
 
-  if (!feat_tot) ekfom_data.valid = false;
+  init_feats = feat_tot_sum / ekfom_update_cnt < 5 * MIN_EKF_FEATS;
+  init_feats |= feat_tot_max < 10 * MIN_EKF_FEATS;
+  init_feats &= !ekf_update_started;
+
+  if (feat_tot < MIN_EKF_FEATS || init_feats) {
+    ekfom_data.valid = false;
+  } else {
+    ekf_update_started = true;
+  }
 }
 
 // Main mapping node

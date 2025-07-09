@@ -344,7 +344,7 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
   kf->change_P(kf_state.cov);
   if (!kf->update_iterated_dyn_share_modified_R(LIDAR_PT_COV, max_solve_time)) {
     RCLCPP_ERROR_THROTTLE(node_->get_logger(), clk, 1000,
-                          "iEKF returned with zero valid iterations");
+                          "Insufficient matches for iEKF update");
     return;
   }
 
