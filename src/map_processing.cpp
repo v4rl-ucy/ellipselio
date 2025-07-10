@@ -4,13 +4,11 @@ namespace ellipselio {
 
 // Sync lidar, imu, and camera data
 bool MappingNode::sync_packages() {
-  double velocity;
   bool got_lidar_data;
   KfState latest_state;
   int raw_synced_size = 0;
   int buffer_synced_size = 0;
-  int diff_min_size, diff_raw_size;
-  int prev_raw_size, prev_min_scan;
+  double velocity, scan_scale;
 
   auto &clk = *this->get_clock();
   double inter_sync_time = omp_get_wtime() - last_sync_time;
@@ -48,13 +46,13 @@ bool MappingNode::sync_packages() {
   imu_process->GetKfState(latest_state);
   velocity = latest_state.state.vel.norm();
 
-  prev_raw_size = raw_cloud->size();
-  diff_min_size = fmax(min_scan_size - buffer_cloud->size(), 0);
   got_lidar_data = lid_process->GetPointCloud(
       raw_cloud, raw_start_time_, raw_end_time_, raw_cloud_bins, start_bin,
-      mean_bin, diff_min_size, velocity);
+      mean_bin, min_scan_size, velocity);
 
   if (got_lidar_data) {
+    double raw_time;
+
     if (mean_bin <= start_bin) {
       n_res[scan_num_cnt % lidar_params.rate] = 1;
     } else {
@@ -67,13 +65,14 @@ bool MappingNode::sync_packages() {
     }
     scan_num_cnt = (scan_num_cnt + 1) % lidar_params.rate;
 
-    diff_raw_size = raw_cloud->size() - prev_raw_size;
-    prev_min_scan = min_scan_size;
-    min_scan_size = 0.5 * diff_raw_size;
-    min_scan_size = fmax(min_scan_size, MIN_PROC_POINTS);
-    min_scan_size = 0.5 * (min_scan_size + prev_min_scan);
-    analytics_msg_.min_scan = min_scan_size;
+    raw_time = (raw_end_time_ - raw_start_time_).seconds();
+    raw_scan_rate = raw_cloud->size() / raw_time;
   }
+
+  scan_scale = (1.0 - fmin(0.5 * lidar_params.rate * inter_sync_time, 1.0));
+  scan_scale *= 0.1;
+  min_scan_size = fmax(scan_scale * raw_scan_rate, MIN_PROC_POINTS);
+  analytics_msg_.min_scan = min_scan_size;
 
   raw_synced_size = raw_cloud->size();
   if (!raw_cloud->empty() && imu_end_time_ < raw_end_time_) {
@@ -103,11 +102,11 @@ bool MappingNode::sync_packages() {
     buffer_synced_size = imu_time * buffer_rate;
   }
 
-  if (inter_sync_time < 1.0 / lidar_params.rate) return false;
-
   if (raw_synced_size + buffer_synced_size < min_scan_size) {
-    RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
-                                 "Insufficient synced measurements");
+    if (inter_sync_time > 1.0 / lidar_params.rate) {
+      RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
+                                   "Insufficient synced measurements");
+    }
     return false;
   }
 
@@ -678,7 +677,6 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  bool init_feats = false;
   double t0, t1, res_mean = 0;
   float wt_min, wt_max, wt_mean, wt_std;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
@@ -916,11 +914,7 @@ void MappingNode::tensor_registration(
   analytics_msg_.kf_iterations = ekfom_iter_cnt;
   analytics_msg_.hit_filter = hit_filter.mean();
 
-  init_feats = feat_tot_sum / ekfom_update_cnt < 5 * MIN_EKF_FEATS;
-  init_feats |= feat_tot_max < 10 * MIN_EKF_FEATS;
-  init_feats &= !ekf_update_started;
-
-  if (feat_tot < MIN_EKF_FEATS || init_feats) {
+  if (feat_tot < MIN_EKF_FEATS) {
     ekfom_data.valid = false;
   } else {
     ekf_update_started = true;

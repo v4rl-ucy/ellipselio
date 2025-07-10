@@ -101,6 +101,7 @@ class MappingNode : public rclcpp::Node {
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
   int scan_num_cnt = 0;
+  double raw_scan_rate = 0.0;
   int min_scan_size = MIN_PROC_POINTS;
 
   int ekfom_iter_cnt;
@@ -193,7 +194,7 @@ class MappingNode : public rclcpp::Node {
   rclcpp::Time scan_start_time_, scan_end_time_;
   rclcpp::Time buffer_start_time_, buffer_end_time_;
 
-  double imu_time_offset_, lid_time_offset_;
+  double imu_time_offset_ = 0, lid_time_offset_ = 0;
 
   CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;
