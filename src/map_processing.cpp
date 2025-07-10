@@ -81,7 +81,7 @@ bool MappingNode::sync_packages() {
   if (imu_start_time_ > scan_start_time_) {
     scan_start_time_ = imu_start_time_;
   }
-  if ((scan_end_time_ - scan_start_time_).seconds() < 0.9 * lidar_scan_time) {
+  if ((scan_end_time_ - scan_start_time_).seconds() < lidar_scan_time) {
     if (inter_sync_time > lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "Scan time too short");
