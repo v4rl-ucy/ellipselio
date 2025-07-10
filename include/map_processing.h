@@ -94,15 +94,12 @@ class MappingNode : public rclcpp::Node {
   bool use_map_res = false;
   bool line_sep_res = true;
 
+  int scan_num_cnt = 0;
   double map_resolution, map_search_rad;
   int start_bin, mean_bin, max_mean_bin = 0;
 
   int numProcessors;
   clock_t lastCPU, lastSysCPU, lastUserCPU;
-
-  int scan_num_cnt = 0;
-  double raw_scan_rate = 0.0;
-  int min_scan_size = MIN_PROC_POINTS;
 
   int ekfom_iter_cnt;
   int feat_tot_max = 0;

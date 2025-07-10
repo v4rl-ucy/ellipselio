@@ -178,17 +178,10 @@ bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
                                  rclcpp::Time &start_time,
                                  rclcpp::Time &end_time,
                                  Eigen::ArrayXi &bin_pcs_sizes, int &start_bin,
-                                 int &mean_bin, int &min_scan_size,
-                                 double &velocity) {
-  bool got_lidar_data;
+                                 int &mean_bin) {
   if (!lidar_has_data_) return false;
 
   lidar_mutex_.lock();
-  // if (ellipselio_pc_->size() < min_scan_size &&
-  //     velocity < scan_line_sep_.front()) {
-  //   got_lidar_data = false;
-  // } else {
-  got_lidar_data = true;
   mean_bin = mean_bin_;
   start_bin = start_bin_;
   if (pc->empty()) {
@@ -199,10 +192,9 @@ bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
   bin_pcs_sizes += bin_pcs_sizes_;
   ClearBins();
   lidar_has_data_ = false;
-  // }
   lidar_mutex_.unlock();
 
-  return got_lidar_data;
+  return true;
 }
 
 // Get the start and end times for the current point cloud bin

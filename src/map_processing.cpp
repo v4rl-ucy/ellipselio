@@ -11,6 +11,7 @@ bool MappingNode::sync_packages() {
   auto &clk = *this->get_clock();
   double lidar_scan_time = 1.0 / lidar_params.rate;
   double inter_sync_time = omp_get_wtime() - last_sync_time;
+  rclcpp::Duration lidar_scan_duration(0, 1e9 * lidar_scan_time);
 
   if (!last_sync_time) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), clk, 1000, "Waiting for data...");
@@ -38,12 +39,9 @@ bool MappingNode::sync_packages() {
     }
   }
 
-  imu_process->GetKfState(latest_state);
-  velocity = latest_state.state.vel.norm();
-
-  got_lidar_data = lid_process->GetPointCloud(
-      raw_cloud, raw_start_time_, raw_end_time_, raw_cloud_bins, start_bin,
-      mean_bin, min_scan_size, velocity);
+  got_lidar_data =
+      lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
+                                 raw_cloud_bins, start_bin, mean_bin);
 
   if (got_lidar_data) {
     if (mean_bin <= start_bin) {
@@ -73,6 +71,7 @@ bool MappingNode::sync_packages() {
 
   scan_start_time_ = buffer_start_time_;
   scan_end_time_ = raw_end_time_;
+
   if (buffer_cloud->empty()) {
     scan_start_time_ = raw_start_time_;
   }
@@ -82,20 +81,21 @@ bool MappingNode::sync_packages() {
   if (imu_start_time_ > scan_start_time_) {
     scan_start_time_ = imu_start_time_;
   }
-  if ((scan_end_time_ - scan_start_time_).seconds() < lidar_scan_time) {
-    if (inter_sync_time > 1.0 / lidar_params.rate) {
+  if ((scan_end_time_ - scan_start_time_).seconds() < 0.9 * lidar_scan_time) {
+    if (inter_sync_time > lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "Scan time too short");
+    } else {
+      return false;
     }
-    return false;
   }
-  if (scan_start_time_ + rclcpp::Duration(0, 1e9 * lidar_scan_time) >
-      imu_end_time_) {
-    if (inter_sync_time > 1.0 / lidar_params.rate) {
+  if (scan_start_time_ + lidar_scan_duration > imu_end_time_) {
+    if (inter_sync_time > lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "IMU end time less than scan duration");
+    } else {
+      return false;
     }
-    return false;
   }
 
   sync_raw_cloud_with_imu();
@@ -690,8 +690,6 @@ void MappingNode::tensor_registration(
 
   t0 = omp_get_wtime();
 
-  std::cerr << "Velocity: " << s.vel.norm() << " m/s" << std::endl;
-
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
     Eigen::VectorXd h_x_vec(6);
@@ -1285,9 +1283,6 @@ void MappingNode::sync_raw_cloud_with_imu() {
     }
   }
 
-  std::cerr << "Scan time: " << (scan_end_time_ - scan_start_time_).seconds()
-            << " seconds, size: " << scan_cloud->size() << std::endl;
-
   raw_cloud->clear();
   raw_cloud_bins.setZero();
   raw_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -1297,6 +1292,7 @@ void MappingNode::sync_raw_cloud_with_imu() {
   analytics_msg_.lid_offset = lid_time_offset_;
   analytics_msg_.scan_size = scan_cloud->size();
   analytics_msg_.buffer_size = buffer_cloud->size();
+  analytics_msg_.scan_time = (scan_end_time_ - scan_start_time_).seconds();
 }
 
 void MappingNode::compute_ram_usage() {

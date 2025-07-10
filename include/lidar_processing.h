@@ -29,8 +29,7 @@ class LidarProcess {
   void ClearPointCloud();
   bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &start_time,
                      rclcpp::Time &end_time, Eigen::ArrayXi &bin_pcs_sizes,
-                     int &start_bin, int &mean_bin, int &min_scan_size,
-                     double &velocity);
+                     int &start_bin, int &mean_bin);
 
   int num_bins_;
   bool lidar_has_data_;
