@@ -6,9 +6,10 @@ namespace ellipselio {
 bool MappingNode::sync_packages() {
   bool got_lidar_data;
   KfState latest_state;
+  int diff_min_scan = 0;
   int raw_synced_size = 0;
   int buffer_synced_size = 0;
-  double velocity, scan_scale;
+  double velocity, scan_scale, imu_offset, imu_scale, sync_scale;
 
   auto &clk = *this->get_clock();
   double inter_sync_time = omp_get_wtime() - last_sync_time;
@@ -45,10 +46,12 @@ bool MappingNode::sync_packages() {
 
   imu_process->GetKfState(latest_state);
   velocity = latest_state.state.vel.norm();
-
-  got_lidar_data = lid_process->GetPointCloud(
-      raw_cloud, raw_start_time_, raw_end_time_, raw_cloud_bins, start_bin,
-      mean_bin, min_scan_size, velocity);
+  diff_min_scan = fmax(min_scan_size - raw_cloud->size(), 0);
+  if (raw_cloud->size() + buffer_cloud->size() < min_scan_size) {
+    got_lidar_data = lid_process->GetPointCloud(
+        raw_cloud, raw_start_time_, raw_end_time_, raw_cloud_bins, start_bin,
+        mean_bin, min_scan_size, velocity);
+  }
 
   if (got_lidar_data) {
     double raw_time;
@@ -69,8 +72,14 @@ bool MappingNode::sync_packages() {
     raw_scan_rate = raw_cloud->size() / raw_time;
   }
 
-  scan_scale = (1.0 - fmin(0.5 * lidar_params.rate * inter_sync_time, 1.0));
-  scan_scale *= 0.1;
+  imu_offset = 0.0;
+  if (imu_end_time_ < raw_end_time_) {
+    imu_offset = (raw_end_time_ - imu_end_time_).seconds();
+  }
+
+  sync_scale = 1.0 - fmin(0.5 * lidar_params.rate * inter_sync_time, 1.0);
+  imu_scale = 1.0 - fmin(0.5 * lidar_params.rate * imu_offset, 1.0);
+  scan_scale = (1.0 / lidar_params.rate) * fmin(sync_scale, imu_scale);
   min_scan_size = fmax(scan_scale * raw_scan_rate, MIN_PROC_POINTS);
   analytics_msg_.min_scan = min_scan_size;
 
@@ -892,32 +901,28 @@ void MappingNode::tensor_registration(
   }
 
   ekfom_iter_cnt++;
-  ekfom_update_cnt++;
-  feat_tot_sum += feat_tot;
-  feat_tot_max = fmax(feat_tot_max, feat_tot);
 
-  analytics_msg_.num_planes = cnts[0];
-  analytics_msg_.num_lines = cnts[1];
-  analytics_msg_.num_balls = cnts[2];
-  analytics_msg_.wt_std = wt_std;
-  analytics_msg_.wt_min = wt_min;
-  analytics_msg_.wt_max = wt_max;
-  analytics_msg_.wt_mean = wt_mean;
-  analytics_msg_.rng_min = rng_min;
-  analytics_msg_.rng_max = rng_max;
-  analytics_msg_.rng_mean = rng_mean;
-  analytics_msg_.res_mean = res_mean;
-  analytics_msg_.mean_bin = mean_bin;
-  analytics_msg_.start_bin = start_bin;
-  analytics_msg_.num_feats = feat_tot;
-  analytics_msg_.num_reject = reject_cnt;
-  analytics_msg_.kf_iterations = ekfom_iter_cnt;
-  analytics_msg_.hit_filter = hit_filter.mean();
-
-  if (feat_tot < MIN_EKF_FEATS) {
+  if (!feat_tot) {
     ekfom_data.valid = false;
+    zero_registration_values();
   } else {
-    ekf_update_started = true;
+    analytics_msg_.num_planes = cnts[0];
+    analytics_msg_.num_lines = cnts[1];
+    analytics_msg_.num_balls = cnts[2];
+    analytics_msg_.wt_std = wt_std;
+    analytics_msg_.wt_min = wt_min;
+    analytics_msg_.wt_max = wt_max;
+    analytics_msg_.wt_mean = wt_mean;
+    analytics_msg_.rng_min = rng_min;
+    analytics_msg_.rng_max = rng_max;
+    analytics_msg_.rng_mean = rng_mean;
+    analytics_msg_.res_mean = res_mean;
+    analytics_msg_.mean_bin = mean_bin;
+    analytics_msg_.start_bin = start_bin;
+    analytics_msg_.num_feats = feat_tot;
+    analytics_msg_.num_reject = reject_cnt;
+    analytics_msg_.kf_iterations = ekfom_iter_cnt;
+    analytics_msg_.hit_filter = hit_filter.mean();
   }
 }
 
@@ -1382,8 +1387,6 @@ void MappingNode::timer_callback() {
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);
-    } else {
-      zero_registration_values();
     }
 
     t3 = omp_get_wtime();
