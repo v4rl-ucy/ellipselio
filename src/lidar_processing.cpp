@@ -184,22 +184,22 @@ bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
   if (!lidar_has_data_) return false;
 
   lidar_mutex_.lock();
-  if (ellipselio_pc_->size() < min_scan_size &&
-      velocity < scan_line_sep_.front()) {
-    got_lidar_data = false;
-  } else {
-    got_lidar_data = true;
-    mean_bin = mean_bin_;
-    start_bin = start_bin_;
-    if (pc->empty()) {
-      start_time = lidar_start_time_;
-    }
-    end_time = lidar_end_time_;
-    *pc += *ellipselio_pc_;
-    bin_pcs_sizes += bin_pcs_sizes_;
-    ClearBins();
-    lidar_has_data_ = false;
+  // if (ellipselio_pc_->size() < min_scan_size &&
+  //     velocity < scan_line_sep_.front()) {
+  //   got_lidar_data = false;
+  // } else {
+  got_lidar_data = true;
+  mean_bin = mean_bin_;
+  start_bin = start_bin_;
+  if (pc->empty()) {
+    start_time = lidar_start_time_;
   }
+  end_time = lidar_end_time_;
+  *pc += *ellipselio_pc_;
+  bin_pcs_sizes += bin_pcs_sizes_;
+  ClearBins();
+  lidar_has_data_ = false;
+  // }
   lidar_mutex_.unlock();
 
   return got_lidar_data;

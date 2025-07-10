@@ -9,9 +9,9 @@ int64 new_idxs
 int64 upd_idxs
 int64 mean_bin
 int64 start_bin
-int64 min_scan
 int64 scan_size
 int64 buffer_size
+float64 scan_time
 
 float64 map_res
 float64 line_sep
