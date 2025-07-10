@@ -102,12 +102,9 @@ class MappingNode : public rclcpp::Node {
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
   int ekfom_iter_cnt;
-  int feat_tot_max = 0;
   int feat_tot_sum = 0;
   int ekfom_update_cnt = 0;
   bool ekf_update_started = false;
-
-  std::atomic<int> valid_map_pts;
 
   Eigen::ArrayXf n_res;
   Eigen::ArrayXi n_means;

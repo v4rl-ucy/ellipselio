@@ -82,19 +82,17 @@ bool MappingNode::sync_packages() {
     scan_start_time_ = imu_start_time_;
   }
   if ((scan_end_time_ - scan_start_time_).seconds() < lidar_scan_time) {
-    if (inter_sync_time > lidar_scan_time) {
+    if (inter_sync_time < lidar_scan_time) return false;
+    if (inter_sync_time > 2 * lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "Scan time too short");
-    } else {
-      return false;
     }
   }
   if (scan_start_time_ + lidar_scan_duration > imu_end_time_) {
-    if (inter_sync_time > lidar_scan_time) {
+    if (inter_sync_time < lidar_scan_time) return false;
+    if (inter_sync_time > 2 * lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "IMU end time less than scan duration");
-    } else {
-      return false;
     }
   }
 
@@ -167,7 +165,6 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     sali_val(2) = eig_val(0);
     sali_val.maxCoeff(&saliency_idxs[i]);
 
-    valid_map_pts++;
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
@@ -448,8 +445,9 @@ void MappingNode::map_incremental() {
   const float &line_sep_mean = lid_process->scan_line_sep_[max_mean_bin];
   analytics_msg_.line_sep = line_sep_mean;
 
-  if (10 * lid_process->scan_line_sep_.back() < pose_diff) {
+  if (10 * lid_process->scan_line_sep_.back() < pose_diff && line_sep_res) {
     line_sep_res = false;
+    RCLCPP_WARN_STREAM(this->get_logger(), "Line separation init finished");
   }
 
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
@@ -667,7 +665,7 @@ void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   bool init_feats = false;
   double t0, t1, res_mean = 0;
-  float wt_min, wt_max, wt_mean, wt_std;
+  float wt_min, wt_max, wt_mean, wt_std, pose_diff;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
@@ -687,6 +685,8 @@ void MappingNode::tensor_registration(
   means.setZero();
   hit_filter.setZero();
   feats_num.setZero();
+
+  pose_diff = (poses[0] - poses[map_counter - 1]).norm();
 
   t0 = omp_get_wtime();
 
@@ -709,8 +709,11 @@ void MappingNode::tensor_registration(
     p_imu = s.offset_R_L_I * p_lidar + s.offset_T_L_I;
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
-    const int scan_bin_idx = fmax(scan_cloud->points[i].bin_idx, start_bin);
-    float search_rad = lid_process->search_radii_[scan_bin_idx];
+    const int &bin_idx = scan_cloud->points[i].bin_idx;
+    const float &scan_line_sep = lid_process->scan_line_sep_[bin_idx];
+    if (10 * scan_line_sep > pose_diff && line_sep_res) continue;
+
+    float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
     if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
@@ -883,16 +886,15 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   ekfom_update_cnt++;
   feat_tot_sum += feat_tot;
-  feat_tot_max = fmax(feat_tot_max, feat_tot);
 
-  init_feats = feat_tot_sum / ekfom_update_cnt < 5 * MIN_EKF_FEATS;
-  init_feats |= feat_tot_max < 10 * MIN_EKF_FEATS;
-  init_feats &= !ekf_update_started;
+  init_feats = ekf_update_started;
+  init_feats &= feat_tot_sum / ekfom_update_cnt < MIN_EKF_FEATS;
 
-  if (feat_tot < MIN_EKF_FEATS || init_feats) {
+  if (init_feats || feat_tot < MIN_EKF_FEATS) {
     ekfom_data.valid = false;
     zero_registration_values();
   } else {
+    ekf_update_started = true;
     analytics_msg_.num_planes = cnts[0];
     analytics_msg_.num_lines = cnts[1];
     analytics_msg_.num_balls = cnts[2];
@@ -1342,7 +1344,6 @@ void MappingNode::compute_cpu_usage() {
 // Main mapping loop
 void MappingNode::timer_callback() {
   if (!initialized) {
-    valid_map_pts = 0;
     initialized = true;
     imu_process =
         std::make_shared<ImuProcess>(kf_, imu_params, shared_from_this());
