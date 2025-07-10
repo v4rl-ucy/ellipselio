@@ -50,6 +50,7 @@ class ImuProcess {
   void UpdateStatesWithLidar(KfState &kf_state, rclcpp::Time &lidar_end_time,
                              double max_solve_time);
   void GetKfState(KfState &kf_state);
+  void SyncWithLidar(rclcpp::Time &imu_start_time, rclcpp::Time &imu_end_time);
 
   void set_gyr_cov(const V3D &gyr_cov);
   void set_acc_cov(const V3D &acc_cov);
@@ -59,7 +60,6 @@ class ImuProcess {
 
   bool imu_has_data_;
   std::atomic<int> imu_counter_;
-  rclcpp::Duration imu_time_offset_;
   rclcpp::Time imu_start_time_, imu_end_time_;
 
  private:
@@ -86,7 +86,7 @@ class ImuProcess {
   rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
 
-  boost::circular_buffer<ImuState> imu_states_;
+  boost::circular_buffer<ImuState> imu_states_, synced_imu_states_;
 
   V3D mean_acc;
   V3D mean_gyr;

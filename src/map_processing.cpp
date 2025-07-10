@@ -4,67 +4,114 @@ namespace ellipselio {
 
 // Sync lidar, imu, and camera data
 bool MappingNode::sync_packages() {
+  double velocity;
+  bool got_lidar_data;
+  KfState latest_state;
+  int raw_synced_size = 0;
+  int buffer_synced_size = 0;
+  int diff_min_size, diff_raw_size;
+  int prev_raw_size, prev_min_scan;
+
   auto &clk = *this->get_clock();
   double inter_sync_time = omp_get_wtime() - last_sync_time;
 
   if (!last_sync_time) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), clk, 1000, "Waiting for data...");
   }
-  if (!imu_process->imu_has_data_) {
+  if (imu_process->imu_end_time_ <= last_imu_time_) {
     if (inter_sync_time > 1.0) {
-      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000, "IMU has no data");
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
+                            "IMU has no new data");
     }
     return false;
   }
-  if (!lid_process->lidar_has_data_ && buffer_cloud->size() < min_scan_size) {
+  if (!lid_process->lidar_has_data_ && buffer_cloud->empty()) {
     if (inter_sync_time > 1.0) {
-      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000, "Lidar has no data");
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
+                            "Lidar has no new data");
     }
-    return false;
-  }
-  if (lid_process->lidar_start_time_ < imu_process->imu_start_time_ &&
-      !map_counter) {
-    lid_process->ClearPointCloud();
-    return false;
-  }
-  if (imu_process->imu_end_time_ < lid_process->lidar_end_time_ &&
-      (inter_sync_time < 1.0 / lidar_params.rate || !map_counter)) {
     return false;
   }
   for (int i = 0; i < num_cams; i++) {
     if (!cams_process[i]->cam_has_data_) {
       if (inter_sync_time > 1.0) {
         RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
-                                     "Camera " << i << " has no data");
+                                     "Camera " << i << " has no new data");
       }
     }
   }
 
-  lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
-                             raw_cloud_bins, start_bin, mean_bin);
+  imu_start_time_ = imu_process->imu_start_time_;
+  imu_end_time_ = imu_process->imu_end_time_;
+  last_imu_time_ = imu_process->imu_end_time_;
 
-  if (mean_bin <= start_bin) {
-    n_res[scan_num_cnt % lidar_params.rate] = 1;
-  } else {
-    n_res[scan_num_cnt % lidar_params.rate] = 0;
+  imu_process->GetKfState(latest_state);
+  velocity = latest_state.state.vel.norm();
+
+  prev_raw_size = raw_cloud->size();
+  diff_min_size = fmax(min_scan_size - buffer_cloud->size(), 0);
+  got_lidar_data = lid_process->GetPointCloud(
+      raw_cloud, raw_start_time_, raw_end_time_, raw_cloud_bins, start_bin,
+      mean_bin, diff_min_size, velocity);
+
+  if (got_lidar_data) {
+    if (mean_bin <= start_bin) {
+      n_res[scan_num_cnt % lidar_params.rate] = 1;
+    } else {
+      n_res[scan_num_cnt % lidar_params.rate] = 0;
+    }
+    if (n_res.sum() >= 0.5 * lidar_params.rate) {
+      use_map_res = true;
+    } else {
+      use_map_res = false;
+    }
+    scan_num_cnt = (scan_num_cnt + 1) % lidar_params.rate;
+
+    diff_raw_size = raw_cloud->size() - prev_raw_size;
+    prev_min_scan = min_scan_size;
+    min_scan_size = 0.5 * diff_raw_size;
+    min_scan_size = fmax(min_scan_size, MIN_PROC_POINTS);
+    min_scan_size = 0.5 * (min_scan_size + prev_min_scan);
+    analytics_msg_.min_scan = min_scan_size;
   }
-  if (n_res.sum() >= 0.5 * lidar_params.rate) {
-    use_map_res = true;
-  } else {
-    use_map_res = false;
+
+  raw_synced_size = raw_cloud->size();
+  if (!raw_cloud->empty() && imu_end_time_ < raw_end_time_) {
+    double raw_time, raw_rate, imu_time;
+
+    raw_time = (raw_end_time_ - raw_start_time_).seconds();
+    raw_rate = raw_synced_size / raw_time;
+    if (imu_start_time_ > raw_start_time_) {
+      imu_time = (imu_end_time_ - imu_start_time_).seconds();
+    } else {
+      imu_time = (imu_end_time_ - raw_start_time_).seconds();
+    }
+    raw_synced_size = imu_time * raw_rate;
   }
 
-  scan_num_cnt++;
-  scan_pts_cnt += fmax(MIN_PROC_POINTS, 0.25 * raw_cloud->size());
-  min_scan_size = fmin(scan_pts_cnt / scan_num_cnt, raw_cloud->size());
-  min_scan_size = fmax(min_scan_size, MIN_PROC_POINTS);
+  buffer_synced_size = buffer_cloud->size();
+  if (!buffer_cloud->empty() && imu_end_time_ < buffer_end_time_) {
+    double buffer_time, buffer_rate, imu_time;
 
-  sync_raw_cloud_with_imu();
-  if (scan_cloud->empty()) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), clk, 1000,
-                         "Insufficient points, waiting for more");
+    buffer_time = (buffer_end_time_ - buffer_start_time_).seconds();
+    buffer_rate = buffer_synced_size / buffer_time;
+    if (imu_start_time_ > buffer_start_time_) {
+      imu_time = (imu_end_time_ - imu_start_time_).seconds();
+    } else {
+      imu_time = (imu_end_time_ - buffer_start_time_).seconds();
+    }
+    buffer_synced_size = imu_time * buffer_rate;
+  }
+
+  if (inter_sync_time < 1.0 / lidar_params.rate) return false;
+
+  if (raw_synced_size + buffer_synced_size < min_scan_size) {
+    RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
+                                 "Insufficient synced measurements");
     return false;
   }
+
+  sync_raw_cloud_with_imu();
 
   int cur_imu_freq = round(imu_process->imu_counter_ / inter_sync_time);
   int cur_lid_freq = round(lid_process->lidar_counter_ / inter_sync_time);
@@ -880,6 +927,26 @@ void MappingNode::tensor_registration(
   }
 }
 
+void MappingNode::zero_registration_values() {
+  analytics_msg_.num_planes = 0;
+  analytics_msg_.num_lines = 0;
+  analytics_msg_.num_balls = 0;
+  analytics_msg_.wt_std = 0;
+  analytics_msg_.wt_min = 0;
+  analytics_msg_.wt_max = 0;
+  analytics_msg_.wt_mean = 0;
+  analytics_msg_.rng_min = 0;
+  analytics_msg_.rng_max = 0;
+  analytics_msg_.rng_mean = 0;
+  analytics_msg_.res_mean = 0;
+  analytics_msg_.mean_bin = 0;
+  analytics_msg_.start_bin = 0;
+  analytics_msg_.num_feats = 0;
+  analytics_msg_.num_reject = 0;
+  analytics_msg_.kf_iterations = 0;
+  analytics_msg_.hit_filter = 0;
+}
+
 // Main mapping node
 MappingNode::MappingNode(
     const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
@@ -1024,6 +1091,9 @@ MappingNode::MappingNode(
   analytics_msg_ = ellipse_lio::msg::EllipseLioAnalytics();
   analytics_msg_pub_ = ellipse_lio::msg::EllipseLioAnalytics();
 
+  last_imu_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  imu_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  imu_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   raw_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   raw_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   scan_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -1164,36 +1234,30 @@ void MappingNode::init_cam_process() {
 void MappingNode::sync_raw_cloud_with_imu() {
   int total_size;
   std::atomic<int> scan_idx = 0, filter_idx = 0;
-  rclcpp::Time imu_end_time = imu_process->imu_end_time_;
-  rclcpp::Time imu_start_time = imu_process->imu_start_time_;
-  imu_process->imu_time_offset_ = rclcpp::Duration(0, 0);
+
+  imu_time_offset_ = 0;
+  imu_process->SyncWithLidar(imu_start_time_, imu_end_time_);
+  lid_time_offset_ = lid_process->lidar_time_offset_.seconds();
 
   if (!raw_cloud->empty()) {
     scan_start_time_ = raw_start_time_;
     scan_end_time_ = raw_end_time_;
   }
   if (!buffer_cloud->empty()) scan_start_time_ = buffer_start_time_;
-  if (imu_end_time > scan_end_time_ && imu_start_time < scan_start_time_) {
+  if (imu_end_time_ > scan_end_time_ && imu_start_time_ < scan_start_time_) {
     *scan_cloud = *buffer_cloud;
     *scan_cloud += *raw_cloud;
+    scan_cloud_bins = buffer_cloud_bins + raw_cloud_bins;
     buffer_cloud->clear();
-
-#pragma omp parallel for
-    for (int i = 0; i < scan_bin_sizes.size(); i++) {
-      scan_cloud_bins[i] = buffer_cloud_bins[i] + raw_cloud_bins[i];
-      buffer_cloud_bins[i] = 0;
-    }
+    buffer_cloud_bins.setZero();
   } else {
-    if (imu_end_time < scan_end_time_) {
-      rcl_duration_t time_offset;
-      time_offset.nanoseconds = (scan_end_time_ - imu_end_time).nanoseconds();
-      imu_process->imu_time_offset_ = rclcpp::Duration(time_offset);
-
+    if (imu_end_time_ < scan_end_time_) {
+      imu_time_offset_ = (scan_end_time_ - imu_end_time_).seconds();
       buffer_end_time_ = scan_end_time_;
-      buffer_start_time_ = imu_end_time;
-      scan_end_time_ = imu_end_time;
+      buffer_start_time_ = imu_end_time_;
+      scan_end_time_ = imu_end_time_;
     }
-    if (imu_start_time > scan_start_time_) scan_start_time_ = imu_start_time;
+    if (imu_start_time_ > scan_start_time_) scan_start_time_ = imu_start_time_;
 
     std::fill(scan_bin_sizes.begin(), scan_bin_sizes.end(), 0);
     std::fill(filter_bin_sizes.begin(), filter_bin_sizes.end(), 0);
@@ -1231,26 +1295,15 @@ void MappingNode::sync_raw_cloud_with_imu() {
     }
   }
 
-  if (scan_cloud->size() < min_scan_size) {
-#pragma omp parallel for
-    for (int i = 0; i < scan_bin_sizes.size(); i++) {
-      buffer_cloud_bins[i] += scan_cloud_bins[i];
-      scan_cloud_bins[i] = 0;
-    }
-    buffer_start_time_ = scan_start_time_;
-    *buffer_cloud += *scan_cloud;
-    scan_cloud->clear();
-  }
-
   raw_cloud->clear();
+  raw_cloud_bins.setZero();
   raw_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   raw_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-  std::fill(raw_cloud_bins.begin(), raw_cloud_bins.end(), 0);
 
   analytics_msg_.scan_size = scan_cloud->size();
   analytics_msg_.buffer_size = buffer_cloud->size();
-  analytics_msg_.imu_offset = imu_process->imu_time_offset_.seconds();
-  analytics_msg_.lid_offset = lid_process->lidar_time_offset_.seconds();
+  analytics_msg_.imu_offset = imu_time_offset_;
+  analytics_msg_.lid_offset = lid_time_offset_;
 }
 
 void MappingNode::compute_ram_usage() {
@@ -1314,9 +1367,9 @@ void MappingNode::timer_callback() {
     n_cnts = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
     n_bins = Eigen::ArrayXXi::Zero(MAX_PROC_POINTS, lid_process->num_bins_);
 
-    raw_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
-    scan_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
-    buffer_cloud_bins = std::vector<int>(lid_process->num_bins_, 0);
+    raw_cloud_bins = Eigen::ArrayXi::Zero(lid_process->num_bins_);
+    scan_cloud_bins = Eigen::ArrayXi::Zero(lid_process->num_bins_);
+    buffer_cloud_bins = Eigen::ArrayXi::Zero(lid_process->num_bins_);
     scan_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
     filter_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
   }
@@ -1335,6 +1388,8 @@ void MappingNode::timer_callback() {
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);
+    } else {
+      zero_registration_values();
     }
 
     t3 = omp_get_wtime();

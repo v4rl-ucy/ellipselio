@@ -27,9 +27,10 @@ class LidarProcess {
   ~LidarProcess();
   LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  void GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &start_time,
-                     rclcpp::Time &end_time, std::vector<int> &bin_pc_sizes,
-                     int &start_bin, int &mean_bin);
+  bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &start_time,
+                     rclcpp::Time &end_time, Eigen::ArrayXi &bin_pcs_sizes,
+                     int &start_bin, int &mean_bin, int &min_scan_size,
+                     double &velocity);
 
   int num_bins_;
   bool lidar_has_data_;
@@ -76,7 +77,8 @@ class LidarProcess {
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
   Eigen::ArrayXf ranges_, range_wts_;
-  std::vector<int> bin_pcs_sizes_;
+  Eigen::ArrayXi bin_pcs_sizes_;
+
   std::vector<std::vector<int>> bin_idxs_;
   std::vector<std::atomic<int>> bin_sizes_;
   std::vector<iOctree::Octree> bin_octrees_;

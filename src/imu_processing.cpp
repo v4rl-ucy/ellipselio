@@ -12,8 +12,7 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
       params_(params),
       kf_(kf),
       node_(node),
-      imu_states_(params.rate),
-      imu_time_offset_(0, 0) {
+      imu_states_(params.rate) {
   imu_callback_group_ = node_->create_callback_group(
       rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -149,6 +148,15 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
   }
 }
 
+void ImuProcess::SyncWithLidar(rclcpp::Time &imu_start_time,
+                               rclcpp::Time &imu_end_time) {
+  imu_mutex_.lock();
+  synced_imu_states_ = imu_states_;
+  imu_start_time = imu_start_time_;
+  imu_end_time = imu_end_time_;
+  imu_mutex_.unlock();
+}
+
 // Get the closest imu state greater than the input match time
 void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
                               boost::circular_buffer<ImuState> &imu_states) {
@@ -184,24 +192,20 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
                                      rclcpp::Time &lidar_end_time,
                                      CamProcessVec &cams) {
   int match_idx;
-  boost::circular_buffer<ImuState> imu_states;
   Eigen::Isometry3d T_imu_lidar, T_world_imu_e;
 
-  imu_mutex_.lock();
-  imu_states = imu_states_;
-  imu_mutex_.unlock();
+  GetMatchingImages(lidar_start_time, lidar_end_time, cams, synced_imu_states_);
+  GetTimeMatch(match_idx, lidar_end_time, synced_imu_states_);
 
-  GetMatchingImages(lidar_start_time, lidar_end_time, cams, imu_states);
-  GetTimeMatch(match_idx, lidar_end_time, imu_states);
-
-  kf_state = imu_states[match_idx].state;
+  kf_state = synced_imu_states_[match_idx].state;
 
   T_imu_lidar.linear() =
-      imu_states[match_idx].state.state.offset_R_L_I.toRotationMatrix();
-  T_imu_lidar.translation() = imu_states[match_idx].state.state.offset_T_L_I;
+      synced_imu_states_[match_idx].state.state.offset_R_L_I.toRotationMatrix();
+  T_imu_lidar.translation() =
+      synced_imu_states_[match_idx].state.state.offset_T_L_I;
   T_world_imu_e.linear() =
-      imu_states[match_idx].state.state.rot.toRotationMatrix();
-  T_world_imu_e.translation() = imu_states[match_idx].state.state.pos;
+      synced_imu_states_[match_idx].state.state.rot.toRotationMatrix();
+  T_world_imu_e.translation() = synced_imu_states_[match_idx].state.state.pos;
 
 #pragma omp parallel for
   for (size_t i = 0; i < pc->points.size(); i++) {
@@ -211,16 +215,16 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
     rclcpp::Time pt_time = rclcpp::Time(pc->points[i].time_secs,
                                         pc->points[i].time_nsecs, RCL_ROS_TIME);
 
-    GetTimeMatch(tail_idx, pt_time, imu_states);
+    GetTimeMatch(tail_idx, pt_time, synced_imu_states_);
     head_idx = max(tail_idx - 1, 0);
 
-    M3D R_imu = imu_states[head_idx].state.state.rot.toRotationMatrix();
-    V3D vel_imu = imu_states[head_idx].state.state.vel;
-    V3D pos_imu = imu_states[head_idx].state.state.pos;
-    V3D acc_avr = imu_states[tail_idx].acc_avr;
-    V3D gyr_avr = imu_states[tail_idx].gyr_avr;
+    M3D R_imu = synced_imu_states_[head_idx].state.state.rot.toRotationMatrix();
+    V3D vel_imu = synced_imu_states_[head_idx].state.state.vel;
+    V3D pos_imu = synced_imu_states_[head_idx].state.state.pos;
+    V3D acc_avr = synced_imu_states_[tail_idx].acc_avr;
+    V3D gyr_avr = synced_imu_states_[tail_idx].gyr_avr;
 
-    double dt = (pt_time - imu_states[head_idx].state.time).seconds();
+    double dt = (pt_time - synced_imu_states_[head_idx].state.time).seconds();
 
     T_world_imu_p.linear() = R_imu * Exp(gyr_avr, dt);
     T_world_imu_p.translation() =

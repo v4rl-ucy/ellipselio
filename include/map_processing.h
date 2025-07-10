@@ -57,6 +57,7 @@ class MappingNode : public rclcpp::Node {
 
   void tensor_registration(state_ikfom &s,
                            esekfom::dyn_share_datastruct<double> &ekfom_data);
+  void zero_registration_values();
 
   void timer_callback();
   void init_cam_process();
@@ -100,7 +101,6 @@ class MappingNode : public rclcpp::Node {
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
   int scan_num_cnt = 0;
-  long scan_pts_cnt = 0;
   int min_scan_size = MIN_PROC_POINTS;
 
   int ekfom_iter_cnt;
@@ -137,9 +137,9 @@ class MappingNode : public rclcpp::Node {
   std::vector<V3F> eigenvalues;
   std::vector<V3F> salivalues;
 
-  std::vector<int> raw_cloud_bins;
-  std::vector<int> scan_cloud_bins;
-  std::vector<int> buffer_cloud_bins;
+  Eigen::ArrayXi raw_cloud_bins;
+  Eigen::ArrayXi scan_cloud_bins;
+  Eigen::ArrayXi buffer_cloud_bins;
   std::vector<std::atomic<int>> scan_bin_sizes;
   std::vector<std::atomic<int>> filter_bin_sizes;
 
@@ -187,10 +187,13 @@ class MappingNode : public rclcpp::Node {
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_;
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
-  rclcpp::Time last_pub_time;
+  rclcpp::Time last_pub_time, last_imu_time_;
+  rclcpp::Time imu_start_time_, imu_end_time_;
   rclcpp::Time raw_start_time_, raw_end_time_;
   rclcpp::Time scan_start_time_, scan_end_time_;
   rclcpp::Time buffer_start_time_, buffer_end_time_;
+
+  double imu_time_offset_, lid_time_offset_;
 
   CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;

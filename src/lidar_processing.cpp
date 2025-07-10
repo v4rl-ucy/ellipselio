@@ -25,7 +25,7 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   max_search_rad_ = 10.0 * min_scan_res_;
   num_bins_ = ceil(params_.max_range + 1);
 
-  bin_pcs_sizes_ = std::vector<int>(num_bins_, 0);
+  bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
   bin_octrees_ = std::vector<iOctree::Octree>(num_bins_);
   bin_idxs_ = std::vector<std::vector<int>>(num_bins_,
@@ -152,13 +152,6 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     }
   }
   lidar_has_data_ = true;
-
-  if (ellipselio_pc_->size() < 1e-3 * process_pc_->size()) {
-    RCLCPP_ERROR_THROTTLE(node_->get_logger(), clk, 1000,
-                          "Processed pointcloud has insufficient points");
-    ClearBins();
-    lidar_has_data_ = false;
-  }
 }
 
 // Clear the point cloud bins
@@ -181,23 +174,35 @@ void LidarProcess::ClearPointCloud() {
 }
 
 // Get the current combined point cloud
-void LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
+bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
                                  rclcpp::Time &start_time,
                                  rclcpp::Time &end_time,
-                                 std::vector<int> &bin_pcs_sizes,
-                                 int &start_bin, int &mean_bin) {
-  if (!lidar_has_data_) return;
+                                 Eigen::ArrayXi &bin_pcs_sizes, int &start_bin,
+                                 int &mean_bin, int &min_scan_size,
+                                 double &velocity) {
+  bool got_lidar_data;
+  if (!lidar_has_data_) return false;
 
   lidar_mutex_.lock();
-  *pc = *ellipselio_pc_;
-  mean_bin = mean_bin_;
-  start_bin = start_bin_;
-  end_time = lidar_end_time_;
-  start_time = lidar_start_time_;
-  bin_pcs_sizes = bin_pcs_sizes_;
-  ClearBins();
-  lidar_has_data_ = false;
+  if (ellipselio_pc_->size() < min_scan_size &&
+      velocity < scan_line_sep_.front()) {
+    got_lidar_data = false;
+  } else {
+    got_lidar_data = true;
+    mean_bin = mean_bin_;
+    start_bin = start_bin_;
+    if (pc->empty()) {
+      start_time = lidar_start_time_;
+    }
+    end_time = lidar_end_time_;
+    *pc += *ellipselio_pc_;
+    bin_pcs_sizes += bin_pcs_sizes_;
+    ClearBins();
+    lidar_has_data_ = false;
+  }
   lidar_mutex_.unlock();
+
+  return got_lidar_data;
 }
 
 // Get the start and end times for the current point cloud bin
