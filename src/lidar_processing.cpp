@@ -3,7 +3,8 @@
 LidarProcess::~LidarProcess() {}
 
 // Setup the lidar process
-LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
+LidarProcess::LidarProcess(LidarParams params, float map_resolution,
+                           rclcpp::Node::SharedPtr node)
     : params_(params),
       node_(node),
       lidar_counter_(0),
@@ -47,11 +48,22 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
   max_neighbours_ = std::vector<int>(num_bins_, MAX_NEIGHBOURS);
   search_radii_ = std::vector<float>(num_bins_, max_search_rad_);
+  map_search_radii_ = std::vector<float>(num_bins_, max_search_rad_);
+  scan_search_radii_ = std::vector<float>(num_bins_, max_search_rad_);
   octree_resolutions_ = std::vector<float>(num_bins_, min_scan_res_);
 
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
-    float octree_res, search_rad, bucket_size;
+    float map_octree_res, map_search_rad;
+    float octree_res, search_rad, bucket_size, scan_line_sep;
+
+    map_octree_res = fmin(map_resolution, (i + 1) * 0.1 * map_resolution);
+    map_search_rad = fmin(10.0 * map_octree_res, 10.0 * map_resolution);
+    map_search_radii_[i] = map_search_rad;
+
+    scan_line_sep = (i + 1) * scan_res_;
+    scan_line_sep = floor(scan_line_sep * 100.0) / 100.0;
+    scan_line_sep = fmax(scan_line_sep, MIN_BIN_RES);
 
     octree_res = (i + 1) * scan_res_;
     octree_res = floor(octree_res * 100.0) / 100.0;
@@ -62,8 +74,9 @@ LidarProcess::LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node)
 
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_rad;
+    scan_line_sep_[i] = scan_line_sep;
+    scan_search_radii_[i] = search_rad;
     octree_resolutions_[i] = octree_res;
-    scan_line_sep_[i] = (i + 1) * scan_res_;
 
     bin_pcs_[i].reserve(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);

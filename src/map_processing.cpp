@@ -43,20 +43,6 @@ bool MappingNode::sync_packages() {
       lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
                                  raw_cloud_bins, start_bin, mean_bin);
 
-  if (got_lidar_data) {
-    if (mean_bin <= start_bin) {
-      n_res[scan_num_cnt % lidar_params.rate] = 1;
-    } else {
-      n_res[scan_num_cnt % lidar_params.rate] = 0;
-    }
-    if (n_res.sum() >= 0.5 * lidar_params.rate) {
-      use_map_res = true;
-    } else {
-      use_map_res = false;
-    }
-    scan_num_cnt = (scan_num_cnt + 1) % lidar_params.rate;
-  }
-
   if (raw_cloud->empty() && buffer_cloud->empty()) {
     if (inter_sync_time > lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
@@ -126,7 +112,6 @@ void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
   V3F p_j = map_cloud->points[j].getVector3fMap();
   const int &bin_idx = map_cloud->points[i].bin_idx;
   float search_rad = lid_process->search_radii_[bin_idx];
-  if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
   float d_ij = (p_i - p_j).norm();
   float c_ij = std::exp(-std::pow(d_ij, 2) / search_rad);
   V3F r_ij = (p_i - p_j).normalized();
@@ -150,7 +135,6 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
 
   const int &bin_idx = map_cloud->points[i].bin_idx;
   float search_rad = lid_process->search_radii_[bin_idx];
-  if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
   if (first_pass) {
     tensor_i2 =
@@ -196,7 +180,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
     float search_rad = lid_process->search_radii_[bin_idx];
-    if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
     ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
                             bucket_size);
@@ -248,8 +231,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
       const int &bin_idx_j = map_cloud->points[map_j].bin_idx;
       float search_rad_j = lid_process->search_radii_[bin_idx_j];
-      if (use_map_res) search_rad_j = fmin(search_rad_j, map_search_rad);
-
       EllipseLioPoint &pt_i = map_cloud->points[map_i];
       EllipseLioPoint &pt_j = map_cloud->points[map_j];
       float d_ij = (pt_i.getVector3fMap() - pt_j.getVector3fMap()).norm();
@@ -414,9 +395,11 @@ void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
 // Add new points to the map and update geometric primitives
 void MappingNode::map_incremental() {
   int start_idx, end_idx;
+  float res, pose_diff, line_sep_max, dist_ratio;
   std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
 
   poses[map_counter] = kf_state_.state.pos.cast<float>();
+  rotes[map_counter] = kf_state_.state.rot.cast<float>();
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -436,36 +419,43 @@ void MappingNode::map_incremental() {
   end_idx = 0;
   old_map_size = map_cloud->size();
 
-  float res = lid_process->min_scan_res_;
-  if (use_map_res) res = map_resolution;
-  analytics_msg_.map_res = res;
-
-  max_mean_bin = fmax(max_mean_bin, mean_bin);
-  const float pose_diff = (poses[0] - poses[map_counter]).norm();
-  const float &line_sep_mean = lid_process->scan_line_sep_[max_mean_bin];
-  analytics_msg_.line_sep = line_sep_mean;
-
-  if (10 * lid_process->scan_line_sep_.back() < pose_diff && line_sep_res) {
-    line_sep_res = false;
-    RCLCPP_WARN_STREAM(this->get_logger(), "Line separation init finished");
+#pragma omp parallel for
+  for (int j = 0; j < scan_cloud_bins.size(); j++) {
+    lid_process->search_radii_[j] =
+        fmin(map_search_rad, lid_process->scan_search_radii_[j]);
   }
 
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
+    float pose_diff, rote_diff;
+    bool pose_invalid, rote_invalid;
+
     end_idx += scan_cloud_bins[i];
+
+    if (!map_counter) {
+      last_updated_poses[i] = poses[0];
+      last_updated_rotes[i] = rotes[0];
+    }
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
 
-    const int &bucket_size = lid_process->bucket_sizes_[fmax(i, start_bin)];
-    if (10 * line_sep_mean > pose_diff && line_sep_res) {
-      res = fmax(lid_process->scan_line_sep_[i], res);
-    }
+    pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
+    pose_invalid = pose_diff < 10 * lid_process->scan_line_sep_[i];
 
-    ioctree.set_bucket_size(bucket_size);
-    ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx, res);
+    rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
+    rote_invalid = (i + 1) * rote_diff < 10 * lid_process->scan_line_sep_[i];
+
+    if (pose_invalid && rote_invalid && map_counter) continue;
+    last_updated_poses[i] = poses[map_counter];
+    last_updated_rotes[i] = rotes[map_counter];
+
+    ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
+    ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx,
+                   map_resolution);
     *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs);
     new_idxs.insert(new_idxs.end(), map_idxs.begin(), map_idxs.end());
     start_idx = end_idx;
   }
+
   new_map_size = map_cloud->size();
 
   last_reg.resize(map_cloud->size(), 0);
@@ -473,6 +463,7 @@ void MappingNode::map_incremental() {
   update_idx.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
   poses.resize(map_cloud->size(), V3F::Zero());
+  rotes.resize(map_cloud->size(), Eigen::Quaternionf::Identity());
   colors.resize(map_cloud->size(), Eigen::Vector3f::Zero());
   neighbours.resize(map_cloud->size(), std::vector<int>());
   filters.resize(map_cloud->size(), std::vector<bool>(2, false));
@@ -686,7 +677,7 @@ void MappingNode::tensor_registration(
   hit_filter.setZero();
   feats_num.setZero();
 
-  pose_diff = (poses[0] - poses[map_counter - 1]).norm();
+  pose_diff = (poses[0] - s.pos.cast<float>()).norm();
 
   t0 = omp_get_wtime();
 
@@ -710,16 +701,23 @@ void MappingNode::tensor_registration(
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
     const int &bin_idx = scan_cloud->points[i].bin_idx;
-    const float &scan_line_sep = lid_process->scan_line_sep_[bin_idx];
-    if (10 * scan_line_sep > pose_diff && line_sep_res) continue;
-
     float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
-    if (use_map_res) search_rad = fmin(search_rad, map_search_rad);
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
 
     if (N_idxs.size() == 0) continue;
     map_i = N_idxs[0];
+
+    const int &map_scan_idx = map_cloud->points[map_i].scan_idx;
+
+    float pose_diff = (s.pos.cast<float>() - poses[map_scan_idx]).norm();
+    bool pose_invalid = pose_diff < 10 * lid_process->scan_line_sep_[bin_idx];
+
+    float rote_diff = rotes[map_scan_idx].angularDistance(s.rot.cast<float>());
+    bool rote_invalid =
+        (i + 1) * rote_diff < 10 * lid_process->scan_line_sep_[bin_idx];
+
+    if (pose_invalid && rote_invalid) continue;
 
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
@@ -886,11 +884,12 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   ekfom_update_cnt++;
   feat_tot_sum += feat_tot;
+  max_feat_tot = fmax(max_feat_tot, feat_tot);
 
   init_feats = ekf_update_started;
-  init_feats &= feat_tot_sum / ekfom_update_cnt < MIN_EKF_FEATS;
-
-  if (init_feats || feat_tot < MIN_EKF_FEATS) {
+  init_feats &= feat_tot_sum / ekfom_update_cnt < 2 * MIN_EKF_FEATS;
+  // max_feat_tot < 400 || feat_tot < 30
+  if (max_feat_tot < 300 || !feat_tot) {
     ekfom_data.valid = false;
     zero_registration_values();
   } else {
@@ -1057,6 +1056,7 @@ MappingNode::MappingNode(
 
   colors.reserve(MAX_MAP_POINTS);
   poses.reserve(MAX_MAP_POINTS);
+  rotes.reserve(MAX_MAP_POINTS);
   last_reg.reserve(MAX_MAP_POINTS);
   valid_reg.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);
@@ -1347,8 +1347,8 @@ void MappingNode::timer_callback() {
     initialized = true;
     imu_process =
         std::make_shared<ImuProcess>(kf_, imu_params, shared_from_this());
-    lid_process =
-        std::make_shared<LidarProcess>(lidar_params, shared_from_this());
+    lid_process = std::make_shared<LidarProcess>(lidar_params, map_resolution,
+                                                 shared_from_this());
     init_cam_process();
 
     n_res = Eigen::ArrayXf::Ones(lidar_params.rate);
@@ -1362,6 +1362,9 @@ void MappingNode::timer_callback() {
     buffer_cloud_bins = Eigen::ArrayXi::Zero(lid_process->num_bins_);
     scan_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
     filter_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
+    last_updated_poses = std::vector<Eigen::Vector3f>(lid_process->num_bins_);
+    last_updated_rotes =
+        std::vector<Eigen::Quaternionf>(lid_process->num_bins_);
   }
 
   if (sync_packages()) {

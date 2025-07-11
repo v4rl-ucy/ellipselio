@@ -25,7 +25,8 @@ struct LidarParams {
 class LidarProcess {
  public:
   ~LidarProcess();
-  LidarProcess(LidarParams params, rclcpp::Node::SharedPtr node);
+  LidarProcess(LidarParams params, float map_resolution,
+               rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
   bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &start_time,
                      rclcpp::Time &end_time, Eigen::ArrayXi &bin_pcs_sizes,
@@ -47,6 +48,8 @@ class LidarProcess {
   std::vector<int> min_neighbours_;
   std::vector<int> max_neighbours_;
   std::vector<float> search_radii_;
+  std::vector<float> map_search_radii_;
+  std::vector<float> scan_search_radii_;
   std::vector<float> scan_line_sep_;
   std::vector<float> octree_resolutions_;
 

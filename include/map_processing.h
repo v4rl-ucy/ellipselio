@@ -102,6 +102,7 @@ class MappingNode : public rclcpp::Node {
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
   int ekfom_iter_cnt;
+  int max_feat_tot = 0;
   int feat_tot_sum = 0;
   int ekfom_update_cnt = 0;
   bool ekf_update_started = false;
@@ -124,7 +125,10 @@ class MappingNode : public rclcpp::Node {
 
   std::vector<Eigen::Vector3f> colors;
   std::vector<Eigen::Vector3f> poses;
+  std::vector<Eigen::Quaternionf> rotes;
   std::vector<Eigen::MatrixXf> sh_mats;
+  std::vector<Eigen::Vector3f> last_updated_poses;
+  std::vector<Eigen::Quaternionf> last_updated_rotes;
 
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
