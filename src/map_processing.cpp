@@ -67,7 +67,7 @@ bool MappingNode::sync_packages() {
   if (imu_start_time_ > scan_start_time_) {
     scan_start_time_ = imu_start_time_;
   }
-  if ((scan_end_time_ - scan_start_time_).seconds() < lidar_scan_time) {
+  if ((scan_end_time_ - scan_start_time_).seconds() < 0.9 * lidar_scan_time) {
     if (inter_sync_time < lidar_scan_time) return false;
     if (inter_sync_time > 2 * lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
@@ -444,7 +444,7 @@ void MappingNode::map_incremental() {
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
     rote_invalid = (i + 1) * rote_diff < 10 * lid_process->scan_line_sep_[i];
 
-    if (pose_invalid && rote_invalid && map_counter) continue;
+    if (pose_invalid && rote_invalid && map_counter && i > 10) continue;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
 
@@ -717,7 +717,7 @@ void MappingNode::tensor_registration(
     bool rote_invalid =
         (i + 1) * rote_diff < 10 * lid_process->scan_line_sep_[bin_idx];
 
-    if (pose_invalid && rote_invalid) continue;
+    if (pose_invalid && rote_invalid && bin_idx > 10) continue;
 
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
