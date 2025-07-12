@@ -395,7 +395,6 @@ void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
 // Add new points to the map and update geometric primitives
 void MappingNode::map_incremental() {
   int start_idx, end_idx;
-  float res, pose_diff, line_sep_max, dist_ratio;
   std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
 
   poses[map_counter] = kf_state_.state.pos.cast<float>();
@@ -419,32 +418,29 @@ void MappingNode::map_incremental() {
   end_idx = 0;
   old_map_size = map_cloud->size();
 
-#pragma omp parallel for
-  for (int j = 0; j < scan_cloud_bins.size(); j++) {
-    lid_process->search_radii_[j] =
-        fmin(map_search_rad, lid_process->scan_search_radii_[j]);
-  }
-
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
-    float pose_diff, rote_diff;
-    bool pose_invalid, rote_invalid;
+    float scan_line_sep, pose_diff, rote_diff;
+    bool pose_invalid, rote_invalid, sep_invalid;
 
     end_idx += scan_cloud_bins[i];
-
-    if (!map_counter) {
-      last_updated_poses[i] = poses[0];
-      last_updated_rotes[i] = rotes[0];
-    }
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
 
+    if (!init_poses[i]) {
+      last_updated_poses[i] = poses[0];
+      last_updated_rotes[i] = rotes[0];
+    }
+
+    scan_line_sep = 10 * lid_process->scan_line_sep_[i];
+    sep_invalid = scan_line_sep > 2 * lid_process->search_radii_[i];
+
     pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
-    pose_invalid = pose_diff < 10 * lid_process->scan_line_sep_[i];
+    pose_invalid = pose_diff < scan_line_sep;
 
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
-    rote_invalid = (i + 1) * rote_diff < 10 * lid_process->scan_line_sep_[i];
+    rote_invalid = (i + 1) * rote_diff < scan_line_sep;
 
-    if (pose_invalid && rote_invalid && map_counter && i > 10) continue;
+    if (pose_invalid && rote_invalid && sep_invalid && init_poses[i]) continue;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
 
@@ -454,6 +450,8 @@ void MappingNode::map_incremental() {
     *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs);
     new_idxs.insert(new_idxs.end(), map_idxs.begin(), map_idxs.end());
     start_idx = end_idx;
+
+    if (!init_poses[i]) init_poses[i] = true;
   }
 
   new_map_size = map_cloud->size();
@@ -654,7 +652,7 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  bool init_feats = false;
+  bool bin_check;
   double t0, t1, res_mean = 0;
   float wt_min, wt_max, wt_mean, wt_std, pose_diff;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
@@ -710,14 +708,16 @@ void MappingNode::tensor_registration(
 
     const int &map_scan_idx = map_cloud->points[map_i].scan_idx;
 
+    float scan_line_sep = 10 * lid_process->scan_line_sep_[bin_idx];
+    bool sep_invalid = scan_line_sep > 2 * lid_process->search_radii_[bin_idx];
+
     float pose_diff = (s.pos.cast<float>() - poses[map_scan_idx]).norm();
-    bool pose_invalid = pose_diff < 10 * lid_process->scan_line_sep_[bin_idx];
+    bool pose_invalid = pose_diff < scan_line_sep;
 
     float rote_diff = rotes[map_scan_idx].angularDistance(s.rot.cast<float>());
-    bool rote_invalid =
-        (i + 1) * rote_diff < 10 * lid_process->scan_line_sep_[bin_idx];
+    bool rote_invalid = (i + 1) * rote_diff < scan_line_sep;
 
-    if (pose_invalid && rote_invalid && bin_idx > 10) continue;
+    if (pose_invalid && rote_invalid && sep_invalid) continue;
 
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
@@ -882,35 +882,35 @@ void MappingNode::tensor_registration(
   }
 
   ekfom_iter_cnt++;
-  ekfom_update_cnt++;
-  feat_tot_sum += feat_tot;
-  max_feat_tot = fmax(max_feat_tot, feat_tot);
+  ekfom_upd_cnt++;
+  feats_per_bin += floor(feat_tot / mean_bin);
 
-  init_feats = ekf_update_started;
-  init_feats &= feat_tot_sum / ekfom_update_cnt < 2 * MIN_EKF_FEATS;
-  // max_feat_tot < 400 || feat_tot < 30
-  if (max_feat_tot < 300 || !feat_tot) {
+  analytics_msg_.num_planes = cnts[0];
+  analytics_msg_.num_lines = cnts[1];
+  analytics_msg_.num_balls = cnts[2];
+  analytics_msg_.wt_std = wt_std;
+  analytics_msg_.wt_min = wt_min;
+  analytics_msg_.wt_max = wt_max;
+  analytics_msg_.wt_mean = wt_mean;
+  analytics_msg_.rng_min = rng_min;
+  analytics_msg_.rng_max = rng_max;
+  analytics_msg_.rng_mean = rng_mean;
+  analytics_msg_.res_mean = res_mean;
+  analytics_msg_.mean_bin = mean_bin;
+  analytics_msg_.start_bin = start_bin;
+  analytics_msg_.num_feats = feat_tot;
+  analytics_msg_.num_reject = reject_cnt;
+  analytics_msg_.kf_iterations = ekfom_iter_cnt;
+  analytics_msg_.hit_filter = hit_filter.mean();
+  analytics_msg_.feats_bin = floor(feats_per_bin / ekfom_upd_cnt);
+
+  bin_check = mean_bin <= 5 && floor(feats_per_bin / ekfom_upd_cnt) < 40;
+  bin_check |= mean_bin > 5 && floor(feats_per_bin / ekfom_upd_cnt) < 20;
+  bin_check &= feat_tot < 500;
+  bin_check &= s.vel.norm() > 0.01;
+
+  if (bin_check || !feat_tot) {
     ekfom_data.valid = false;
-    zero_registration_values();
-  } else {
-    ekf_update_started = true;
-    analytics_msg_.num_planes = cnts[0];
-    analytics_msg_.num_lines = cnts[1];
-    analytics_msg_.num_balls = cnts[2];
-    analytics_msg_.wt_std = wt_std;
-    analytics_msg_.wt_min = wt_min;
-    analytics_msg_.wt_max = wt_max;
-    analytics_msg_.wt_mean = wt_mean;
-    analytics_msg_.rng_min = rng_min;
-    analytics_msg_.rng_max = rng_max;
-    analytics_msg_.rng_mean = rng_mean;
-    analytics_msg_.res_mean = res_mean;
-    analytics_msg_.mean_bin = mean_bin;
-    analytics_msg_.start_bin = start_bin;
-    analytics_msg_.num_feats = feat_tot;
-    analytics_msg_.num_reject = reject_cnt;
-    analytics_msg_.kf_iterations = ekfom_iter_cnt;
-    analytics_msg_.hit_filter = hit_filter.mean();
   }
 }
 
@@ -1362,6 +1362,8 @@ void MappingNode::timer_callback() {
     buffer_cloud_bins = Eigen::ArrayXi::Zero(lid_process->num_bins_);
     scan_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
     filter_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
+
+    init_poses = std::vector<bool>(lid_process->num_bins_, false);
     last_updated_poses = std::vector<Eigen::Vector3f>(lid_process->num_bins_);
     last_updated_rotes =
         std::vector<Eigen::Quaternionf>(lid_process->num_bins_);

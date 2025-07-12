@@ -102,10 +102,8 @@ class MappingNode : public rclcpp::Node {
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
   int ekfom_iter_cnt;
-  int max_feat_tot = 0;
-  int feat_tot_sum = 0;
-  int ekfom_update_cnt = 0;
-  bool ekf_update_started = false;
+  int ekfom_upd_cnt = 0;
+  int feats_per_bin = 0;
 
   Eigen::ArrayXf n_res;
   Eigen::ArrayXi n_means;
@@ -124,9 +122,12 @@ class MappingNode : public rclcpp::Node {
   std::vector<Eigen::MatrixXd> ekfom_data_h_x_v;
 
   std::vector<Eigen::Vector3f> colors;
+  std::vector<Eigen::MatrixXf> sh_mats;
+
   std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::Quaternionf> rotes;
-  std::vector<Eigen::MatrixXf> sh_mats;
+
+  std::vector<bool> init_poses;
   std::vector<Eigen::Vector3f> last_updated_poses;
   std::vector<Eigen::Quaternionf> last_updated_rotes;
 
