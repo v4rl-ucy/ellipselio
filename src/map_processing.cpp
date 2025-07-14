@@ -38,6 +38,12 @@ bool MappingNode::sync_packages() {
       }
     }
   }
+  if (lid_process->lidar_start_time_ < imu_process->imu_start_time_) {
+    lid_process->ClearPointCloud();
+    RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
+                                 "Lidar start time is before IMU start time");
+    return false;
+  }
 
   got_lidar_data =
       lid_process->GetPointCloud(raw_cloud, raw_start_time_, raw_end_time_,
@@ -168,7 +174,6 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 #pragma omp parallel for
   for (int i = 0; i < added_size; i++) {
     int map_i;
-    std::vector<int> N_idxs;
 
     map_i = added_idxs[i];
     valid_reg[map_i] = 1;
@@ -179,16 +184,16 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     const int &bin_idx = map_cloud->points[map_i].bin_idx;
     const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
-    float search_rad = lid_process->search_radii_[bin_idx];
+    const float search_rad = lid_process->search_radii_[bin_idx];
 
-    ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad, N_idxs,
-                            bucket_size);
-    neighbours[map_i] = N_idxs;
+    neighbours[map_i].reserve(lid_process->max_neighbours_[bin_idx]);
+    ioctree.radiusNeighbors(map_cloud->points[map_i], search_rad,
+                            neighbours[map_i], bucket_size);
 
     n_bins.row(i).setZero();
     n_cnts.row(i).setZero();
     n_bins(i, bin_idx) = 1;
-    n_cnts(i, bin_idx) = N_idxs.size();
+    n_cnts(i, bin_idx) = neighbours[map_i].size();
   }
 
 #pragma omp parallel for
@@ -397,8 +402,8 @@ void MappingNode::map_incremental() {
   int start_idx, end_idx;
   std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
 
-  poses[map_counter] = kf_state_.state.pos.cast<float>();
-  rotes[map_counter] = kf_state_.state.rot.cast<float>();
+  poses.push_back(kf_state_.state.pos.cast<float>());
+  rotes.push_back(kf_state_.state.rot.cast<float>());
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -456,15 +461,12 @@ void MappingNode::map_incremental() {
 
   new_map_size = map_cloud->size();
 
-  last_reg.resize(map_cloud->size(), 0);
   valid_reg.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
-  poses.resize(map_cloud->size(), V3F::Zero());
-  rotes.resize(map_cloud->size(), Eigen::Quaternionf::Identity());
-  colors.resize(map_cloud->size(), Eigen::Vector3f::Zero());
   neighbours.resize(map_cloud->size(), std::vector<int>());
-  filters.resize(map_cloud->size(), std::vector<bool>(2, false));
+  colors.resize(map_cloud->size(), Eigen::Vector3f::Zero());
+  filters.resize(map_cloud->size(), Eigen::Vector2i::Zero());
 
   tensors_p1.resize(map_cloud->size(), M3F::Zero());
   tensors_p2.resize(map_cloud->size(), M3F::Zero());
@@ -654,7 +656,7 @@ void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
   bool bin_check;
   double t0, t1, res_mean = 0;
-  float wt_min, wt_max, wt_mean, wt_std, pose_diff;
+  float wt_min, wt_max, wt_mean, wt_std;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
@@ -677,8 +679,6 @@ void MappingNode::tensor_registration(
   std_sums.setZero();
   feats_num.setZero();
   hit_filter.setZero();
-
-  pose_diff = (poses[0] - s.pos.cast<float>()).norm();
 
   t0 = omp_get_wtime();
 
@@ -1057,9 +1057,6 @@ MappingNode::MappingNode(
   }
 
   colors.reserve(MAX_MAP_POINTS);
-  poses.reserve(MAX_MAP_POINTS);
-  rotes.reserve(MAX_MAP_POINTS);
-  last_reg.reserve(MAX_MAP_POINTS);
   valid_reg.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);
   saliency_idxs.reserve(MAX_MAP_POINTS);

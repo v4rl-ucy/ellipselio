@@ -148,12 +148,11 @@ class MappingNode : public rclcpp::Node {
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
-  std::vector<int> last_reg;
   std::vector<int> valid_reg;
   std::vector<int> update_idx;
   std::vector<int> saliency_idxs;
-  std::vector<vector<bool>> filters;
   std::vector<vector<int>> neighbours;
+  std::vector<Eigen::Vector2i> filters;
 
   int num_cams;
   string cam_transport;

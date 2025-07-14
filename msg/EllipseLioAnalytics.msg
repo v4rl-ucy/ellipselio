@@ -21,7 +21,6 @@ int64 num_lines
 int64 num_balls
 int64 num_feats
 int64 num_reject
-int64 feats_bin
 int64 kf_iterations
 
 float64 wt_mean
