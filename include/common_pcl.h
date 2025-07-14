@@ -72,7 +72,6 @@ struct EIGEN_ALIGN16 OusterPoint {
   float intensity;
   uint32_t t;
   uint16_t reflectivity;
-  uint8_t ring;
   uint16_t ambient;
   uint32_t range;
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -95,8 +94,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
     OusterPoint,
     (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
         std::uint32_t, t, t)(std::uint16_t, reflectivity,
-                             reflectivity)(std::uint8_t, ring,
-                                           ring)(std::uint32_t, range, range))
+                             reflectivity)(std::uint32_t, range, range))
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     HesaiPoint,
     (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(

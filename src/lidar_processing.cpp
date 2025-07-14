@@ -295,7 +295,8 @@ void LidarProcess::PointCloudHandler(
                        process_pc_->points[i].y * process_pc_->points[i].y +
                        process_pc_->points[i].z * process_pc_->points[i].z);
 
-    if (range < params_.min_range || range > params_.max_range) {
+    if (range < params_.min_range || range > params_.max_range ||
+        std::isnan(range) || std::isinf(range)) {
       continue;
     }
 
