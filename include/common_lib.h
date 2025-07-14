@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define MIN_EKF_FEATS (1000)
+#define MIN_EKF_FEATS (50)
 #define MIN_NEIGHBOURS (6)
 #define MAX_NEIGHBOURS (60)
 #define MIN_MAP_RES (0.1)
