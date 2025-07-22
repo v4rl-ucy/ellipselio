@@ -23,7 +23,8 @@ bool MappingNode::sync_packages() {
     }
     return false;
   }
-  if (!lid_process->lidar_has_data_ && buffer_cloud->empty()) {
+  if (!lid_process->lidar_has_data_ && buffer_cloud->empty() &&
+      raw_cloud->empty()) {
     if (inter_sync_time > 1.0) {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
                             "Lidar has no new data");
@@ -73,7 +74,7 @@ bool MappingNode::sync_packages() {
   if (imu_start_time_ > scan_start_time_) {
     scan_start_time_ = imu_start_time_;
   }
-  if ((scan_end_time_ - scan_start_time_).seconds() < 0.9 * lidar_scan_time) {
+  if ((scan_end_time_ - scan_start_time_).seconds() < 0.8 * lidar_scan_time) {
     if (inter_sync_time < lidar_scan_time) return false;
     if (inter_sync_time > 2 * lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
