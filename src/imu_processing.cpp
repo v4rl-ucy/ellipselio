@@ -8,6 +8,7 @@ ImuProcess::ImuProcess(IkfomSPtr kf, ImuParams params,
     : b_first_frame_(true),
       imu_need_init_(true),
       imu_has_data_(false),
+      lidar_ready_(false),
       imu_counter_(0),
       params_(params),
       kf_(kf),
@@ -129,7 +130,7 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
     init_iter_num++;
   }
 
-  if (init_iter_num > params_.rate) {
+  if (init_iter_num > params_.rate && lidar_ready_) {
     imu_need_init_ = false;
     mean_acc /= init_iter_num;
     mean_gyr /= init_iter_num;

@@ -57,7 +57,6 @@ class MappingNode : public rclcpp::Node {
 
   void tensor_registration(state_ikfom &s,
                            esekfom::dyn_share_datastruct<double> &ekfom_data);
-  void zero_registration_values();
 
   void timer_callback();
   void init_cam_process();
@@ -127,6 +126,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::Quaternionf> rotes;
 
+  std::vector<int> sep_factor;
   std::vector<bool> init_poses;
   std::vector<Eigen::Vector3f> last_updated_poses;
   std::vector<Eigen::Quaternionf> last_updated_rotes;

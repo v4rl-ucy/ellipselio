@@ -16,18 +16,19 @@ bool MappingNode::sync_packages() {
   if (!last_sync_time) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), clk, 1000, "Waiting for data...");
   }
-  if (imu_process->imu_end_time_ <= last_imu_time_) {
-    if (inter_sync_time > 1.0) {
-      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
-                            "IMU has no new data");
-    }
-    return false;
-  }
   if (!lid_process->lidar_has_data_ && buffer_cloud->empty() &&
       raw_cloud->empty()) {
     if (inter_sync_time > 1.0) {
       RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
                             "Lidar has no new data");
+    }
+    return false;
+  }
+  imu_process->lidar_ready_ = true;
+  if (imu_process->imu_end_time_ <= last_imu_time_) {
+    if (inter_sync_time > 1.0) {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
+                            "IMU has no new data");
     }
     return false;
   }
@@ -425,7 +426,7 @@ void MappingNode::map_incremental() {
   old_map_size = map_cloud->size();
 
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
-    float scan_line_sep, pose_diff, rote_diff;
+    float line_sep, pose_diff, rote_diff;
     bool pose_invalid, rote_invalid, sep_invalid;
 
     end_idx += scan_cloud_bins[i];
@@ -437,16 +438,17 @@ void MappingNode::map_incremental() {
       last_updated_rotes[i] = rotes[map_counter];
     }
 
-    scan_line_sep = 10 * lid_process->scan_line_sep_[i];
-    sep_invalid = scan_line_sep > 2 * lid_process->search_radii_[i];
+    line_sep = sep_factor[i] * lid_process->scan_line_sep_[i];
+    sep_invalid = line_sep > 2 * lid_process->search_radii_[i];
 
     pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
-    pose_invalid = pose_diff < scan_line_sep;
+    pose_invalid = pose_diff < line_sep;
 
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
-    rote_invalid = (i + 1) * rote_diff < scan_line_sep;
+    rote_invalid = (i + 1) * rote_diff < line_sep;
 
     if (pose_invalid && rote_invalid && sep_invalid && init_poses[i]) continue;
+    if (sep_factor[i] > 1 && init_poses[i]) sep_factor[i]--;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
 
@@ -712,14 +714,14 @@ void MappingNode::tensor_registration(
 
     const int &map_scan_idx = map_cloud->points[map_i].scan_idx;
 
-    float scan_line_sep = 10 * lid_process->scan_line_sep_[bin_idx];
-    bool sep_invalid = scan_line_sep > 2 * lid_process->search_radii_[bin_idx];
+    float line_sep = sep_factor[bin_idx] * lid_process->scan_line_sep_[bin_idx];
+    bool sep_invalid = line_sep > 2 * lid_process->search_radii_[bin_idx];
 
     float pose_diff = (s.pos.cast<float>() - poses[map_scan_idx]).norm();
-    bool pose_invalid = pose_diff < scan_line_sep;
+    bool pose_invalid = pose_diff < line_sep;
 
     float rote_diff = rotes[map_scan_idx].angularDistance(s.rot.cast<float>());
-    bool rote_invalid = (i + 1) * rote_diff < scan_line_sep;
+    bool rote_invalid = (i + 1) * rote_diff < line_sep;
 
     if (pose_invalid && rote_invalid && sep_invalid) continue;
 
@@ -915,26 +917,6 @@ void MappingNode::tensor_registration(
   if (feat_tot < MIN_EKF_FEATS) {
     ekfom_data.valid = false;
   }
-}
-
-void MappingNode::zero_registration_values() {
-  analytics_msg_.num_planes = 0;
-  analytics_msg_.num_lines = 0;
-  analytics_msg_.num_balls = 0;
-  analytics_msg_.wt_std = 0;
-  analytics_msg_.wt_min = 0;
-  analytics_msg_.wt_max = 0;
-  analytics_msg_.wt_mean = 0;
-  analytics_msg_.rng_min = 0;
-  analytics_msg_.rng_max = 0;
-  analytics_msg_.rng_mean = 0;
-  analytics_msg_.res_mean = 0;
-  analytics_msg_.mean_bin = 0;
-  analytics_msg_.start_bin = 0;
-  analytics_msg_.num_feats = 0;
-  analytics_msg_.num_reject = 0;
-  analytics_msg_.kf_iterations = 0;
-  analytics_msg_.hit_filter = 0;
 }
 
 // Main mapping node
@@ -1363,6 +1345,7 @@ void MappingNode::timer_callback() {
     scan_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
     filter_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
 
+    sep_factor = std::vector<int>(lid_process->num_bins_, 10);
     init_poses = std::vector<bool>(lid_process->num_bins_, false);
     last_updated_poses = std::vector<Eigen::Vector3f>(lid_process->num_bins_);
     last_updated_rotes =
