@@ -764,7 +764,7 @@ void MappingNode::tensor_registration(
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, fmin(mean_bin, 10.0) / 10.0);
+    time_score = pow(time_score, start_bin / 10.0);
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -793,8 +793,13 @@ void MappingNode::tensor_registration(
   }
 
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
-  max_prim_cnts = max_prim_cnts.max(cnts);
   feat_tot = cnts.sum();
+  reject_cnt = scan_cloud->size() - feat_tot;
+
+  if (feat_tot < MIN_EKF_FEATS) {
+    ekfom_data.valid = false;
+    return;
+  }
 
 #pragma omp parallel for
   for (int i = 0; i < 9; i++) {
@@ -808,11 +813,6 @@ void MappingNode::tensor_registration(
         (ekfom_data_w.col(i).head(cnts(i % 3)) - means(i)).square().sum();
     if (cnts(i % 3) < 2) continue;
     stds(i) = sqrt(std_sums(i) / (cnts(i % 3) - 1));
-  }
-
-  if (cnts.sum() < 2) {
-    ekfom_data.valid = false;
-    return;
   }
 
   wt_min = mins.head(3).minCoeff();
@@ -843,7 +843,7 @@ void MappingNode::tensor_registration(
 
     feats_num(i) = cnts(i);
     if (stds(i + 3) && stds(i + 6)) {
-      hit_filter(i) = 1.0 - (float(cnts(i)) / float(max_prim_cnts(i)));
+      hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
       std_p = stds(i + 3) * hit_filter(i);
@@ -877,22 +877,25 @@ void MappingNode::tensor_registration(
   rng_min = 1;
   rng_max += 1;
 
-  if (feat_tot && feats_num.sum()) {
-    ekfom_data_h_x_R.leftCols(feat_tot) =
-        (ekfom_data_h_x.topRows(feat_tot).array().colwise() *
-         ekfom_data_w_x.head(feat_tot))
-            .transpose();
-
-    ekfom_data.h = ekfom_data_h.head(feat_tot);
-    ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
-    ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
-
-    res_mean = -ekfom_data_h.head(feat_tot).sum();
-    feat_tot = feats_num.sum();
-
-    res_mean /= feat_tot;
-    reject_cnt = scan_cloud->size() - feat_tot;
+  if (feats_num.sum() < MIN_EKF_FEATS) {
+    ekfom_data.valid = false;
+    return;
   }
+
+  ekfom_data_h_x_R.leftCols(feat_tot) =
+      (ekfom_data_h_x.topRows(feat_tot).array().colwise() *
+       ekfom_data_w_x.head(feat_tot))
+          .transpose();
+
+  ekfom_data.h = ekfom_data_h.head(feat_tot);
+  ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
+  ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
+
+  res_mean = -ekfom_data_h.head(feat_tot).sum();
+  feat_tot = feats_num.sum();
+
+  res_mean /= feat_tot;
+  reject_cnt = scan_cloud->size() - feat_tot;
 
   ekfom_iter_cnt++;
 
@@ -913,10 +916,6 @@ void MappingNode::tensor_registration(
   analytics_msg_.num_reject = reject_cnt;
   analytics_msg_.kf_iterations = ekfom_iter_cnt;
   analytics_msg_.hit_filter = hit_filter.mean();
-
-  if (feat_tot < MIN_EKF_FEATS) {
-    ekfom_data.valid = false;
-  }
 }
 
 // Main mapping node
@@ -1020,7 +1019,6 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
 
-  max_prim_cnts = Eigen::Array3i::Zero();
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_w = Eigen::ArrayXXd(MAX_PROC_POINTS, 9);
