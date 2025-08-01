@@ -796,7 +796,7 @@ void MappingNode::tensor_registration(
   feat_tot = cnts.sum();
   reject_cnt = scan_cloud->size() - feat_tot;
 
-  if (feat_tot < MIN_EKF_FEATS) {
+  if (feat_tot < fmin(0.1 * scan_cloud->size(), 100)) {
     ekfom_data.valid = false;
     return;
   }
@@ -877,7 +877,7 @@ void MappingNode::tensor_registration(
   rng_min = 1;
   rng_max += 1;
 
-  if (feats_num.sum() < MIN_EKF_FEATS) {
+  if (feats_num.sum() < fmin(0.1 * scan_cloud->size(), 100)) {
     ekfom_data.valid = false;
     return;
   }
