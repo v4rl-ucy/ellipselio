@@ -62,8 +62,10 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     octree_res = floor(octree_res * 100.0) / 100.0;
     octree_res = fmax(octree_res, MIN_BIN_RES);
     search_rad = fmin(fmax(10.0 * octree_res, MIN_SCAN_RES), max_search_rad_);
-    bucket_size = ceil((1.0 - (octree_res / min_scan_res_)) * MIN_NEIGHBOURS);
-    bucket_size = fmax(bucket_size, 1.0);
+
+    bucket_size = MAX_NEIGHBOURS * pow(map_resolution, 2);
+    bucket_size /= M_PI * pow(search_rad, 2);
+    bucket_size = fmin(ceil(bucket_size), MIN_NEIGHBOURS);
 
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_rad;
