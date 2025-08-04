@@ -411,7 +411,7 @@ void MappingNode::map_incremental() {
   for (int i = 0; i < scan_cloud->size(); i++) {
     scan_cloud->points[i].scan_idx = map_counter;
     const int &bin_idx = scan_cloud->points[i].bin_idx;
-    scan_cloud->points[i].bin_idx = fmax(bin_idx, start_bin);
+    scan_cloud->points[i].bin_idx = fmax(bin_idx, mean_bin);
     scan_cloud->points[i].getVector3fMap() =
         (kf_state_.state.rot *
              (kf_state_.state.offset_R_L_I *
@@ -447,12 +447,14 @@ void MappingNode::map_incremental() {
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
     rote_invalid = (i + 1) * rote_diff < line_sep;
 
-    if (pose_invalid && rote_invalid && sep_invalid && init_poses[i]) continue;
+    if (pose_invalid && rote_invalid && sep_invalid && init_poses[i] &&
+        !last_ekf_fail)
+      continue;
     if (sep_factor[i] > 1 && init_poses[i]) sep_factor[i]--;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
 
-    ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
+    ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, mean_bin)]);
     ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx,
                    map_resolution);
     *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs);
@@ -705,7 +707,7 @@ void MappingNode::tensor_registration(
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
     const int &bin_idx = scan_cloud->points[i].bin_idx;
-    float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
+    float search_rad = lid_process->search_radii_[fmax(bin_idx, mean_bin)];
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
 
@@ -723,7 +725,7 @@ void MappingNode::tensor_registration(
     float rote_diff = rotes[map_scan_idx].angularDistance(s.rot.cast<float>());
     bool rote_invalid = (i + 1) * rote_diff < line_sep;
 
-    if (pose_invalid && rote_invalid && sep_invalid) continue;
+    if (pose_invalid && rote_invalid && sep_invalid && !last_ekf_fail) continue;
 
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
@@ -763,8 +765,8 @@ void MappingNode::tensor_registration(
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
     prim_score = 1 - scores.maxCoeff();
-    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.1);
-    time_score = pow(time_score, start_bin / 10.0);
+    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
+    time_score = pow(time_score, 1.0 / (p_lidar.norm() + 1.0));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -796,8 +798,9 @@ void MappingNode::tensor_registration(
   feat_tot = cnts.sum();
   reject_cnt = scan_cloud->size() - feat_tot;
 
-  if (feat_tot < fmin(0.1 * scan_cloud->size(), 50)) {
+  if (feat_tot < fmin(0.05 * scan_cloud->size(), 50)) {
     ekfom_data.valid = false;
+    last_ekf_fail = true;
     return;
   }
 
@@ -839,6 +842,8 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
       ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
+    } else {
+      ekfom_data_w.col(i).head(cnts(i)) = 1.0;
     }
 
     feats_num(i) = cnts(i);
@@ -876,9 +881,11 @@ void MappingNode::tensor_registration(
   }
   rng_min = 1;
   rng_max += 1;
+  rng_mean += 1;
 
-  if (feats_num.sum() < fmin(0.1 * scan_cloud->size(), 50)) {
+  if (feats_num.sum() < fmin(0.05 * scan_cloud->size(), 50)) {
     ekfom_data.valid = false;
+    last_ekf_fail = true;
     return;
   }
 
@@ -898,6 +905,7 @@ void MappingNode::tensor_registration(
   reject_cnt = scan_cloud->size() - feat_tot;
 
   ekfom_iter_cnt++;
+  last_ekf_fail = false;
 
   analytics_msg_.num_planes = cnts[0];
   analytics_msg_.num_lines = cnts[1];
