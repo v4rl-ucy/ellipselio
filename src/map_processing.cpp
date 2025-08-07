@@ -667,7 +667,7 @@ void MappingNode::tensor_registration(
 
   std::vector<std::atomic<int>> prim_cnts(3);
 
-  V3F hit_filter;
+  V3F hit_filter, grav_norm, vel_norm;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
 
@@ -684,6 +684,11 @@ void MappingNode::tensor_registration(
   std_sums.setZero();
   feats_num.setZero();
   hit_filter.setZero();
+
+  vel_norm = s.vel.normalized().cast<float>();
+  grav_norm = s.grav.get_vect().normalized().cast<float>();
+  vel_factor(map_counter % (20 * lidar_params.rate)) =
+      1.0 - fabs(grav_norm.dot(vel_norm));
 
   t0 = omp_get_wtime();
 
@@ -764,9 +769,12 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
+    time_score = (scan_pt_time - map_pt_time).seconds();
+    time_score *= fabs(grav_norm.dot(norm_vec));
+    time_score = 1.0 / (1.0 + time_score);
+    time_score = pow(time_score, vel_factor.minCoeff());
+
     prim_score = 1 - scores.maxCoeff();
-    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
-    time_score = pow(time_score, 1.0 / (p_lidar.norm() + 1.0));
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -837,14 +845,14 @@ void MappingNode::tensor_registration(
 
     if (!cnts(i)) continue;
 
-    if (stds(i)) {
-      ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
-      ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
-      ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
-      ekfom_data_w.col(i).head(cnts(i)) += 1.0;
-    } else {
-      ekfom_data_w.col(i).head(cnts(i)) = 1.0;
-    }
+    // if (stds(i)) {
+    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
+    //   ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
+    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
+    //   ekfom_data_w.col(i).head(cnts(i)) += 1.0;
+    // } else {
+    //   ekfom_data_w.col(i).head(cnts(i)) = 1.0;
+    // }
 
     feats_num(i) = cnts(i);
     if (stds(i + 3) && stds(i + 6)) {
@@ -1026,6 +1034,8 @@ MappingNode::MappingNode(
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
+
+  vel_factor = Eigen::ArrayXf::Ones(20 * lidar_params.rate);
 
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
