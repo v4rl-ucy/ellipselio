@@ -687,8 +687,6 @@ void MappingNode::tensor_registration(
 
   vel_norm = s.vel.normalized().cast<float>();
   grav_norm = s.grav.get_vect().normalized().cast<float>();
-  vel_factor(map_counter % (20 * lidar_params.rate)) =
-      1.0 - fabs(grav_norm.dot(vel_norm));
 
   t0 = omp_get_wtime();
 
@@ -769,10 +767,14 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
+    float grav_norm_dot = fmin(fabs(grav_norm.dot(norm_vec)), 1.0);
+    float pose_z_diff = fmax(fabs(s.pos(2) - poses[map_scan_idx](2)), 1.0);
+
     time_score = (scan_pt_time - map_pt_time).seconds();
-    time_score *= fabs(grav_norm.dot(norm_vec));
+    time_score = pow(time_score, grav_norm_dot);
+    time_score = pow(time_score, 1.0 / pose_z_diff);
+    time_score = pow(time_score, fmin(p_lidar.norm() / 5.0, 1.0));
     time_score = 1.0 / (1.0 + time_score);
-    time_score = pow(time_score, vel_factor.minCoeff());
 
     prim_score = 1 - scores.maxCoeff();
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
@@ -844,15 +846,6 @@ void MappingNode::tensor_registration(
     float std_p, std_e;
 
     if (!cnts(i)) continue;
-
-    // if (stds(i)) {
-    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
-    //   ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
-    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
-    //   ekfom_data_w.col(i).head(cnts(i)) += 1.0;
-    // } else {
-    //   ekfom_data_w.col(i).head(cnts(i)) = 1.0;
-    // }
 
     feats_num(i) = cnts(i);
     if (stds(i + 3) && stds(i + 6)) {
@@ -1034,8 +1027,6 @@ MappingNode::MappingNode(
   ioctree.set_max_octants(MAX_MAP_POINTS);
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
-
-  vel_factor = Eigen::ArrayXf::Ones(20 * lidar_params.rate);
 
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
