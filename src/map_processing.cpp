@@ -767,13 +767,12 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    float grav_norm_dot = fmin(fabs(grav_norm.dot(norm_vec)), 1.0);
-    float pose_z_diff = fmax(fabs(s.pos(2) - poses[map_scan_idx](2)), 1.0);
+    float time_pow = fmin(mean_bin / 5.0, 1.0);
+    time_pow *= fmin(scan_cloud->size() / 2e3, 1.0);
+    time_pow *= fmin(fmax(fabs(grav_norm.dot(norm_vec)), 1e-3), 1.0);
 
     time_score = (scan_pt_time - map_pt_time).seconds();
-    time_score = pow(time_score, grav_norm_dot);
-    time_score = pow(time_score, 1.0 / pose_z_diff);
-    time_score = pow(time_score, fmin(p_lidar.norm() / 5.0, 1.0));
+    time_score = pow(time_score, time_pow);
     time_score = 1.0 / (1.0 + time_score);
 
     prim_score = 1 - scores.maxCoeff();
