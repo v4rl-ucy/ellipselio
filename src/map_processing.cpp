@@ -767,7 +767,8 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    float time_pow = (start_bin / 10.0) * fmin(scan_cloud->size() / 2e3, 1.0);
+    float time_pow = fmin(mean_bin / 10.0, 1.0);
+    time_pow *= fmin(scan_cloud->size() / 2e3, 1.0);
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
@@ -852,7 +853,7 @@ void MappingNode::tensor_registration(
     }
 
     feats_num(i) = cnts(i);
-    if (stds(i + 3) && stds(i + 6)) {
+    if (stds(i + 3) && stds(i + 6) && feat_tot > 2e3) {
       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
