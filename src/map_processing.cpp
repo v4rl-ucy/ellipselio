@@ -411,7 +411,7 @@ void MappingNode::map_incremental() {
   for (int i = 0; i < scan_cloud->size(); i++) {
     scan_cloud->points[i].scan_idx = map_counter;
     const int &bin_idx = scan_cloud->points[i].bin_idx;
-    scan_cloud->points[i].bin_idx = fmax(bin_idx, mean_bin);
+    scan_cloud->points[i].bin_idx = fmax(bin_idx, start_bin);
     scan_cloud->points[i].getVector3fMap() =
         (kf_state_.state.rot *
              (kf_state_.state.offset_R_L_I *
@@ -454,7 +454,7 @@ void MappingNode::map_incremental() {
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
 
-    ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, mean_bin)]);
+    ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
     ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx,
                    map_resolution);
     *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs);
@@ -710,7 +710,7 @@ void MappingNode::tensor_registration(
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
     const int &bin_idx = scan_cloud->points[i].bin_idx;
-    float search_rad = lid_process->search_radii_[fmax(bin_idx, mean_bin)];
+    float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
 
@@ -767,15 +767,11 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    float time_pow = fmin(mean_bin / 5.0, 1.0);
-    time_pow *= fmin(scan_cloud->size() / 2e3, 1.0);
-    time_pow *= fmin(fmax(fabs(grav_norm.dot(norm_vec)), 1e-3), 1.0);
-
-    time_score = (scan_pt_time - map_pt_time).seconds();
-    time_score = pow(time_score, time_pow);
-    time_score = 1.0 / (1.0 + time_score);
+    float time_pow = (start_bin / 10.0) * fmin(scan_cloud->size() / 2e3, 1.0);
 
     prim_score = 1 - scores.maxCoeff();
+    time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
+    time_score = pow(time_score, time_pow);
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
 
     prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
@@ -845,6 +841,15 @@ void MappingNode::tensor_registration(
     float std_p, std_e;
 
     if (!cnts(i)) continue;
+
+    if (stds(i)) {
+      ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
+      ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
+      ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
+      ekfom_data_w.col(i).head(cnts(i)) += 1.0;
+    } else {
+      ekfom_data_w.col(i).head(cnts(i)) = 1.0;
+    }
 
     feats_num(i) = cnts(i);
     if (stds(i + 3) && stds(i + 6)) {
