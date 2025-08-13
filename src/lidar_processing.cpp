@@ -25,7 +25,9 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
   scan_res_ = M_PI * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
   min_scan_res_ = fmax(floor(scan_res_ * 1000.0) / 100.0, MIN_SCAN_RES);
   max_search_rad_ = fmin(10.0 * min_scan_res_, 10.0 * map_resolution);
+  max_octree_res_ = floor(map_resolution / scan_res_);
 
+  bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
   bin_octrees_ = std::vector<iOctree::Octree>(num_bins_);
@@ -39,8 +41,6 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
 
   process_pc_->resize(MAX_SCAN_POINTS);
   ellipselio_pc_->reserve(MAX_PROC_POINTS);
-  ranges_ = Eigen::ArrayXf(MAX_SCAN_POINTS);
-  range_wts_ = Eigen::ArrayXf(MAX_SCAN_POINTS);
 
   bucket_sizes_ = std::vector<int>(num_bins_, 1);
   cnt_neighbours_ = std::vector<int>(num_bins_, 1);
@@ -61,6 +61,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     octree_res = (i + 1) * scan_res_;
     octree_res = floor(octree_res * 100.0) / 100.0;
     octree_res = fmax(octree_res, MIN_BIN_RES);
+
     search_rad = fmin(fmax(10.0 * octree_res, MIN_SCAN_RES), max_search_rad_);
 
     bucket_size = MAX_NEIGHBOURS * pow(map_resolution, 2);
@@ -72,6 +73,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     scan_line_sep_[i] = scan_line_sep;
     octree_resolutions_[i] = octree_res;
 
+    bin_pcs_i_(i) = i;
     bin_pcs_[i].reserve(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_new_points(MAX_SCAN_POINTS);
     bin_octrees_[i].set_max_octants(0.1 * MAX_SCAN_POINTS);
@@ -101,9 +103,14 @@ void LidarProcess::LidarCallback(
                              "WARNING: Lidar time offset detected!");
   }
 
+  double t0 = omp_get_wtime();
   lidar_mutex_.lock();
   Process(msg);
   lidar_mutex_.unlock();
+  double t1 = omp_get_wtime();
+
+  // std::cout << "Lidar process time: " << (t1 - t0) * 1000.0 << " ms"
+  //           << std::endl;
 }
 
 // Process the lidar point cloud
@@ -125,20 +132,36 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
       break;
   }
 
+  int end_bin = num_bins_;
+  int prev_start_bin = -1;
+  while (start_bin_ > prev_start_bin && prev_start_bin < max_octree_res_) {
 #pragma omp parallel for
-  for (size_t i = 0; i < num_bins_; i++) {
-    std::vector<int> new_idxs, added_idxs;
-    if (!bin_sizes_[i]) continue;
+    for (size_t i = 0; i < end_bin; i++) {
+      std::vector<int> new_idxs, added_idxs;
+      if (!bin_sizes_[i]) continue;
 
-    bin_octrees_[i].set_bucket_size(1);
-    bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
-    bin_octrees_[i].update(*process_pc_, bin_sizes_[i], bin_idxs_[i],
-                           added_idxs, new_idxs);
+      bin_pcs_sizes_[i] = 0;
+      bin_pcs_[i].clear();
+      bin_octrees_[i].clear();
 
-    if (!added_idxs.size()) continue;
-    bin_pcs_[i] += EllipseLioPointCloud(*process_pc_, added_idxs);
-    bin_pcs_sizes_[i] = bin_pcs_[i].size();
-    SetMinMaxTime(i);
+      bin_octrees_[i].set_bucket_size(1);
+      bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
+      bin_octrees_[i].update(*process_pc_, bin_sizes_[i], bin_idxs_[i],
+                             added_idxs, new_idxs);
+
+      if (!added_idxs.size()) continue;
+      bin_pcs_[i] = EllipseLioPointCloud(*process_pc_, added_idxs);
+      bin_pcs_sizes_[i] = bin_pcs_[i].size();
+      SetMinMaxTime(i);
+
+      bin_idxs_[i] = added_idxs;
+      bin_sizes_[i] = bin_pcs_sizes_[i];
+    }
+    prev_start_bin = start_bin_;
+    mean_bin_ = (bin_pcs_sizes_ * bin_pcs_i_).sum();
+    mean_bin_ = floor(mean_bin_ / bin_pcs_sizes_.sum());
+    start_bin_ = fmin(mean_bin_, max_octree_res_);
+    end_bin = start_bin_;
   }
 
   ellipselio_pc_->clear();
@@ -278,18 +301,16 @@ void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType> &in_pc, int pt_idx,
 template <typename InPtType>
 void LidarProcess::PointCloudHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  int in_pc_size;
-  std::atomic<int> in_pts_cnt = 0;
-  float range_wt_mean, range_wt_sum;
-
   pcl::PointCloud<InPtType> in_pc;
   pcl::fromROSMsg(*msg, in_pc);
+  int num_points;
+  float mean_bin = 0, mean_num = 0;
 
-  in_pc_size = fmin(in_pc.size(), MAX_SCAN_POINTS);
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
+  num_points = fmin(in_pc.size(), MAX_SCAN_POINTS);
 
 #pragma omp parallel for
-  for (size_t i = 0; i < in_pc_size; i++) {
+  for (size_t i = 0; i < num_points; i++) {
     rclcpp::Time point_time = msg->header.stamp;
     point_time += lidar_time_offset_;
     ConvertPoint<InPtType>(in_pc, i, point_time);
@@ -302,21 +323,16 @@ void LidarProcess::PointCloudHandler(
       continue;
     }
 
-    int idx = in_pts_cnt++;
-    ranges_(idx) = range;
-    range_wts_(idx) = floor(range) * scan_res_;
-
     int bin_idx = floor(range);
-    bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
-
     process_pc_->points[i].bin_idx = bin_idx;
+    bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
   }
 
-  in_pc_size = in_pts_cnt.load();
+  for (size_t i = 0; i < num_bins_; i++) {
+    mean_num += bin_sizes_[i];
+    mean_bin += i * bin_sizes_[i];
+  }
 
-  mean_bin_ = floor(ranges_.head(in_pc_size).mean());
-  range_wt_sum = range_wts_.head(in_pc_size).sum();
-  ranges_.head(in_pc_size) *= range_wts_.head(in_pc_size);
-  range_wt_mean = ranges_.head(in_pc_size).sum() / range_wt_sum;
-  start_bin_ = mean_bin_;  // fmin(floor(range_wt_mean), 10);
+  mean_bin_ = floor(mean_bin / mean_num);
+  start_bin_ = fmin(mean_bin_, max_octree_res_);
 }

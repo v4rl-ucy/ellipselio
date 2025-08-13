@@ -38,6 +38,7 @@ class LidarProcess {
   float scan_res_;
   float min_scan_res_;
   float max_search_rad_;
+  float max_octree_res_;
 
   std::atomic<int> lidar_counter_;
   rclcpp::Duration lidar_time_offset_;
@@ -76,8 +77,7 @@ class LidarProcess {
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
 
-  Eigen::ArrayXf ranges_, range_wts_;
-  Eigen::ArrayXi bin_pcs_sizes_;
+  Eigen::ArrayXi bin_pcs_sizes_, bin_pcs_i_;
 
   std::vector<std::vector<int>> bin_idxs_;
   std::vector<std::atomic<int>> bin_sizes_;
