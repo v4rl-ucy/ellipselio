@@ -697,11 +697,13 @@ void MappingNode::tensor_registration(
     std::vector<float> N_dst, N_p_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
-    float residual, prim_score, time_score, ellipse_score, total_score;
+    float residual, prim_score, time_score, ellipse_score, total_score,
+        time_pow;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
-    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
+    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec,
+        poses_diff;
 
     const EllipseLioPoint &pt = scan_cloud->points[i];
 
@@ -767,8 +769,12 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    float time_pow = fmin(mean_bin / 10.0, 1.0);
-    time_pow *= fmin(scan_cloud->size() / 2e3, 1.0);
+    poses_diff = s.pos.cast<float>();
+    poses_diff -= poses[fmax(map_counter - 100, 0)];
+    time_pow = fabs(grav_norm.dot(poses_diff));
+    time_pow *= fabs(grav_norm.dot(poses_diff.normalized()));
+    time_pow = fmax(1.0 - time_pow, 0.1);
+    time_pow *= fmax(1.0 - (1.0 / fmax(p_lidar.norm(), 1.0)), 0.1);
 
     prim_score = 1 - scores.maxCoeff();
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
@@ -853,7 +859,7 @@ void MappingNode::tensor_registration(
     }
 
     feats_num(i) = cnts(i);
-    if (stds(i + 3) && stds(i + 6) && feat_tot > 2e3) {
+    if (stds(i + 3) && stds(i + 6)) {
       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 

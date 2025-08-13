@@ -318,5 +318,5 @@ void LidarProcess::PointCloudHandler(
   range_wt_sum = range_wts_.head(in_pc_size).sum();
   ranges_.head(in_pc_size) *= range_wts_.head(in_pc_size);
   range_wt_mean = ranges_.head(in_pc_size).sum() / range_wt_sum;
-  start_bin_ = fmin(floor(range_wt_mean), 10);
+  start_bin_ = mean_bin_;  // fmin(floor(range_wt_mean), 10);
 }
