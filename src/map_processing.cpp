@@ -425,9 +425,13 @@ void MappingNode::map_incremental() {
   end_idx = 0;
   old_map_size = map_cloud->size();
 
+  V3F grav_norm = kf_state_.state.grav.get_vect().normalized().cast<float>();
+  V3F axis_norm = kf_state_.state.rot.cast<float>() * Eigen::Vector3f::UnitZ();
+  bool ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
+
   for (int i = 0; i < scan_cloud_bins.size(); i++) {
     float line_sep, pose_diff, rote_diff;
-    bool pose_invalid, rote_invalid, sep_invalid;
+    bool pose_val, rote_val, sep_val;
 
     end_idx += scan_cloud_bins[i];
     if (!scan_cloud_bins[i]) continue;
@@ -439,17 +443,15 @@ void MappingNode::map_incremental() {
     }
 
     line_sep = sep_factor[i] * lid_process->scan_line_sep_[i];
-    sep_invalid = line_sep > 2 * lid_process->search_radii_[i];
+    sep_val = line_sep > 2 * lid_process->search_radii_[i];
 
     pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
-    pose_invalid = pose_diff < line_sep;
+    pose_val = pose_diff < line_sep;
 
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
-    rote_invalid = (i + 1) * rote_diff < line_sep;
+    rote_val = (i + 1) * rote_diff < line_sep;
 
-    if (pose_invalid && rote_invalid && sep_invalid && init_poses[i] &&
-        !last_ekf_fail)
-      continue;
+    if (pose_val && rote_val && sep_val && ort_val && init_poses[i]) continue;
     if (sep_factor[i] > 1 && init_poses[i]) sep_factor[i]--;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
@@ -666,8 +668,8 @@ void MappingNode::tensor_registration(
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
   std::vector<std::atomic<int>> prim_cnts(3);
+  V3F hit_filter, grav_norm, vel_norm, axis_norm;
 
-  V3F hit_filter, grav_norm, vel_norm;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
 
@@ -687,6 +689,8 @@ void MappingNode::tensor_registration(
 
   vel_norm = s.vel.normalized().cast<float>();
   grav_norm = s.grav.get_vect().normalized().cast<float>();
+  axis_norm = kf_state_.state.rot.cast<float>() * Eigen::Vector3f::UnitZ();
+  bool ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
 
   t0 = omp_get_wtime();
 
@@ -722,16 +726,15 @@ void MappingNode::tensor_registration(
     const int &map_scan_idx = map_cloud->points[map_i].scan_idx;
 
     float line_sep = sep_factor[bin_idx] * lid_process->scan_line_sep_[bin_idx];
-    bool sep_invalid = line_sep > 2 * lid_process->search_radii_[bin_idx];
+    bool sep_val = line_sep > 2 * lid_process->search_radii_[bin_idx];
 
     float pose_diff = (s.pos.cast<float>() - poses[map_scan_idx]).norm();
-    bool pose_invalid = pose_diff < line_sep;
+    bool pose_val = pose_diff < line_sep;
 
     float rote_diff = rotes[map_scan_idx].angularDistance(s.rot.cast<float>());
-    bool rote_invalid = (i + 1) * rote_diff < line_sep;
+    bool rote_val = (i + 1) * rote_diff < line_sep;
 
-    if (pose_invalid && rote_invalid && sep_invalid && !last_ekf_fail) continue;
-
+    if (pose_val && rote_val && sep_val && ort_val) continue;
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
 
@@ -861,8 +864,6 @@ void MappingNode::tensor_registration(
     feats_num(i) = cnts(i);
     if (stds(i + 3) && stds(i + 6)) {
       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
-      hit_filter(i) =
-          fmax(hit_filter(i), 1.0 - (float(scan_cloud->size()) / 1e4));
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
       std_p = stds(i + 3) * hit_filter(i);
