@@ -25,7 +25,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
   scan_res_ = M_PI * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
   min_scan_res_ = fmax(floor(scan_res_ * 1000.0) / 100.0, MIN_SCAN_RES);
   max_search_rad_ = fmin(10.0 * min_scan_res_, 10.0 * map_resolution);
-  max_octree_res_ = floor(map_resolution / scan_res_);
+  max_octree_res_ = 10;
 
   bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
