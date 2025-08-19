@@ -92,7 +92,7 @@ class MappingNode : public rclcpp::Node {
   bool initialized = false;
   bool use_map_res = false;
   bool line_sep_res = true;
-  bool last_ekf_fail = false;
+  bool last_ekf_fail = true;
 
   int scan_num_cnt = 0;
   double map_resolution, map_search_rad;

@@ -76,17 +76,21 @@ bool MappingNode::sync_packages() {
     scan_start_time_ = imu_start_time_;
   }
   if ((scan_end_time_ - scan_start_time_).seconds() < 0.8 * lidar_scan_time) {
-    if (inter_sync_time < lidar_scan_time) return false;
+    if (inter_sync_time <= 2 * lidar_scan_time) return false;
     if (inter_sync_time > 2 * lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "Scan time too short");
+      buffer_cloud->clear();
+      return false;
     }
   }
   if (scan_start_time_ + lidar_scan_duration > imu_end_time_) {
-    if (inter_sync_time < lidar_scan_time) return false;
+    if (inter_sync_time <= 2 * lidar_scan_time) return false;
     if (inter_sync_time > 2 * lidar_scan_time) {
       RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
                                    "IMU end time less than scan duration");
+      buffer_cloud->clear();
+      return false;
     }
   }
 
@@ -446,12 +450,12 @@ void MappingNode::map_incremental() {
     sep_val = line_sep > 2 * lid_process->search_radii_[i];
 
     pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
-    pose_val = pose_diff < line_sep;
+    pose_val = pose_diff < line_sep && pose_diff > 0;
 
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
-    rote_val = (i + 1) * rote_diff < line_sep;
+    rote_val = (i + 1) * rote_diff < line_sep && rote_diff > 0;
 
-    if (pose_val && rote_val && sep_val && ort_val && init_poses[i]) continue;
+    if (pose_val && rote_val && sep_val && ort_val && !last_ekf_fail) continue;
     if (sep_factor[i] > 1 && init_poses[i]) sep_factor[i]--;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
@@ -668,7 +672,7 @@ void MappingNode::tensor_registration(
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
   std::vector<std::atomic<int>> prim_cnts(3);
-  V3F hit_filter, grav_norm, vel_norm, axis_norm;
+  V3F hit_filter, grav_norm, vel_norm, axis_norm, prim_means;
 
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
@@ -735,7 +739,7 @@ void MappingNode::tensor_registration(
     float rote_diff = rotes[map_scan_idx].angularDistance(s.rot.cast<float>());
     bool rote_val = (i + 1) * rote_diff < line_sep;
 
-    if (pose_val && rote_val && sep_val && ort_val) continue;
+    if (pose_val && rote_val && sep_val && ort_val && !last_ekf_fail) continue;
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
 
@@ -794,7 +798,7 @@ void MappingNode::tensor_registration(
     scores(2) = ellipse_score;
     scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
     scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
-    total_score = 1.0 / fmin(scores.sum(), 1.0);
+    total_score = 1.0 / fmin(fmax(scores.sum(), 1e-3), 1.0);
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
@@ -834,6 +838,9 @@ void MappingNode::tensor_registration(
     stds(i) = sqrt(std_sums(i) / (cnts(i % 3) - 1));
   }
 
+  prim_means << 1 - means(3), 1 - means(4), 1 - means(5);
+  prim_means /= prim_means.maxCoeff();
+
   wt_min = mins.head(3).minCoeff();
   wt_max = maxs.head(3).maxCoeff();
   wt_mean = sums.head(3).sum() / cnts.sum();
@@ -857,6 +864,7 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
       ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
       ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
+      ekfom_data_w.col(i).head(cnts(i)) *= prim_means(i);
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     } else {
       ekfom_data_w.col(i).head(cnts(i)) = 1.0;
