@@ -722,6 +722,7 @@ void MappingNode::tensor_registration(
 
     if (N_idxs.size() == 0) continue;
     map_i = N_idxs[0];
+    sali_idx = saliency_idxs[map_i];
 
     const int &map_scan_idx = map_cloud->points[map_i].scan_idx;
 
@@ -799,14 +800,14 @@ void MappingNode::tensor_registration(
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
-    prim_num = ++prim_cnts[saliency_idxs[map_i]];
-    ekfom_data_i(prim_num - 1, saliency_idxs[map_i]) = map_i;
-    ekfom_data_w(prim_num - 1, saliency_idxs[map_i]) = total_score;
-    ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 3) = prim_score;
-    ekfom_data_w(prim_num - 1, saliency_idxs[map_i] + 6) = ellipse_score;
+    prim_num = ++prim_cnts[sali_idx];
+    ekfom_data_i(prim_num - 1, sali_idx) = map_i;
+    ekfom_data_w(prim_num - 1, sali_idx) = total_score;
+    ekfom_data_w(prim_num - 1, sali_idx + 3) = prim_score;
+    ekfom_data_w(prim_num - 1, sali_idx + 6) = ellipse_score;
 
-    ekfom_data_h_v[saliency_idxs[map_i]](prim_num - 1) = -residual;
-    ekfom_data_h_x_v[saliency_idxs[map_i]].row(prim_num - 1) = h_x_vec;
+    ekfom_data_h_v[sali_idx](prim_num - 1) = -residual;
+    ekfom_data_h_x_v[sali_idx].row(prim_num - 1) = h_x_vec;
   }
 
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
