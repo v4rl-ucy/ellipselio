@@ -672,7 +672,7 @@ void MappingNode::tensor_registration(
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
 
   std::vector<std::atomic<int>> prim_cnts(3);
-  V3F hit_filter, grav_norm, vel_norm, axis_norm, prim_means;
+  V3F hit_filter, grav_norm, vel_norm, axis_norm, prim_means, ellipse_means;
 
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
@@ -840,6 +840,8 @@ void MappingNode::tensor_registration(
 
   prim_means << 1 - means(3), 1 - means(4), 1 - means(5);
   prim_means /= prim_means.maxCoeff();
+  ellipse_means << 1 - means(6), 1 - means(7), 1 - means(8);
+  ellipse_means /= ellipse_means.maxCoeff();
 
   wt_min = mins.head(3).minCoeff();
   wt_max = maxs.head(3).maxCoeff();
@@ -865,6 +867,7 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
       ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
       ekfom_data_w.col(i).head(cnts(i)) *= prim_means(i);
+      ekfom_data_w.col(i).head(cnts(i)) *= ellipse_means(i);
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     } else {
       ekfom_data_w.col(i).head(cnts(i)) = 1.0;
