@@ -665,14 +665,16 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
-  bool bin_check;
+  bool bin_check, ort_val;
   double t0, t1, res_mean = 0;
   float wt_min, wt_max, wt_mean, wt_std;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
-  float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale;
+  float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale, grav_check,
+      pose_check;
 
   std::vector<std::atomic<int>> prim_cnts(3);
-  V3F hit_filter, grav_norm, vel_norm, axis_norm, prim_means, ellipse_means;
+  V3F hit_filter, grav_norm, vel_norm, axis_norm, prim_means, ellipse_means,
+      poses_diff;
 
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
@@ -694,7 +696,15 @@ void MappingNode::tensor_registration(
   vel_norm = s.vel.normalized().cast<float>();
   grav_norm = s.grav.get_vect().normalized().cast<float>();
   axis_norm = kf_state_.state.rot.cast<float>() * Eigen::Vector3f::UnitZ();
-  bool ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
+  ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
+
+  poses_diff = s.pos.cast<float>();
+  poses_diff -= poses[fmax(map_counter - 100, 0)];
+  grav_check = fabs(grav_norm.dot(poses_diff));
+  grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
+  pose_check = (s.pos.cast<float>() - poses[0]).norm();
+
+  lid_process->use_max_octree_res_ = grav_check < 0.1 && pose_check > 0.1;
 
   t0 = omp_get_wtime();
 
@@ -710,8 +720,7 @@ void MappingNode::tensor_registration(
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
-    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec,
-        poses_diff;
+    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
 
     const EllipseLioPoint &pt = scan_cloud->points[i];
 
@@ -777,11 +786,7 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    poses_diff = s.pos.cast<float>();
-    poses_diff -= poses[fmax(map_counter - 100, 0)];
-    time_pow = fabs(grav_norm.dot(poses_diff));
-    time_pow *= fabs(grav_norm.dot(poses_diff.normalized()));
-    time_pow = fmax(1.0 - time_pow, 0.1);
+    time_pow = fmax(1.0 - grav_check, 0.1);
     time_pow *= fmax(1.0 - (1.0 / fmax(p_lidar.norm(), 1.0)), 0.1);
 
     prim_score = 1 - scores.maxCoeff();
@@ -838,11 +843,6 @@ void MappingNode::tensor_registration(
     stds(i) = sqrt(std_sums(i) / (cnts(i % 3) - 1));
   }
 
-  prim_means << 1 - means(3), 1 - means(4), 1 - means(5);
-  prim_means /= prim_means.maxCoeff();
-  ellipse_means << 1 - means(6), 1 - means(7), 1 - means(8);
-  ellipse_means /= ellipse_means.maxCoeff();
-
   wt_min = mins.head(3).minCoeff();
   wt_max = maxs.head(3).maxCoeff();
   wt_mean = sums.head(3).sum() / cnts.sum();
@@ -866,8 +866,6 @@ void MappingNode::tensor_registration(
       ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
       ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
       ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
-      ekfom_data_w.col(i).head(cnts(i)) *= prim_means(i);
-      ekfom_data_w.col(i).head(cnts(i)) *= ellipse_means(i);
       ekfom_data_w.col(i).head(cnts(i)) += 1.0;
     } else {
       ekfom_data_w.col(i).head(cnts(i)) = 1.0;
