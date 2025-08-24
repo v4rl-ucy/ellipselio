@@ -17,8 +17,6 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
   rclcpp::SubscriptionOptions lidar_opt;
   lidar_opt.callback_group = lidar_callback_group_;
 
-  use_max_octree_res_ = false;
-
   lidar_has_data_ = false;
   lidar_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   lidar_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -147,7 +145,6 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
       bin_octrees_[i].clear();
 
       int oct_bin = fmax(i, start_bin_);
-      if (i > max_octree_res_ && use_max_octree_res_) oct_bin = max_octree_res_;
 
       bin_octrees_[i].set_bucket_size(1);
       bin_octrees_[i].set_min_extent(octree_resolutions_[oct_bin]);

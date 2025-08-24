@@ -673,8 +673,7 @@ void MappingNode::tensor_registration(
       pose_check;
 
   std::vector<std::atomic<int>> prim_cnts(3);
-  V3F hit_filter, grav_norm, vel_norm, axis_norm, prim_means, ellipse_means,
-      poses_diff;
+  V3F hit_filter, grav_norm, vel_norm, axis_norm, poses_diff;
 
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
@@ -703,8 +702,6 @@ void MappingNode::tensor_registration(
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
   pose_check = (s.pos.cast<float>() - poses[0]).norm();
-
-  lid_process->use_max_octree_res_ = grav_check < 0.1 && pose_check > 0.1;
 
   t0 = omp_get_wtime();
 

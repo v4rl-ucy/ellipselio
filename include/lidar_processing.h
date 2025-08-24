@@ -40,8 +40,6 @@ class LidarProcess {
   float max_search_rad_;
   float max_octree_res_;
 
-  std::atomic<bool> use_max_octree_res_;
-
   std::atomic<int> lidar_counter_;
   rclcpp::Duration lidar_time_offset_;
   rclcpp::Time lidar_start_time_, lidar_end_time_;
