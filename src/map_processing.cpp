@@ -795,10 +795,10 @@ void MappingNode::tensor_registration(
     time_pow = fmax(1.0 - (1.0 * grav_check), 0.1);
     time_pow *= fmax(1.0 - (1.0 / fmax(p_lidar.norm(), 1.0)), 0.1);
 
-    q = p_world - s.pos.cast<float>();
+    q = s.pos.cast<float>() - p_world;
     norm_check = 1.0 - fabs(grav_norm.dot(norm_vec));
     norm_check = fmax(norm_check, 1.0 - (centroid_mean / map_counter));
-    if (grav_norm.dot(q) <= 0.0) norm_check = 1.0;
+    if (grav_norm.dot(q) > 1.0) norm_check = 1.0;
 
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
     time_score *= norm_check;
