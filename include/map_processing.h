@@ -94,6 +94,8 @@ class MappingNode : public rclcpp::Node {
   bool line_sep_res = true;
   bool last_ekf_fail = true;
 
+  float centroid_mean = 0.0;
+
   int scan_num_cnt = 0;
   double map_resolution, map_search_rad;
   int start_bin, mean_bin, max_mean_bin = 0;

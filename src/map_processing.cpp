@@ -710,6 +710,7 @@ void MappingNode::tensor_registration(
   centroid_world = s.rot.cast<float>() * centroid_world;
   centroid_check = -grav_norm.dot(centroid_world);
   centroid_check = fmin(fmax(centroid_check, 0.0), 1.0);
+  if (!ekfom_iter_cnt) centroid_mean += centroid_check;
 
   t0 = omp_get_wtime();
 
@@ -791,13 +792,13 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    time_pow = fmax(1.0 - (10.0 * grav_check), 0.1);
+    time_pow = fmax(1.0 - (1.0 * grav_check), 0.1);
     time_pow *= fmax(1.0 - (1.0 / fmax(p_lidar.norm(), 1.0)), 0.1);
 
     q = p_world - s.pos.cast<float>();
     norm_check = 1.0 - fabs(grav_norm.dot(norm_vec));
-    norm_check = fmax(norm_check, 1.0 - centroid_check);
-    if (grav_norm.dot(q) <= 0) norm_check = 1.0;
+    norm_check = fmax(norm_check, 1.0 - (centroid_mean / map_counter));
+    if (grav_norm.dot(q) <= 0.0) norm_check = 1.0;
 
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
     time_score *= norm_check;
