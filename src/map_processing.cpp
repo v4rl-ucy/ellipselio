@@ -670,11 +670,12 @@ void MappingNode::tensor_registration(
   float wt_min, wt_max, wt_mean, wt_std;
   int feat_tot = 0, plane_tot, line_tot, pt_tot, reject_cnt;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale, grav_check,
-      pose_check;
+      centroid_check;
 
   std::vector<std::atomic<int>> prim_cnts(3);
-  V3F hit_filter, grav_norm, vel_norm, axis_norm, poses_diff;
+  V3F hit_filter, grav_norm, vel_norm, axis_norm, poses_diff, centroid_world;
 
+  Eigen::Vector4f scan_centroid;
   Eigen::Array3i feats_num(3), cnts(3);
   Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
 
@@ -701,7 +702,14 @@ void MappingNode::tensor_registration(
   poses_diff -= poses[fmax(map_counter - 100, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
-  pose_check = (s.pos.cast<float>() - poses[0]).norm();
+  grav_check = fmin(grav_check, 1.0);
+
+  pcl::compute3DCentroid(*scan_cloud, scan_centroid);
+  centroid_world = s.offset_R_L_I.cast<float>() * scan_centroid.head(3);
+  centroid_world += s.offset_T_L_I.cast<float>();
+  centroid_world = s.rot.cast<float>() * centroid_world;
+  centroid_check = -grav_norm.dot(centroid_world);
+  centroid_check = fmin(fmax(centroid_check, 0.0), 1.0);
 
   t0 = omp_get_wtime();
 
@@ -713,7 +721,7 @@ void MappingNode::tensor_registration(
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
     float residual, prim_score, time_score, ellipse_score, total_score,
-        time_pow;
+        time_pow, norm_check;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
@@ -783,24 +791,21 @@ void MappingNode::tensor_registration(
 
     q_dash = eigenvectors[map_i].transpose() * (p_dash - n_world);
 
-    time_pow = fmax(1.0 - grav_check, 0.1);
+    time_pow = fmax(1.0 - (10.0 * grav_check), 0.1);
     time_pow *= fmax(1.0 - (1.0 / fmax(p_lidar.norm(), 1.0)), 0.1);
 
-    prim_score = 1 - scores.maxCoeff();
+    q = p_world - s.pos.cast<float>();
+    norm_check = 1.0 - fabs(grav_norm.dot(norm_vec));
+    norm_check = fmax(norm_check, 1.0 - centroid_check);
+    if (grav_norm.dot(q) <= 0) norm_check = 1.0;
+
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
+    time_score *= norm_check;
     time_score = pow(time_score, time_pow);
+    time_score = 1.0 / fmin(fmax(time_score, 1e-3), 1.0);
+
+    prim_score = 1.0 - scores.maxCoeff();
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
-
-    prim_score = fmin(fmax(prim_score, 1e-3), 1.0);
-    time_score = fmin(fmax(time_score, 1e-3), 1.0);
-    ellipse_score = fmin(fmax(ellipse_score, 1e-3), 1.0);
-
-    scores(0) = time_score;
-    scores(1) = prim_score;
-    scores(2) = ellipse_score;
-    scores(1) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(1)), 1));
-    scores(2) *= 1.0 / round(1.0 / fmin(scores(0) / (10 * scores(2)), 1));
-    total_score = 1.0 / fmin(fmax(scores.sum(), 1e-3), 1.0);
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
@@ -808,7 +813,7 @@ void MappingNode::tensor_registration(
 
     prim_num = ++prim_cnts[sali_idx];
     ekfom_data_i(prim_num - 1, sali_idx) = map_i;
-    ekfom_data_w(prim_num - 1, sali_idx) = total_score;
+    ekfom_data_w(prim_num - 1, sali_idx) = time_score;
     ekfom_data_w(prim_num - 1, sali_idx + 3) = prim_score;
     ekfom_data_w(prim_num - 1, sali_idx + 6) = ellipse_score;
 
