@@ -722,7 +722,7 @@ void MappingNode::tensor_registration(
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
     float residual, prim_score, time_score, ellipse_score, total_score,
-        time_pow, norm_check;
+        time_pow, norm_check, point_check;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
@@ -795,10 +795,12 @@ void MappingNode::tensor_registration(
     time_pow = fmax(1.0 - (1.0 * grav_check), 0.1);
     time_pow *= fmax(1.0 - (1.0 / fmax(p_lidar.norm(), 1.0)), 0.1);
 
-    q = s.pos.cast<float>() - p_world;
+    point_check = -grav_norm.dot(p_world - s.pos.cast<float>());
+    point_check = (0.5 * fmax(point_check, 0.0)) + 1.0;
+
     norm_check = 1.0 - fabs(grav_norm.dot(norm_vec));
     norm_check = fmax(norm_check, 1.0 - (centroid_mean / map_counter));
-    if (grav_norm.dot(q) > 1.0) norm_check = 1.0;
+    norm_check = fmax(norm_check, 1.0 - (1.0 / point_check));
 
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
     time_score *= norm_check;
