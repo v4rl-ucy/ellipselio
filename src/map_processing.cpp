@@ -851,7 +851,7 @@ void MappingNode::tensor_registration(
   wt_min = mins.head(3).minCoeff();
   wt_max = maxs.head(3).maxCoeff();
   wt_mean = sums.head(3).sum() / cnts.sum();
-  wt_std = sqrt(std_sums.sum() / (cnts.sum() - 1));
+  wt_std = sqrt(std_sums.head(3).sum() / (cnts.sum() - 1));
   rng_min = wt_mean - wt_std;
   rng_min = fmax(rng_min, wt_min);
   rng_min_scale = rng_min / wt_min;
