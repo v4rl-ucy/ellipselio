@@ -25,7 +25,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
   scan_res_ = M_PI * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
   min_scan_res_ = fmax(floor(scan_res_ * 1000.0) / 100.0, MIN_SCAN_RES);
   max_search_rad_ = fmin(10.0 * min_scan_res_, 10.0 * map_resolution);
-  max_octree_res_ = 10;
+  max_octree_res_ = floor(map_resolution / scan_res_);
 
   bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
@@ -144,10 +144,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
       bin_pcs_[i].clear();
       bin_octrees_[i].clear();
 
-      int oct_bin = fmax(i, start_bin_);
-
       bin_octrees_[i].set_bucket_size(1);
-      bin_octrees_[i].set_min_extent(octree_resolutions_[oct_bin]);
+      bin_octrees_[i].set_min_extent(octree_resolutions_[fmax(i, start_bin_)]);
       bin_octrees_[i].update(*process_pc_, bin_sizes_[i], bin_idxs_[i],
                              added_idxs, new_idxs);
 
