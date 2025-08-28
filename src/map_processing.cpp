@@ -937,9 +937,9 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   last_ekf_fail = false;
 
-  analytics_msg_.num_planes = cnts[0];
-  analytics_msg_.num_lines = cnts[1];
-  analytics_msg_.num_balls = cnts[2];
+  analytics_msg_.num_planes = feats_num(0);
+  analytics_msg_.num_lines = feats_num(1);
+  analytics_msg_.num_balls = feats_num(2);
   analytics_msg_.wt_std = wt_std;
   analytics_msg_.wt_min = wt_min;
   analytics_msg_.wt_max = wt_max;
