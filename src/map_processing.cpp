@@ -167,6 +167,23 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     eigenvalues[i] *= search_rad;
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].prim_type = (saliency_idxs[i] + 1) * 85;
+    switch (saliency_idxs[i]) {
+      case 0:
+        map_cloud->points[i].r = 32;
+        map_cloud->points[i].g = 144;
+        map_cloud->points[i].b = 240;
+        break;
+      case 1:
+        map_cloud->points[i].r = 94;
+        map_cloud->points[i].g = 201;
+        map_cloud->points[i].b = 98;
+        break;
+      case 2:
+        map_cloud->points[i].r = 253;
+        map_cloud->points[i].g = 231;
+        map_cloud->points[i].b = 36;
+        break;
+    }
   }
 }
 
@@ -569,11 +586,11 @@ void MappingNode::publish_markers() {
 
   if (!map_cloud->size()) return;
 
-  int count_idx = std::ceil(0.01 * (new_map_size - last_map_size));
+  int count_idx = std::ceil(0.1 * (new_map_size - last_map_size));
 
   marker_array.markers.resize(count_idx);
 #pragma omp parallel for
-  for (int i = last_map_size; i < new_map_size; i += 100) {
+  for (int i = last_map_size; i < new_map_size; i += 10) {
     Eigen::Quaternionf quat;
     visualization_msgs::msg::Marker marker;
 
@@ -610,7 +627,9 @@ void MappingNode::publish_markers() {
         marker.scale.x = 2 * eigenvalues[map_idx](0);
         marker.scale.y = 2 * eigenvalues[map_idx](1);
         marker.scale.z = 2 * eigenvalues[map_idx](2);
-        marker.color.r = 1.0;
+        marker.color.r = 32.0 / 255.0;
+        marker.color.g = 144.0 / 255.0;
+        marker.color.b = 240.0 / 255.0;
         break;
       case 1:
         marker.ns = "line";
@@ -618,7 +637,9 @@ void MappingNode::publish_markers() {
         marker.scale.x = 2 * eigenvalues[map_idx](0);
         marker.scale.y = 2 * eigenvalues[map_idx](1);
         marker.scale.z = 2 * eigenvalues[map_idx](2);
-        marker.color.g = 1.0;
+        marker.color.r = 94.0 / 255.0;
+        marker.color.g = 201.0 / 255.0;
+        marker.color.b = 98.0 / 255.0;
         break;
       case 2:
         marker.ns = "ball";
@@ -626,7 +647,9 @@ void MappingNode::publish_markers() {
         marker.scale.x = 2 * eigenvalues[map_idx](0);
         marker.scale.y = 2 * eigenvalues[map_idx](1);
         marker.scale.z = 2 * eigenvalues[map_idx](2);
-        marker.color.b = 1.0;
+        marker.color.r = 253.0 / 255.0;
+        marker.color.g = 231.0 / 255.0;
+        marker.color.b = 36.0 / 255.0;
         break;
     }
     marker_array.markers[marker_idx++] = marker;
