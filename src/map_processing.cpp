@@ -900,7 +900,7 @@ void MappingNode::tensor_registration(
     }
 
     feats_num(i) = cnts(i);
-    if (stds(i + 3) && stds(i + 6) && feat_tot > 1e3) {
+    if (stds(i + 3) && stds(i + 6) && s.vel.norm() > 0.1) {
       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
