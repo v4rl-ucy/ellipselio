@@ -364,10 +364,10 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     //   SH_filter = Eigen::VectorXi::Zero(loop_cnt + 1);
     //   SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
     // }
-    if (map_cloud->points[map_i].has_rgb) {
-      SH_filter(loop_cnt) = 1;
-      compute_harmonics(map_i, map_i, loop_cnt, SH);
-    }
+    // if (num_cams && map_cloud->points[map_i].has_rgb) {
+    //   SH_filter(loop_cnt) = 1;
+    //   compute_harmonics(map_i, map_i, loop_cnt, SH);
+    // }
 
 #pragma omp parallel for
     for (int j = 0; j < loop_cnt; j++) {
