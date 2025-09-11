@@ -251,10 +251,10 @@ void ImuProcess::GetMatchingImages(
     int head_idx, tail_idx;
     Eigen::Isometry3d T_world_img;
 
-    if (cams[i]->img_end_time_ < min_time) {
-      cams[i]->has_img_match_ = false;
-      continue;
-    }
+    // if (cams[i]->img_end_time_ < min_time) {
+    //   cams[i]->has_img_match_ = false;
+    //   continue;
+    // }
     cams[i]->GetMatchingImageTime(match_time, img_time);
     if (!cams[i]->has_img_match_) continue;
 
