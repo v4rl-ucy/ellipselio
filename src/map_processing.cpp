@@ -826,7 +826,7 @@ void MappingNode::tensor_registration(
     norm_check = fmax(norm_check, 1.0 - (1.0 / point_check));
 
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
-    time_score *= norm_check;
+    // time_score *= norm_check;
     time_score = pow(time_score, time_pow);
     time_score = 1.0 / fmin(fmax(time_score, 1e-3), 1.0);
 
