@@ -586,11 +586,11 @@ void MappingNode::publish_markers() {
 
   if (!map_cloud->size()) return;
 
-  int count_idx = std::ceil(0.1 * (new_map_size - last_map_size));
+  int count_idx = std::ceil(0.01 * (new_map_size - last_map_size));
 
   marker_array.markers.resize(count_idx);
 #pragma omp parallel for
-  for (int i = last_map_size; i < new_map_size; i += 10) {
+  for (int i = last_map_size; i < new_map_size; i += 100) {
     Eigen::Quaternionf quat;
     visualization_msgs::msg::Marker marker;
 
@@ -900,7 +900,7 @@ void MappingNode::tensor_registration(
     }
 
     feats_num(i) = cnts(i);
-    if (stds(i + 3) && stds(i + 6)) {
+    if (stds(i + 3) && stds(i + 6) && feat_tot > 1e3) {
       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
