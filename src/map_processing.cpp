@@ -167,6 +167,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
     eigenvalues[i] *= search_rad;
     eigenvectors[i] = eig_vec;
     map_cloud->points[i].prim_type = (saliency_idxs[i] + 1) * 85;
+    if (num_cams) return;
     switch (saliency_idxs[i]) {
       case 0:
         map_cloud->points[i].r = 32;
@@ -359,10 +360,10 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
     K_filter = Eigen::VectorXi::Zero(loop_cnt);
 
-    if (num_cams) {
-      SH_filter = Eigen::VectorXi::Zero(loop_cnt + 1);
-      SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
-    }
+    // if (num_cams) {
+    //   SH_filter = Eigen::VectorXi::Zero(loop_cnt + 1);
+    //   SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
+    // }
     if (map_cloud->points[map_i].has_rgb) {
       SH_filter(loop_cnt) = 1;
       compute_harmonics(map_i, map_i, loop_cnt, SH);
@@ -391,18 +392,18 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
 
-    if (num_cams) {
-      color_cnt = SH_filter.sum();
-      if (color_cnt < min_neigh) continue;
+    // if (num_cams) {
+    //   color_cnt = SH_filter.sum();
+    //   if (color_cnt < min_neigh) continue;
 
-      sh_dir = poses[map_cloud->points[map_i].scan_idx];
-      sh_dir -= map_cloud->points[map_i].getVector3fMap();
-      harmonics->finalizeCoefficients(SH, sh_mats[map_i]);
-      harmonics->evaluateColorFromDirection(sh_mats[map_i], sh_dir, sh_color);
-      map_cloud->points[map_i].r = sh_color(0) * 255.0f;
-      map_cloud->points[map_i].g = sh_color(1) * 255.0f;
-      map_cloud->points[map_i].b = sh_color(2) * 255.0f;
-    }
+    //   sh_dir = poses[map_cloud->points[map_i].scan_idx];
+    //   sh_dir -= map_cloud->points[map_i].getVector3fMap();
+    //   harmonics->finalizeCoefficients(SH, sh_mats[map_i]);
+    //   harmonics->evaluateColorFromDirection(sh_mats[map_i], sh_dir,
+    //   sh_color); map_cloud->points[map_i].r = sh_color(0) * 255.0f;
+    //   map_cloud->points[map_i].g = sh_color(1) * 255.0f;
+    //   map_cloud->points[map_i].b = sh_color(2) * 255.0f;
+    // }
   }
 }
 
@@ -1093,10 +1094,10 @@ MappingNode::MappingNode(
   ekfom_data_h_x_v =
       std::vector<Eigen::MatrixXd>(3, Eigen::MatrixXd(MAX_PROC_POINTS, 6));
 
-  if (num_cams) {
-    sh_mats = std::vector<Eigen::MatrixXf>(
-        MAX_MAP_POINTS, Eigen::MatrixXf(3, harmonics->getNumCoeffs()));
-  }
+  // if (num_cams) {
+  //   sh_mats = std::vector<Eigen::MatrixXf>(
+  //       MAX_MAP_POINTS, Eigen::MatrixXf(3, harmonics->getNumCoeffs()));
+  // }
 
   colors.reserve(MAX_MAP_POINTS);
   valid_reg.reserve(MAX_MAP_POINTS);
