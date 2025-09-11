@@ -364,7 +364,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
     //   SH_filter = Eigen::VectorXi::Zero(loop_cnt + 1);
     //   SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
     // }
-    // if (num_cams && map_cloud->points[map_i].has_rgb) {
+    // if (map_cloud->points[map_i].has_rgb) {
     //   SH_filter(loop_cnt) = 1;
     //   compute_harmonics(map_i, map_i, loop_cnt, SH);
     // }
@@ -379,10 +379,10 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
       K.row(j) = A_j.reshaped(1, 9);
       K_filter(j) = 1;
 
-      if (map_cloud->points[map_j].has_rgb) {
-        SH_filter(j) = 1;
-        compute_harmonics(map_i, map_j, j, SH);
-      }
+      // if (map_cloud->points[map_j].has_rgb) {
+      //   SH_filter(j) = 1;
+      //   compute_harmonics(map_i, map_j, j, SH);
+      // }
     }
 
     filter_cnt = K_filter.sum();
