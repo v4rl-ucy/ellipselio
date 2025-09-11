@@ -826,7 +826,7 @@ void MappingNode::tensor_registration(
     norm_check = fmax(norm_check, 1.0 - (1.0 / point_check));
 
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
-    // time_score *= norm_check;
+    time_score *= norm_check;
     time_score = pow(time_score, time_pow);
     time_score = 1.0 / fmin(fmax(time_score, 1e-3), 1.0);
 
@@ -900,7 +900,7 @@ void MappingNode::tensor_registration(
     }
 
     feats_num(i) = cnts(i);
-    if (stds(i + 3) && stds(i + 6) && s.vel.norm() > 0.1) {
+    if (stds(i + 3) && stds(i + 6)) {
       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
