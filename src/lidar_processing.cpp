@@ -161,6 +161,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     mean_bin_ = (bin_pcs_sizes_ * bin_pcs_i_).sum();
     mean_bin_ = floor(mean_bin_ / bin_pcs_sizes_.sum());
     start_bin_ = fmin(mean_bin_, max_octree_res_);
+    std::cerr << "mean bin: " << mean_bin_ << " start bin: " << start_bin_
+              << std::endl;
     end_bin = start_bin_;
   }
 
@@ -329,10 +331,14 @@ void LidarProcess::PointCloudHandler(
   }
 
   for (size_t i = 0; i < num_bins_; i++) {
+    std::cerr << "i: " << i << " size: " << bin_sizes_[i] << std::endl;
     mean_num += bin_sizes_[i];
     mean_bin += i * bin_sizes_[i];
   }
 
   mean_bin_ = floor(mean_bin / mean_num);
   start_bin_ = fmin(mean_bin_, max_octree_res_);
+
+  std::cerr << "mean bin: " << mean_bin_ << " start bin: " << start_bin_
+            << std::endl;
 }
