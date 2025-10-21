@@ -115,7 +115,7 @@ void LidarProcess::LidarCallback(
 
 // Process the lidar point cloud
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  auto &clk = *node_->get_clock();
+  auto& clk = *node_->get_clock();
 
   switch (params_.type) {
     case LIVOX:
@@ -157,12 +157,20 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
       bin_idxs_[i] = added_idxs;
       bin_sizes_[i] = bin_pcs_sizes_[i];
     }
+
+    float mean_bin = 0, mean_num = 0;
+    int proc_points = bin_pcs_sizes_.sum();
+    for (size_t i = 0; i < num_bins_; i++) {
+      if (mean_num > 0.5 * proc_points && bin_sizes_[i] < 0.01 * proc_points) {
+        break;
+      }
+      mean_num += bin_sizes_[i];
+      mean_bin += i * bin_sizes_[i];
+    }
+
     prev_start_bin = start_bin_;
-    mean_bin_ = (bin_pcs_sizes_ * bin_pcs_i_).sum();
-    mean_bin_ = floor(mean_bin_ / bin_pcs_sizes_.sum());
+    mean_bin_ = floor(mean_bin / mean_num);
     start_bin_ = fmin(mean_bin_, max_octree_res_);
-    std::cerr << "mean bin: " << mean_bin_ << " start bin: " << start_bin_
-              << std::endl;
     end_bin = start_bin_;
   }
 
@@ -207,10 +215,10 @@ void LidarProcess::ClearPointCloud() {
 
 // Get the current combined point cloud
 bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
-                                 rclcpp::Time &start_time,
-                                 rclcpp::Time &end_time,
-                                 Eigen::ArrayXi &bin_pcs_sizes, int &start_bin,
-                                 int &mean_bin) {
+                                 rclcpp::Time& start_time,
+                                 rclcpp::Time& end_time,
+                                 Eigen::ArrayXi& bin_pcs_sizes, int& start_bin,
+                                 int& mean_bin) {
   if (!lidar_has_data_) return false;
 
   lidar_mutex_.lock();
@@ -233,12 +241,12 @@ bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
 void LidarProcess::SetMinMaxTime(int bin_idx) {
   rclcpp::Time pt1_time, pt2_time;
 
-  EllipseLioPoint &pt1 = bin_pcs_[bin_idx].points[0];
+  EllipseLioPoint& pt1 = bin_pcs_[bin_idx].points[0];
   pt1_time = rclcpp::Time(pt1.time_secs, pt1.time_nsecs, RCL_ROS_TIME);
   bin_min_times_[bin_idx] = pt1_time;
   bin_max_times_[bin_idx] = pt1_time;
   for (size_t i = 1; i < bin_pcs_[bin_idx].size(); i++) {
-    EllipseLioPoint &pt2 = bin_pcs_[bin_idx].points[i];
+    EllipseLioPoint& pt2 = bin_pcs_[bin_idx].points[i];
     pt2_time = rclcpp::Time(pt2.time_secs, pt2.time_nsecs, RCL_ROS_TIME);
 
     bin_min_times_[bin_idx] = std::min(bin_min_times_[bin_idx], pt2_time);
@@ -247,15 +255,15 @@ void LidarProcess::SetMinMaxTime(int bin_idx) {
 }
 
 // Set the point intensity and time for livox points
-void LidarProcess::SetPoint(LivoxPoint &in_pt0, LivoxPoint &in_pt,
-                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(LivoxPoint& in_pt0, LivoxPoint& in_pt,
+                            EllipseLioPoint& out_pt, rclcpp::Time& point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time = rclcpp::Time(in_pt.timestamp, RCL_ROS_TIME);
 }
 
 // Set the point intensity and time for velodyne points
-void LidarProcess::SetPoint(VelodynePoint &in_pt0, VelodynePoint &in_pt,
-                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(VelodynePoint& in_pt0, VelodynePoint& in_pt,
+                            EllipseLioPoint& out_pt, rclcpp::Time& point_time) {
   out_pt.intensity = in_pt.intensity;
   if (in_pt.time < 0.0) {
     point_time -= rclcpp::Duration(0, fabs(in_pt.time) * 1e9);
@@ -267,26 +275,26 @@ void LidarProcess::SetPoint(VelodynePoint &in_pt0, VelodynePoint &in_pt,
 }
 
 // Set the point intensity and time for ouster points
-void LidarProcess::SetPoint(OusterPoint &in_pt0, OusterPoint &in_pt,
-                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(OusterPoint& in_pt0, OusterPoint& in_pt,
+                            EllipseLioPoint& out_pt, rclcpp::Time& point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time += rclcpp::Duration(0, in_pt.t);
 }
 
 // Set the point intensity and time for hesai points
-void LidarProcess::SetPoint(HesaiPoint &in_pt0, HesaiPoint &in_pt,
-                            EllipseLioPoint &out_pt, rclcpp::Time &point_time) {
+void LidarProcess::SetPoint(HesaiPoint& in_pt0, HesaiPoint& in_pt,
+                            EllipseLioPoint& out_pt, rclcpp::Time& point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time = rclcpp::Time(in_pt.timestamp * 1e9, RCL_ROS_TIME);
 }
 
 // Convert the input point type to an ellipselio point
 template <typename InPtType>
-void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType> &in_pc, int pt_idx,
-                                rclcpp::Time &point_time) {
-  InPtType &in_pt0 = in_pc.points[0];
-  InPtType &in_pt = in_pc.points[pt_idx];
-  EllipseLioPoint &out_pt = process_pc_->points[pt_idx];
+void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
+                                rclcpp::Time& point_time) {
+  InPtType& in_pt0 = in_pc.points[0];
+  InPtType& in_pt = in_pc.points[pt_idx];
+  EllipseLioPoint& out_pt = process_pc_->points[pt_idx];
 
   out_pt.x = in_pt.x;
   out_pt.y = in_pt.y;
@@ -305,7 +313,8 @@ void LidarProcess::PointCloudHandler(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   pcl::PointCloud<InPtType> in_pc;
   pcl::fromROSMsg(*msg, in_pc);
-  int num_points;
+  int num_points, proc_points;
+  std::atomic<int> rej_points = 0;
   float mean_bin = 0, mean_num = 0;
 
   std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
@@ -322,6 +331,7 @@ void LidarProcess::PointCloudHandler(
 
     if (range < params_.min_range || range > params_.max_range ||
         std::isnan(range) || std::isinf(range)) {
+      rej_points++;
       continue;
     }
 
@@ -330,15 +340,16 @@ void LidarProcess::PointCloudHandler(
     bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
   }
 
+  proc_points = num_points - rej_points.load();
+
   for (size_t i = 0; i < num_bins_; i++) {
-    std::cerr << "i: " << i << " size: " << bin_sizes_[i] << std::endl;
+    if (mean_num > 0.5 * proc_points && bin_sizes_[i] < 0.01 * proc_points) {
+      break;
+    }
     mean_num += bin_sizes_[i];
     mean_bin += i * bin_sizes_[i];
   }
 
   mean_bin_ = floor(mean_bin / mean_num);
   start_bin_ = fmin(mean_bin_, max_octree_res_);
-
-  std::cerr << "mean bin: " << mean_bin_ << " start bin: " << start_bin_
-            << std::endl;
 }
