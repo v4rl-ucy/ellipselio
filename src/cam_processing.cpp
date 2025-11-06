@@ -26,7 +26,7 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
 // Callback for camera messages
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
-  cam_counter_++;
+  // cam_counter_++;
 
   if (rclcpp::Time(msg->header.stamp) < img_end_time_) {
     RCLCPP_INFO_STREAM(node_->get_logger(), "Cam time out of order");
@@ -37,23 +37,25 @@ void CamProcess::CamCallback(
   cam_mutex_.lock();
   img.time = msg->header.stamp;
   img.img = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
-  img_buffer_.push_back(img);
-  img_start_time_ = img_buffer_.front().time;
-  img_end_time_ = img_buffer_.back().time;
-  cam_has_data_ = true;
+  // img_buffer_.push_back(img);
+  // img_start_time_ = img_buffer_.front().time;
+  // img_end_time_ = img_buffer_.back().time;
+  // cam_has_data_ = true;
   cam_mutex_.unlock();
 }
 
 // Get the closest image time less than the input match time
-void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
-                                      rclcpp::Time &img_time) {
+void CamProcess::GetMatchingImageTime(rclcpp::Time& match_time,
+                                      rclcpp::Time& img_time) {
   int match_idx;
   double time_diff;
   bool match_flag = false;
 
+  has_img_match_ = false;
+  if (!img_buffer_.size()) continue;
+
   cam_mutex_.lock();
 
-  has_img_match_ = false;
   time_diff = (match_time - img_buffer_.front().time).seconds();
   match_idx = std::floor(time_diff * params_.rate);
   match_idx = std::max(match_idx, 0);
@@ -80,11 +82,12 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
     img_time = img_buffer_[match_idx].time;
     matched_img_ = img_buffer_[match_idx];
   }
+
   cam_mutex_.unlock();
 }
 
 // Project the lidar point to the camera image and get the color
-bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
+bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
   float x, y;
   int cols, rows, valid_num;
   Eigen::MatrixXi pt_cols;
