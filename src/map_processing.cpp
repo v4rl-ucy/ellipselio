@@ -8,7 +8,7 @@ bool MappingNode::sync_packages() {
   bool got_lidar_data;
   KfState latest_state;
 
-  auto &clk = *this->get_clock();
+  auto& clk = *this->get_clock();
   double lidar_scan_time = 1.0 / lidar_params.rate;
   double inter_sync_time = omp_get_wtime() - last_sync_time;
   rclcpp::Duration lidar_scan_duration(0, 1e9 * lidar_scan_time);
@@ -119,10 +119,10 @@ bool MappingNode::sync_packages() {
 }
 
 // Compute tensor voting matrix for point i and j
-void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
+void MappingNode::compute_tensor_vote(int i, int j, M3F& A_j, bool first_pass) {
   V3F p_i = map_cloud->points[i].getVector3fMap();
   V3F p_j = map_cloud->points[j].getVector3fMap();
-  const int &bin_idx = map_cloud->points[i].bin_idx;
+  const int& bin_idx = map_cloud->points[i].bin_idx;
   float search_rad = lid_process->search_radii_[bin_idx];
   float d_ij = (p_i - p_j).norm();
   float c_ij = std::exp(-std::pow(d_ij, 2) / search_rad);
@@ -136,7 +136,7 @@ void MappingNode::compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass) {
 }
 
 // Compute tensor eigenvalues and eigenvectors for point i
-void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
+void MappingNode::compute_tensor_eigen(int i, M3F& tensor, bool first_pass) {
   V3F eig_val, sali_val;
   M3F eig_vec, tensor_i2;
   Eigen::SelfAdjointEigenSolver<M3F> eig_solver;
@@ -145,7 +145,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
   eig_vec = eig_solver.eigenvectors();
   eig_val = eig_solver.eigenvalues().cwiseAbs();
 
-  const int &bin_idx = map_cloud->points[i].bin_idx;
+  const int& bin_idx = map_cloud->points[i].bin_idx;
   float search_rad = lid_process->search_radii_[bin_idx];
 
   if (first_pass) {
@@ -190,8 +190,8 @@ void MappingNode::compute_tensor_eigen(int i, M3F &tensor, bool first_pass) {
 
 // Compute first pass tensor voting for new points and find neighbours
 void MappingNode::tensor_vote_pass_1(int old_map_size,
-                                     std::vector<int> &added_idxs,
-                                     std::vector<int> &updated_idxs) {
+                                     std::vector<int>& added_idxs,
+                                     std::vector<int>& updated_idxs) {
   int added_size = added_idxs.size();
   std::atomic<int> upd_idx = 0, new_neighbours_idx = 0;
 
@@ -206,8 +206,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     colors[map_i] =
         map_cloud->points[map_i].getRGBVector3i().cast<float>() / 255.0f;
 
-    const int &bin_idx = map_cloud->points[map_i].bin_idx;
-    const int &bucket_size = lid_process->bucket_sizes_[bin_idx];
+    const int& bin_idx = map_cloud->points[map_i].bin_idx;
+    const int& bucket_size = lid_process->bucket_sizes_[bin_idx];
     const float search_rad = lid_process->search_radii_[bin_idx];
 
     neighbours[map_i].reserve(lid_process->max_neighbours_[bin_idx]);
@@ -242,9 +242,9 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
     map_i = added_idxs[i];
 
-    const int &bin_idx = map_cloud->points[map_i].bin_idx;
-    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
-    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
+    const int& bin_idx = map_cloud->points[map_i].bin_idx;
+    const int& min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int& max_neigh = lid_process->max_neighbours_[bin_idx];
 
     loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
@@ -258,10 +258,10 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 
       if (map_j >= old_map_size) continue;
 
-      const int &bin_idx_j = map_cloud->points[map_j].bin_idx;
+      const int& bin_idx_j = map_cloud->points[map_j].bin_idx;
       float search_rad_j = lid_process->search_radii_[bin_idx_j];
-      EllipseLioPoint &pt_i = map_cloud->points[map_i];
-      EllipseLioPoint &pt_j = map_cloud->points[map_j];
+      EllipseLioPoint& pt_i = map_cloud->points[map_i];
+      EllipseLioPoint& pt_j = map_cloud->points[map_j];
       float d_ij = (pt_i.getVector3fMap() - pt_j.getVector3fMap()).norm();
 
       if (d_ij > search_rad_j) continue;
@@ -297,9 +297,9 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     map_i = new_neighbours_map_idx[i];
     updated_pt[map_i] = 0;
 
-    const int &bin_idx = map_cloud->points[map_i].bin_idx;
-    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
-    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
+    const int& bin_idx = map_cloud->points[map_i].bin_idx;
+    const int& min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int& max_neigh = lid_process->max_neighbours_[bin_idx];
     if (neighbours[map_i].size() >= max_neigh) continue;
 
     updated_idxs[upd_idx++] = map_i;
@@ -333,8 +333,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
 }
 
 // Compute second pass tensor voting for new and existing points
-void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
-                                     std::vector<int> &updated_idxs) {
+void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
+                                     std::vector<int>& updated_idxs) {
   int total_size = added_idxs.size() + updated_idxs.size();
 
 #pragma omp parallel for
@@ -350,9 +350,9 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
                                   : updated_idxs[i - added_idxs.size()];
     valid_reg[map_i] = 1;
 
-    const int &bin_idx = map_cloud->points[map_i].bin_idx;
-    const int &min_neigh = lid_process->min_neighbours_[bin_idx];
-    const int &max_neigh = lid_process->max_neighbours_[bin_idx];
+    const int& bin_idx = map_cloud->points[map_i].bin_idx;
+    const int& min_neigh = lid_process->min_neighbours_[bin_idx];
+    const int& max_neigh = lid_process->max_neighbours_[bin_idx];
     loop_cnt = min(int(neighbours[map_i].size()), max_neigh);
 
     if (!filters[map_i][0]) continue;
@@ -408,14 +408,14 @@ void MappingNode::tensor_vote_pass_2(std::vector<int> &added_idxs,
 }
 
 void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
-                                    SHCoeffs &SH) {
+                                    SHCoeffs& SH) {
   Eigen::Vector3f dir;
 
-  const int &bin_idx = map_cloud->points[map_i].bin_idx;
-  const float &search_rad = bin_idx;
-  const Eigen::Vector3f &pose = poses[map_cloud->points[map_j].scan_idx];
-  const Eigen::Vector3f &p_i = map_cloud->points[map_i].getVector3fMap();
-  const Eigen::Vector3f &p_j = map_cloud->points[map_j].getVector3fMap();
+  const int& bin_idx = map_cloud->points[map_i].bin_idx;
+  const float& search_rad = bin_idx;
+  const Eigen::Vector3f& pose = poses[map_cloud->points[map_j].scan_idx];
+  const Eigen::Vector3f& p_i = map_cloud->points[map_i].getVector3fMap();
+  const Eigen::Vector3f& p_j = map_cloud->points[map_j].getVector3fMap();
 
   harmonics->dirFromNeighbouringPoint(p_i, p_j, pose, dir, search_rad);
   harmonics->computeCoefficients(dir, colors[map_j], SH, loop_idx);
@@ -432,7 +432,7 @@ void MappingNode::map_incremental() {
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
     scan_cloud->points[i].scan_idx = map_counter;
-    const int &bin_idx = scan_cloud->points[i].bin_idx;
+    const int& bin_idx = scan_cloud->points[i].bin_idx;
     scan_cloud->points[i].bin_idx = fmax(bin_idx, start_bin);
     scan_cloud->points[i].getVector3fMap() =
         (kf_state_.state.rot *
@@ -514,8 +514,8 @@ void MappingNode::map_incremental() {
   analytics_msg_.upd_idxs = updated_idxs.size();
 }
 
-void MappingNode::split_map(const sensor_msgs::msg::PointCloud2 &input,
-                            std::vector<sensor_msgs::msg::PointCloud2> &clouds,
+void MappingNode::split_map(const sensor_msgs::msg::PointCloud2& input,
+                            std::vector<sensor_msgs::msg::PointCloud2>& clouds,
                             size_t n) {
   const size_t total_points = input.width * input.height;
   const size_t point_step = input.point_step;
@@ -561,7 +561,7 @@ void MappingNode::publish_map() {
   map_msg.header.frame_id = "odom_ellipselio";
 
   split_map(map_msg, map_parts, (1000 * pub_map_n_secs) / 100);
-  for (auto &part : map_parts) {
+  for (auto& part : map_parts) {
     pub_map_->publish(part);
     rclcpp::sleep_for(std::chrono::milliseconds(100));
   }
@@ -688,7 +688,7 @@ void MappingNode::publish_odometry() {
 
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
-    state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data) {
+    state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   bool bin_check, ort_val;
   double t0, t1, res_mean = 0;
   float wt_min, wt_max, wt_mean, wt_std;
@@ -752,13 +752,13 @@ void MappingNode::tensor_registration(
     V3D p_lidar, p_imu, a;
     V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
 
-    const EllipseLioPoint &pt = scan_cloud->points[i];
+    const EllipseLioPoint& pt = scan_cloud->points[i];
 
     p_lidar = pt.getVector3fMap().cast<double>();
     p_imu = s.offset_R_L_I * p_lidar + s.offset_T_L_I;
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
-    const int &bin_idx = scan_cloud->points[i].bin_idx;
+    const int& bin_idx = scan_cloud->points[i].bin_idx;
     float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
@@ -767,7 +767,7 @@ void MappingNode::tensor_registration(
     map_i = N_idxs[0];
     sali_idx = saliency_idxs[map_i];
 
-    const int &map_scan_idx = map_cloud->points[map_i].scan_idx;
+    const int& map_scan_idx = map_cloud->points[map_i].scan_idx;
 
     float line_sep = sep_factor[bin_idx] * lid_process->scan_line_sep_[bin_idx];
     bool sep_val = line_sep > 2 * lid_process->search_radii_[bin_idx];
@@ -781,6 +781,13 @@ void MappingNode::tensor_registration(
     if (pose_val && rote_val && sep_val && ort_val && !last_ekf_fail) continue;
     if (!filters[map_i][1]) continue;
     if (!valid_reg[map_i]) continue;
+
+    V3F p_diff = s.pos.cast<float>() - poses[map_scan_idx];
+    V3F m_diff = p_world - map_cloud->points[map_i].getVector3fMap();
+
+    float p_proj_m = fabs(p_diff.dot(m_diff) / m_diff.norm());
+    // if (m_diff.norm() > p_proj_m) continue;
+    if (sqrt(N_dst[0]) > 0.05) continue;
 
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
@@ -833,6 +840,8 @@ void MappingNode::tensor_registration(
 
     prim_score = 1.0 - scores.maxCoeff();
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
+
+    // if (ellipse_score > 0.01) continue;
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
@@ -891,36 +900,38 @@ void MappingNode::tensor_registration(
 
     if (!cnts(i)) continue;
 
-    if (stds(i)) {
-      ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
-      ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
-      ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
-      ekfom_data_w.col(i).head(cnts(i)) += 1.0;
-    } else {
-      ekfom_data_w.col(i).head(cnts(i)) = 1.0;
-    }
+    // if (stds(i)) {
+    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
+    //   ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
+    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
+    //   ekfom_data_w.col(i).head(cnts(i)) += 1.0;
+    // } else {
+    ekfom_data_w.col(i).head(cnts(i)) = 1.0;
+    // }
 
     feats_num(i) = cnts(i);
-    if (stds(i + 3) && stds(i + 6)) {
-      hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
-      hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
+    //     if (stds(i + 3) && stds(i + 6)) {
+    //       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
+    //       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
-      std_p = stds(i + 3) * hit_filter(i);
-      std_e = stds(i + 6) * hit_filter(i);
+    //       std_p = stds(i + 3) * hit_filter(i);
+    //       std_e = stds(i + 6) * hit_filter(i);
 
-      ekfom_data_v.col(i).head(cnts(i)) =
-          (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
-           ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
-              .cast<double>();
-      feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
-      ekfom_data_w.col(i).head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
-      ekfom_data_h_v[i].head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
+    //       ekfom_data_v.col(i).head(cnts(i)) =
+    //           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p
+    //           &&
+    //            ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
+    //               .cast<double>();
+    //       feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
+    //       ekfom_data_w.col(i).head(cnts(i)) *=
+    //       ekfom_data_v.col(i).head(cnts(i)); ekfom_data_h_v[i].head(cnts(i))
+    //       *= ekfom_data_v.col(i).head(cnts(i));
 
-#pragma omp parallel for
-      for (int j = 0; j < cnts(i); j++) {
-        valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
-      }
-    }
+    // #pragma omp parallel for
+    //       for (int j = 0; j < cnts(i); j++) {
+    //         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
+    //       }
+    //     }
 
     if (i == 0) {
       st = 0;
@@ -982,7 +993,7 @@ void MappingNode::tensor_registration(
 
 // Main mapping node
 MappingNode::MappingNode(
-    const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
+    const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
     : Node("mapping_node", options),
       map_cloud(new EllipseLioPointCloud()),
       raw_cloud(new EllipseLioPointCloud()),
@@ -1189,7 +1200,7 @@ MappingNode::MappingNode(
   lastSysCPU = timeSample.tms_stime;
   lastUserCPU = timeSample.tms_utime;
 
-  FILE *file;
+  FILE* file;
   file = fopen("/proc/cpuinfo", "r");
   numProcessors = 0;
   while (fgets(line, 128, file) != nullptr) {
@@ -1300,7 +1311,7 @@ void MappingNode::sync_raw_cloud_with_imu() {
 
 #pragma omp parallel for
     for (int i = 0; i < total_size; i++) {
-      const EllipseLioPoint &pt =
+      const EllipseLioPoint& pt =
           i < buffer_cloud->size()
               ? buffer_cloud->points[i]
               : raw_cloud->points[i - buffer_cloud->size()];
