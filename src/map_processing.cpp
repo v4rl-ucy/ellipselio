@@ -784,10 +784,13 @@ void MappingNode::tensor_registration(
 
     V3F p_diff = s.pos.cast<float>() - poses[map_scan_idx];
     V3F m_diff = p_world - map_cloud->points[map_i].getVector3fMap();
+    V3F z_axis(0, 0, 1);
 
-    float p_proj_m = fabs(p_diff.dot(m_diff) / m_diff.norm());
-    // if (m_diff.norm() > p_proj_m) continue;
-    if (sqrt(N_dst[0]) > 0.05) continue;
+    if (m_diff.norm() >
+        fmax(0.05,
+             0.5 * search_rad * (1.0 - fabs(z_axis.dot(m_diff.normalized())))))
+      continue;
+    // if (m_diff.norm() > 0.05) continue;
 
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
@@ -840,8 +843,6 @@ void MappingNode::tensor_registration(
 
     prim_score = 1.0 - scores.maxCoeff();
     ellipse_score = q_dash.cwiseQuotient(eigenvalues[map_i]).cwiseAbs2().sum();
-
-    // if (ellipse_score > 0.01) continue;
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
