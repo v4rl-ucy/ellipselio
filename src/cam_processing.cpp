@@ -26,7 +26,7 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
 // Callback for camera messages
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
-  // cam_counter_++;
+  cam_counter_++;
 
   if (rclcpp::Time(msg->header.stamp) < img_end_time_) {
     RCLCPP_INFO_STREAM(node_->get_logger(), "Cam time out of order");
@@ -37,10 +37,10 @@ void CamProcess::CamCallback(
   cam_mutex_.lock();
   img.time = msg->header.stamp;
   img.img = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);
-  // img_buffer_.push_back(img);
-  // img_start_time_ = img_buffer_.front().time;
-  // img_end_time_ = img_buffer_.back().time;
-  // cam_has_data_ = true;
+  img_buffer_.push_back(img);
+  img_start_time_ = img_buffer_.front().time;
+  img_end_time_ = img_buffer_.back().time;
+  cam_has_data_ = true;
   cam_mutex_.unlock();
 }
 
