@@ -52,7 +52,7 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time& match_time,
   bool match_flag = false;
 
   has_img_match_ = false;
-  if (!img_buffer_.size()) continue;
+  if (!img_buffer_.size()) return;
 
   cam_mutex_.lock();
 
