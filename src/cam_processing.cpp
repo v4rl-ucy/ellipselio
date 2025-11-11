@@ -126,7 +126,7 @@ bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
   pt_col = pt_cols.colwise().sum();
   pt_sum = (pt_cols.array() > 0 && pt_cols.array() < 255)
                .rowwise()
-               .all()
+               .any()
                .cast<int>();
 
   valid_num = pt_sum.count();
