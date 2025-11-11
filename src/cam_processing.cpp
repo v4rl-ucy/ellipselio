@@ -91,11 +91,12 @@ bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
   float x, y;
   int cols, rows, valid_num;
   Eigen::MatrixXi pt_cols;
-  Eigen::Vector3i pt_sum;
+  Eigen::VectorXi pt_sum;
   Eigen::Vector2i x_vals, y_vals;
 
   if (pt_img(2) <= 0) return false;
 
+  pt_sum = Eigen::VectorXi::Zero(4);
   pt_cols = Eigen::MatrixXi::Zero(4, 3);
 
   cols = matched_img_.img->image.cols;
@@ -119,17 +120,16 @@ bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
         pt_cols(i * 2 + j, 0) = color[2];
         pt_cols(i * 2 + j, 1) = color[1];
         pt_cols(i * 2 + j, 2) = color[0];
+        if (pt_cols.row(i * 2 + j).sum()) {
+          pt_sum(i * 2 + j) = 1;
+        }
       }
     }
   }
 
   pt_col = pt_cols.colwise().sum();
-  pt_sum = (pt_cols.array() > 0 && pt_cols.array() < 255)
-               .rowwise()
-               .any()
-               .cast<int>();
+  valid_num = pt_sum.sum();
 
-  valid_num = pt_sum.count();
   if (!valid_num) return false;
 
   pt_col /= valid_num;

@@ -283,7 +283,8 @@ void ImuProcess::ColorisePoint(EllipseLioPoint& pt, CamProcessVec& cams,
                                Eigen::Isometry3d& T_imu_lidar) {
   int valid_num;
   Eigen::MatrixXi cam_cols;
-  Eigen::Vector3i cam_col, cam_sum;
+  Eigen::Vector3i cam_col;
+  Eigen::VectorXi cam_sum;
 
   pt.r = 0;
   pt.g = 0;
@@ -292,6 +293,7 @@ void ImuProcess::ColorisePoint(EllipseLioPoint& pt, CamProcessVec& cams,
   pt.has_rgb = false;
 
   if (!cams.size()) return;
+  cam_sum = Eigen::VectorXi::Zero(cams.size());
   cam_cols = Eigen::MatrixXi::Zero(cams.size(), 3);
 
 #pragma omp parallel for
@@ -310,15 +312,12 @@ void ImuProcess::ColorisePoint(EllipseLioPoint& pt, CamProcessVec& cams,
 
     if (cams[i]->ColorPoint(pt_img, pt_col)) {
       cam_cols.row(i) = pt_col;
+      cam_sum(i) = 1;
     }
   }
 
   cam_col = cam_cols.colwise().sum();
-  cam_sum = (cam_cols.array() > 0 && cam_cols.array() < 255)
-                .rowwise()
-                .any()
-                .cast<int>();
-  valid_num = cam_sum.count();
+  valid_num = cam_sum.sum();
 
   if (valid_num) {
     cam_col /= valid_num;
