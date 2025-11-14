@@ -786,11 +786,12 @@ void MappingNode::tensor_registration(
     V3F m_diff = p_world - map_cloud->points[map_i].getVector3fMap();
     V3F z_axis(0, 0, 1);
 
-    if (m_diff.norm() >
-        fmax(0.05,
-             0.5 * search_rad * (1.0 - fabs(z_axis.dot(m_diff.normalized())))))
-      continue;
-    // if (m_diff.norm() > 0.05) continue;
+    // if (m_diff.norm() >
+    //     fmax(0.05,
+    //          0.5 * search_rad * (1.0 -
+    //          fabs(z_axis.dot(m_diff.normalized())))))
+    //   continue;
+    if (m_diff.norm() > 0.05) continue;
 
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
