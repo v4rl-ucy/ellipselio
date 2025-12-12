@@ -93,6 +93,8 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   kf_state_.cov = kf_->get_P();
   kf_state_.time = msg_time;
 
+  SetKfState();
+
   imu_state.state = kf_state_;
   imu_state.acc << msg->linear_acceleration.x, msg->linear_acceleration.y,
       msg->linear_acceleration.z;
@@ -396,12 +398,20 @@ void ImuProcess::UpdateStatesWithLidar(KfState& kf_state,
   kf_state_.cov = imu_states_.back().state.cov;
   kf_state_.time = imu_states_.back().state.time;
 
+  SetKfState();
   imu_mutex_.unlock();
 }
 
-// Get the current kalman filter state
+// Set the current publishable kalman filter state
+void ImuProcess::SetKfState() {
+  pub_mutex_.lock();
+  pub_kf_state_ = kf_state_;
+  pub_mutex_.unlock();
+}
+
+// Get the current publishable kalman filter state
 void ImuProcess::GetKfState(KfState& kf_state) {
-  imu_mutex_.lock();
-  kf_state = kf_state_;
-  imu_mutex_.unlock();
+  pub_mutex_.lock();
+  kf_state = pub_kf_state_;
+  pub_mutex_.unlock();
 }

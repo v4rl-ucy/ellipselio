@@ -30,33 +30,34 @@ namespace ellipselio {
 
 class MappingNode : public rclcpp::Node {
  public:
-  MappingNode(const rclcpp::NodeOptions &options);
+  MappingNode(const rclcpp::NodeOptions& options);
   ~MappingNode();
 
  private:
   bool sync_packages();
 
-  void compute_tensor_vote(int i, int j, M3F &A_j, bool first_pass);
-  void compute_tensor_eigen(int i, M3F &tensor, bool first_pass);
+  void compute_tensor_vote(int i, int j, M3F& A_j, bool first_pass);
+  void compute_tensor_eigen(int i, M3F& tensor, bool first_pass);
 
-  void tensor_vote_pass_1(int old_map_size, std::vector<int> &added_idxs,
-                          std::vector<int> &updated_idxs);
-  void tensor_vote_pass_2(std::vector<int> &added_idxs,
-                          std::vector<int> &updated_idxs);
+  void tensor_vote_pass_1(int old_map_size, std::vector<int>& added_idxs,
+                          std::vector<int>& updated_idxs);
+  void tensor_vote_pass_2(std::vector<int>& added_idxs,
+                          std::vector<int>& updated_idxs);
 
-  void compute_harmonics(int map_i, int map_j, int loop_idx, SHCoeffs &SH);
-  void compute_geometric_primitive(int map_i, int sali_idx, V3F &p_world,
-                                   V3F &norm_vec);
+  void compute_harmonics(int map_i, int map_j, int loop_idx, SHCoeffs& SH);
+  void compute_geometric_primitive(int map_i, int sali_idx, V3F& p_world,
+                                   V3F& norm_vec);
 
-  void split_map(const sensor_msgs::msg::PointCloud2 &input,
-                 std::vector<sensor_msgs::msg::PointCloud2> &clouds, size_t n);
+  void split_map(const sensor_msgs::msg::PointCloud2& input,
+                 std::vector<sensor_msgs::msg::PointCloud2>& clouds, size_t n);
   void publish_map();
   void publish_scan();
   void publish_markers();
-  void publish_odometry();
+  void publish_opt_odometry();
+  void publish_imu_odometry();
 
-  void tensor_registration(state_ikfom &s,
-                           esekfom::dyn_share_datastruct<double> &ekfom_data);
+  void tensor_registration(state_ikfom& s,
+                           esekfom::dyn_share_datastruct<double>& ekfom_data);
 
   void timer_callback();
   void init_cam_process();
@@ -188,7 +189,7 @@ class MappingNode : public rclcpp::Node {
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_;
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
-  rclcpp::Time last_pub_time, last_imu_time_;
+  rclcpp::Time last_opt_pub_time, last_imu_pub_time, last_imu_time_;
   rclcpp::Time imu_start_time_, imu_end_time_;
   rclcpp::Time raw_start_time_, raw_end_time_;
   rclcpp::Time scan_start_time_, scan_end_time_;
