@@ -892,39 +892,37 @@ void MappingNode::tensor_registration(
 
     if (!cnts(i)) continue;
 
-    // if (stds(i)) {
-    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
-    //   ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
-    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
-    //   ekfom_data_w.col(i).head(cnts(i)) += 1.0;
-    // } else {
-    ekfom_data_w.col(i).head(cnts(i)) = 1.0;
-    // }
+    if (stds(i)) {
+      ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
+      ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
+      ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
+      ekfom_data_w.col(i).head(cnts(i)) += 1.0;
+    } else {
+      ekfom_data_w.col(i).head(cnts(i)) = 1.0;
+    }
 
     feats_num(i) = cnts(i);
 
-    //     if (stds(i + 3) && stds(i + 6)) {
-    //       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
-    //       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
+    if (stds(i + 3) && stds(i + 6)) {
+      hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
+      hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
-    //       std_p = stds(i + 3) * hit_filter(i);
-    //       std_e = stds(i + 6) * hit_filter(i);
+      std_p = stds(i + 3) * hit_filter(i);
+      std_e = stds(i + 6) * hit_filter(i);
 
-    //       ekfom_data_v.col(i).head(cnts(i)) =
-    //           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p
-    //           &&
-    //            ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
-    //               .cast<double>();
-    //       feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
-    //       ekfom_data_w.col(i).head(cnts(i)) *=
-    //       ekfom_data_v.col(i).head(cnts(i)); ekfom_data_h_v[i].head(cnts(i))
-    //       *= ekfom_data_v.col(i).head(cnts(i));
+      ekfom_data_v.col(i).head(cnts(i)) =
+          (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
+           ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
+              .cast<double>();
+      feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
+      ekfom_data_w.col(i).head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
+      ekfom_data_h_v[i].head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
 
-    // #pragma omp parallel for
-    //       for (int j = 0; j < cnts(i); j++) {
-    //         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
-    //       }
-    //     }
+#pragma omp parallel for
+      for (int j = 0; j < cnts(i); j++) {
+        valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
+      }
+    }
 
     if (i == 0) {
       st = 0;
@@ -964,6 +962,10 @@ void MappingNode::tensor_registration(
 
   ekfom_iter_cnt++;
   last_ekf_fail = false;
+
+  if (feats_num.sum() < fmin(0.1 * scan_cloud->size(), 100)) {
+    ekfom_data.finish = true;
+  }
 
   analytics_msg_.num_planes = feats_num(0);
   analytics_msg_.num_lines = feats_num(1);
