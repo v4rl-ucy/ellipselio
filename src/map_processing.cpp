@@ -760,12 +760,14 @@ void MappingNode::tensor_registration(
 
     const int& bin_idx = scan_cloud->points[i].bin_idx;
     float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
+    search_rad /= ekfom_iter_cnt + 1;
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
-
     if (N_idxs.size() == 0) continue;
+
     map_i = N_idxs[0];
-    sali_idx = saliency_idxs[map_i];
+    if (!filters[map_i][1]) continue;
+    if (!valid_reg[map_i]) continue;
 
     const int& map_scan_idx = map_cloud->points[map_i].scan_idx;
 
@@ -779,19 +781,6 @@ void MappingNode::tensor_registration(
     bool rote_val = (i + 1) * rote_diff < line_sep;
 
     if (pose_val && rote_val && sep_val && ort_val && !last_ekf_fail) continue;
-    if (!filters[map_i][1]) continue;
-    if (!valid_reg[map_i]) continue;
-
-    V3F p_diff = s.pos.cast<float>() - poses[map_scan_idx];
-    V3F m_diff = p_world - map_cloud->points[map_i].getVector3fMap();
-    V3F z_axis(0, 0, 1);
-
-    // if (m_diff.norm() >
-    //     fmax(0.05,
-    //          0.5 * search_rad * (1.0 -
-    //          fabs(z_axis.dot(m_diff.normalized())))))
-    //   continue;
-    if (m_diff.norm() > 0.05) continue;
 
     map_pt_time =
         rclcpp::Time(map_cloud->points[map_i].time_secs,
@@ -849,6 +838,7 @@ void MappingNode::tensor_registration(
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
+    sali_idx = saliency_idxs[map_i];
     prim_num = ++prim_cnts[sali_idx];
     ekfom_data_i(prim_num - 1, sali_idx) = map_i;
     ekfom_data_w(prim_num - 1, sali_idx) = time_score;
@@ -912,6 +902,7 @@ void MappingNode::tensor_registration(
     // }
 
     feats_num(i) = cnts(i);
+
     //     if (stds(i + 3) && stds(i + 6)) {
     //       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
     //       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
