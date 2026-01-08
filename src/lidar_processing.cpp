@@ -23,8 +23,6 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
 
   num_bins_ = ceil(params_.max_range + 1);
   scan_res_ = M_PI * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
-  min_scan_res_ = fmax(floor(scan_res_ * 1000.0) / 100.0, MIN_SCAN_RES);
-  max_search_rad_ = fmin(10.0 * min_scan_res_, 10.0 * map_resolution);
   max_octree_res_ = 10;
 
   bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
@@ -47,12 +45,13 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
   scan_line_sep_ = std::vector<float>(num_bins_, scan_res_);
   min_neighbours_ = std::vector<int>(num_bins_, MIN_NEIGHBOURS);
   max_neighbours_ = std::vector<int>(num_bins_, MAX_NEIGHBOURS);
-  search_radii_ = std::vector<float>(num_bins_, max_search_rad_);
-  octree_resolutions_ = std::vector<float>(num_bins_, min_scan_res_);
+  search_radii_ = std::vector<float>(num_bins_, MAX_SEARCH_RES);
+  match_radii_ = std::vector<float>(num_bins_, MAX_SEARCH_RES);
+  octree_resolutions_ = std::vector<float>(num_bins_, MIN_SEARCH_RES);
 
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
-    float octree_res, search_rad, bucket_size, scan_line_sep;
+    float octree_res, search_rad, bucket_size, scan_line_sep, match_rad;
 
     scan_line_sep = (i + 1) * scan_res_;
     scan_line_sep = floor(scan_line_sep * 100.0) / 100.0;
@@ -62,7 +61,8 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     octree_res = floor(octree_res * 100.0) / 100.0;
     octree_res = fmax(octree_res, MIN_BIN_RES);
 
-    search_rad = fmin(fmax(10.0 * octree_res, MIN_SCAN_RES), max_search_rad_);
+    match_rad = fmax(10.0 * octree_res, MIN_SEARCH_RES);
+    search_rad = fmin(fmax(10.0 * octree_res, MIN_SEARCH_RES), MAX_SEARCH_RES);
 
     bucket_size = MAX_NEIGHBOURS * pow(map_resolution, 2);
     bucket_size /= M_PI * pow(search_rad, 2);
@@ -70,6 +70,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
 
     bucket_sizes_[i] = bucket_size;
     search_radii_[i] = search_rad;
+    match_radii_[i] = match_rad;
     scan_line_sep_[i] = scan_line_sep;
     octree_resolutions_[i] = octree_res;
 
@@ -103,14 +104,9 @@ void LidarProcess::LidarCallback(
                              "WARNING: Lidar time offset detected!");
   }
 
-  double t0 = omp_get_wtime();
   lidar_mutex_.lock();
   Process(msg);
   lidar_mutex_.unlock();
-  double t1 = omp_get_wtime();
-
-  // std::cout << "Lidar process time: " << (t1 - t0) * 1000.0 << " ms"
-  //           << std::endl;
 }
 
 // Process the lidar point cloud

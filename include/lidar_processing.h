@@ -28,9 +28,9 @@ class LidarProcess {
   LidarProcess(LidarParams params, float map_resolution,
                rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time &start_time,
-                     rclcpp::Time &end_time, Eigen::ArrayXi &bin_pcs_sizes,
-                     int &start_bin, int &mean_bin);
+  bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time& start_time,
+                     rclcpp::Time& end_time, Eigen::ArrayXi& bin_pcs_sizes,
+                     int& start_bin, int& mean_bin);
 
   int num_bins_;
   bool lidar_has_data_;
@@ -49,6 +49,7 @@ class LidarProcess {
   std::vector<int> min_neighbours_;
   std::vector<int> max_neighbours_;
   std::vector<float> search_radii_;
+  std::vector<float> match_radii_;
   std::vector<float> scan_line_sep_;
   std::vector<float> octree_resolutions_;
 
@@ -58,18 +59,18 @@ class LidarProcess {
   void SetMinMaxTime(int bin_idx);
   void ClearBins();
 
-  void SetPoint(LivoxPoint &in_pt0, LivoxPoint &in_pt, EllipseLioPoint &out_pt,
-                rclcpp::Time &point_time);
-  void SetPoint(VelodynePoint &in_pt0, VelodynePoint &in_pt,
-                EllipseLioPoint &out_pt, rclcpp::Time &point_time);
-  void SetPoint(OusterPoint &in_pt0, OusterPoint &in_pt,
-                EllipseLioPoint &out_pt, rclcpp::Time &point_time);
-  void SetPoint(HesaiPoint &in_pt0, HesaiPoint &in_pt, EllipseLioPoint &out_pt,
-                rclcpp::Time &point_time);
+  void SetPoint(LivoxPoint& in_pt0, LivoxPoint& in_pt, EllipseLioPoint& out_pt,
+                rclcpp::Time& point_time);
+  void SetPoint(VelodynePoint& in_pt0, VelodynePoint& in_pt,
+                EllipseLioPoint& out_pt, rclcpp::Time& point_time);
+  void SetPoint(OusterPoint& in_pt0, OusterPoint& in_pt,
+                EllipseLioPoint& out_pt, rclcpp::Time& point_time);
+  void SetPoint(HesaiPoint& in_pt0, HesaiPoint& in_pt, EllipseLioPoint& out_pt,
+                rclcpp::Time& point_time);
 
   template <typename InPtType>
-  void ConvertPoint(pcl::PointCloud<InPtType> &in_pc, int pt_idx,
-                    rclcpp::Time &point_time);
+  void ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
+                    rclcpp::Time& point_time);
   template <typename InPtType>
   void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
