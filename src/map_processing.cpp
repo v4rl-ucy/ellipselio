@@ -74,22 +74,17 @@ bool MappingNode::sync_packages() {
   }
   if (imu_start_time_ > scan_start_time_) {
     scan_start_time_ = imu_start_time_;
+    RCLCPP_ERROR_STREAM(this->get_logger(),
+                        "IMU start time later than scan start time");
+    buffer_cloud->clear();
+    return false;
   }
-  if ((scan_end_time_ - scan_start_time_).seconds() < 0.8 * lidar_scan_time) {
-    if (inter_sync_time <= 2 * lidar_scan_time) return false;
-    if (inter_sync_time > 2 * lidar_scan_time) {
-      RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
-                                   "Scan time too short");
-      buffer_cloud->clear();
+  if (scan_end_time_ - scan_start_time_ < lidar_scan_duration) {
+    if (!buffer_cloud->empty() || scan_end_time_ > imu_end_time_) {
       return false;
     }
-  }
-  if (scan_start_time_ + lidar_scan_duration > imu_end_time_) {
-    if (inter_sync_time <= 2 * lidar_scan_time) return false;
-    if (inter_sync_time > 2 * lidar_scan_time) {
-      RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
-                                   "IMU end time less than scan duration");
-      buffer_cloud->clear();
+  } else {
+    if (scan_start_time_ + lidar_scan_duration > imu_end_time_) {
       return false;
     }
   }
@@ -696,13 +691,17 @@ void MappingNode::tensor_registration(
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale, grav_check,
       centroid_check;
 
+  std::atomic<int> feat_cnt;
   std::vector<std::atomic<int>> prim_cnts(3);
   V3F hit_filter, grav_norm, vel_norm, axis_norm, poses_diff, centroid_world;
+  V3D rot_obs, tran_obs;
 
   Eigen::Vector4f scan_centroid;
   Eigen::Array3i feats_num(3), cnts(3);
-  Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9);
+  Eigen::ArrayXd means(9), maxs(9), mins(9), stds(9), sums(9), std_sums(9),
+      obs_wt(6);
 
+  feat_cnt = 0;
   prim_cnts[0] = 0;
   prim_cnts[1] = 0;
   prim_cnts[2] = 0;
@@ -740,7 +739,9 @@ void MappingNode::tensor_registration(
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
-    Eigen::VectorXd h_x_vec(6);
+    Eigen::ArrayXd obs_idx_vec(6);
+    Eigen::VectorXd h_x_vec(6), obs_vec(6);
+    Eigen::VectorXd::Index tran_idx, rot_idx;
     std::vector<int> N_idxs, N_p_idxs;
     std::vector<float> N_dst, N_p_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
@@ -750,7 +751,8 @@ void MappingNode::tensor_registration(
 
     M3D P_skew;
     V3D p_lidar, p_imu, a;
-    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec;
+    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec,
+        a_world;
 
     const EllipseLioPoint& pt = scan_cloud->points[i];
 
@@ -759,8 +761,9 @@ void MappingNode::tensor_registration(
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
     const int& bin_idx = scan_cloud->points[i].bin_idx;
-    float search_rad = lid_process->search_radii_[fmax(bin_idx, start_bin)];
+    float search_rad = lid_process->match_radii_[bin_idx];
     search_rad /= ekfom_iter_cnt + 1;
+    search_rad = fmin(fmax(search_rad, MIN_BIN_RES), MAX_SEARCH_RES);
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
     if (N_idxs.size() == 0) continue;
@@ -836,10 +839,31 @@ void MappingNode::tensor_registration(
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
+    a_world = (s.rot * a).normalized().cast<float>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
+    obs_vec(0) = pow(scores(0), 2);
+    obs_vec(0) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitX()));
+    obs_vec(1) = pow(scores(0), 2);
+    obs_vec(1) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitY()));
+    obs_vec(2) = pow(scores(0), 2);
+    obs_vec(2) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitZ()));
+    obs_vec(3) = fabs(a_world.dot(Eigen::Vector3f::UnitX()));
+    obs_vec(4) = fabs(a_world.dot(Eigen::Vector3f::UnitY()));
+    obs_vec(5) = fabs(a_world.dot(Eigen::Vector3f::UnitZ()));
+
+    obs_vec.head(3).maxCoeff(&tran_idx);
+    obs_vec.tail(3).maxCoeff(&rot_idx);
+
+    obs_idx_vec = Eigen::ArrayXd::Zero(6);
+    obs_idx_vec(tran_idx) = 1;
+    obs_idx_vec(3 + rot_idx) = 1;
+
+    feat_num = ++feat_cnt;
     sali_idx = saliency_idxs[map_i];
     prim_num = ++prim_cnts[sali_idx];
+
+    ekfom_data_o.row(feat_num - 1) = obs_vec;
     ekfom_data_i(prim_num - 1, sali_idx) = map_i;
     ekfom_data_w(prim_num - 1, sali_idx) = time_score;
     ekfom_data_w(prim_num - 1, sali_idx + 3) = prim_score;
@@ -847,6 +871,7 @@ void MappingNode::tensor_registration(
 
     ekfom_data_h_v[sali_idx](prim_num - 1) = -residual;
     ekfom_data_h_x_v[sali_idx].row(prim_num - 1) = h_x_vec;
+    ekfom_data_oi[sali_idx].row(prim_num - 1) = obs_idx_vec;
   }
 
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
@@ -858,6 +883,34 @@ void MappingNode::tensor_registration(
     last_ekf_fail = true;
     return;
   }
+
+  tran_obs = ekfom_data_o.leftCols(3).topRows(feat_cnt.load()).colwise().sum();
+  rot_obs = ekfom_data_o.rightCols(3).topRows(feat_cnt.load()).colwise().sum();
+  tran_obs /= tran_obs.maxCoeff();
+  rot_obs /= rot_obs.maxCoeff();
+
+  obs_wt << 1.0 / tran_obs(0), 1.0 / tran_obs(1), 1.0 / tran_obs(2),
+      1.0 / rot_obs(0), 1.0 / rot_obs(1), 1.0 / rot_obs(2);
+
+  // std::cerr << "Tran obs: " << tran_obs.transpose() << std::endl;
+  // std::cerr << "Rot obs: " << rot_obs.transpose() << std::endl;
+  // std::cerr << "Obs wt: " << obs_wt.transpose() << std::endl;
+
+  Eigen::ArrayXd num_vec = Eigen::ArrayXd::Zero(6);
+  for (int i = 0; i < 3; i++) {
+    num_vec += ekfom_data_oi[i].topRows(cnts(i)).colwise().sum();
+  }
+  // std::cerr << "Num vec: " << num_vec.transpose() << std::endl;
+
+  tran_obs = num_vec.head(3);
+  rot_obs = num_vec.tail(3);
+  tran_obs /= tran_obs.maxCoeff();
+  rot_obs /= rot_obs.maxCoeff();
+
+  obs_wt << 1.0 / tran_obs(0), 1.0 / tran_obs(1), 1.0 / tran_obs(2), 1.0, 1.0,
+      1.0;
+  obs_wt = obs_wt.pow(3);
+  // std::cerr << "Obs wt: " << obs_wt.transpose() << std::endl;
 
 #pragma omp parallel for
   for (int i = 0; i < 9; i++) {
@@ -892,37 +945,39 @@ void MappingNode::tensor_registration(
 
     if (!cnts(i)) continue;
 
-    if (stds(i)) {
-      ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
-      ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
-      ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
-      ekfom_data_w.col(i).head(cnts(i)) += 1.0;
-    } else {
-      ekfom_data_w.col(i).head(cnts(i)) = 1.0;
-    }
+    // if (stds(i)) {
+    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_min_scale;
+    //   ekfom_data_w.col(i).head(cnts(i)) -= rng_min;
+    //   ekfom_data_w.col(i).head(cnts(i)) *= rng_max_scale;
+    //   ekfom_data_w.col(i).head(cnts(i)) += 1.0;
+    // } else {
+    ekfom_data_w.col(i).head(cnts(i)) = 1.0;
+    // }
 
     feats_num(i) = cnts(i);
 
-    if (stds(i + 3) && stds(i + 6)) {
-      hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
-      hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
+    //     if (stds(i + 3) && stds(i + 6) && feat_tot > 200) {
+    //       hit_filter(i) = float(reject_cnt) / float(scan_cloud->size());
+    //       hit_filter(i) = 1.0 + (4.0 * hit_filter(i));
 
-      std_p = stds(i + 3) * hit_filter(i);
-      std_e = stds(i + 6) * hit_filter(i);
+    //       std_p = stds(i + 3) * hit_filter(i);
+    //       std_e = stds(i + 6) * hit_filter(i);
 
-      ekfom_data_v.col(i).head(cnts(i)) =
-          (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p &&
-           ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
-              .cast<double>();
-      feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
-      ekfom_data_w.col(i).head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
-      ekfom_data_h_v[i].head(cnts(i)) *= ekfom_data_v.col(i).head(cnts(i));
+    //       ekfom_data_v.col(i).head(cnts(i)) =
+    //           (ekfom_data_w.col(i + 3).head(cnts(i)) < means(i + 3) + std_p
+    //           &&
+    //            ekfom_data_w.col(i + 6).head(cnts(i)) < means(i + 6) + std_e)
+    //               .cast<double>();
+    //       feats_num(i) = ekfom_data_v.col(i).head(cnts(i)).sum();
+    //       ekfom_data_w.col(i).head(cnts(i)) *=
+    //       ekfom_data_v.col(i).head(cnts(i)); ekfom_data_h_v[i].head(cnts(i))
+    //       *= ekfom_data_v.col(i).head(cnts(i));
 
-#pragma omp parallel for
-      for (int j = 0; j < cnts(i); j++) {
-        valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
-      }
-    }
+    // #pragma omp parallel for
+    //       for (int j = 0; j < cnts(i); j++) {
+    //         valid_reg[ekfom_data_i(j, i)] = ekfom_data_v(j, i);
+    //       }
+    //     }
 
     if (i == 0) {
       st = 0;
@@ -935,27 +990,27 @@ void MappingNode::tensor_registration(
     ekfom_data_w_x.block(st, 0, sz, 1) = ekfom_data_w.col(i).head(cnts(i));
     ekfom_data_h_x.block(st, 0, sz, 6) = ekfom_data_h_x_v[i].topRows(cnts(i));
   }
+
   rng_min = 1;
   rng_max += 1;
   rng_mean += 1;
-
-  if (feats_num.sum() < fmin(0.05 * scan_cloud->size(), 50)) {
-    ekfom_data.valid = false;
-    last_ekf_fail = true;
-    return;
-  }
 
   ekfom_data_h_x_R.leftCols(feat_tot) =
       (ekfom_data_h_x.topRows(feat_tot).array().colwise() *
        ekfom_data_w_x.head(feat_tot))
           .transpose();
 
+  res_mean = -ekfom_data_h.head(feat_tot).sum();
   ekfom_data.h = ekfom_data_h.head(feat_tot);
   ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
-  res_mean = -ekfom_data_h.head(feat_tot).sum();
   feat_tot = feats_num.sum();
+  if (feat_tot < fmin(0.05 * scan_cloud->size(), 50)) {
+    ekfom_data.valid = false;
+    last_ekf_fail = true;
+    return;
+  }
 
   res_mean /= feat_tot;
   reject_cnt = scan_cloud->size() - feat_tot;
@@ -963,7 +1018,7 @@ void MappingNode::tensor_registration(
   ekfom_iter_cnt++;
   last_ekf_fail = false;
 
-  if (feats_num.sum() < fmin(0.1 * scan_cloud->size(), 100)) {
+  if (feat_tot < fmin(0.1 * scan_cloud->size(), 100)) {
     ekfom_data.finish = true;
   }
 
@@ -1090,6 +1145,7 @@ MappingNode::MappingNode(
   ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
   ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_w = Eigen::ArrayXXd(MAX_PROC_POINTS, 9);
+  ekfom_data_o = Eigen::ArrayXXd(MAX_PROC_POINTS, 6);
   ekfom_data_h = Eigen::VectorXd(MAX_PROC_POINTS);
   ekfom_data_w_x = Eigen::ArrayXd(MAX_PROC_POINTS);
   ekfom_data_h_x = Eigen::MatrixXd(MAX_PROC_POINTS, 6);
@@ -1099,6 +1155,8 @@ MappingNode::MappingNode(
       std::vector<Eigen::ArrayXd>(3, Eigen::ArrayXd(MAX_PROC_POINTS));
   ekfom_data_h_x_v =
       std::vector<Eigen::MatrixXd>(3, Eigen::MatrixXd(MAX_PROC_POINTS, 6));
+  ekfom_data_oi =
+      std::vector<Eigen::ArrayXXd>(3, Eigen::ArrayXXd(MAX_PROC_POINTS, 6));
 
   // if (num_cams) {
   //   sh_mats = std::vector<Eigen::MatrixXf>(
