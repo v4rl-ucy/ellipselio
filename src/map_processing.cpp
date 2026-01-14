@@ -424,13 +424,16 @@ void MappingNode::map_incremental() {
   poses.push_back(kf_state_.state.pos.cast<float>());
   rotes.push_back(kf_state_.state.rot.cast<float>());
 
-  // std::cerr << "Mean bin: " << mean_bin << ", Start bin: " << start_bin
-  //           << ", Map counter: " << map_counter << std::endl;
-
-  if (poses.back().norm() > mean_bin && init_search_rad) {
-    init_search_rad = false;
-    std::cerr << "Disabling initial search radius limit." << std::endl;
+  if (kf_state_.state.vel.norm() > 0.1 || vel_poses.empty()) {
+    vel_pose_counter++;
+    curr_vel_streak--;
+    curr_vel_streak = fmax(curr_vel_streak, 0);
+    vel_poses.push_back(kf_state_.state.pos.cast<float>());
+  } else {
+    curr_vel_streak++;
   }
+
+  if (poses.back().norm() > mean_bin && scale_search) scale_search = false;
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -470,14 +473,16 @@ void MappingNode::map_incremental() {
     line_sep = sep_factor[i] * lid_process->scan_line_sep_[i];
     sep_val = line_sep > 2 * lid_process->search_radii_[i];
 
+    const float& min_oct_res = lid_process->octree_resolutions_.front();
     pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
+    if (pose_diff < min_oct_res && ort_val && scale_search && init_poses[i])
+      continue;
     pose_val = pose_diff < line_sep && pose_diff > 0;
 
     rote_diff = rotes[map_counter].angularDistance(last_updated_rotes[i]);
     rote_val = (i + 1) * rote_diff < line_sep && rote_diff > 0;
 
-    // if (pose_val && rote_val && sep_val && ort_val && !last_ekf_fail)
-    // continue;
+    // if (pose_val && rote_val && sep_val && ort_val) continue;
     if (sep_factor[i] > 1 && init_poses[i]) sep_factor[i]--;
     last_updated_poses[i] = poses[map_counter];
     last_updated_rotes[i] = rotes[map_counter];
@@ -731,7 +736,7 @@ void MappingNode::tensor_registration(
   ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
 
   poses_diff = s.pos.cast<float>();
-  poses_diff -= poses[fmax(map_counter - 100, 0)];
+  poses_diff -= vel_poses[fmax(vel_pose_counter - 100, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
   grav_check = fmin(grav_check, 1.0);
@@ -772,18 +777,14 @@ void MappingNode::tensor_registration(
     const float& oct_res = lid_process->octree_resolutions_[bin_idx];
     const float& min_oct_res = lid_process->octree_resolutions_.front();
 
-    // std::cerr << "min oct res: " << min_oct_res << std::endl;
-
-    float map_scale = fmax(fmin(3.0 / mean_bin, 1.0), 0.1);
-
     float search_rad = lid_process->match_radii_[bin_idx];
-    float search_rad_scale = s.pos.norm() / (10.0 * search_rad);
-    float octree_res = fmin(map_scale * oct_res, MIN_SEARCH_RES);
+    float search_rad_scale = poses.back().norm() / (10.0 * search_rad);
+    float octree_res = fmin(oct_res, MIN_SEARCH_RES);
 
     search_rad_scale = fmax(search_rad_scale, octree_res);
     search_rad /= ekfom_iter_cnt + 1;
-    if (init_search_rad) search_rad = fmin(search_rad, search_rad_scale);
-    search_rad = fmin(fmax(search_rad, min_oct_res), MAX_SEARCH_RES);
+    if (scale_search) search_rad = fmin(search_rad, search_rad_scale);
+    search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
     if (N_idxs.size() == 0) continue;
@@ -837,6 +838,10 @@ void MappingNode::tensor_registration(
     norm_vec = p_world - p_dash;
     residual = norm_vec.norm();
     norm_vec.normalize();
+
+    // float pose_ort = norm_vec.dot((s.pos.cast<float>() -
+    // n_world).normalized()); pose_ort *= norm_vec.dot((poses[map_scan_idx] -
+    // n_world).normalized()); if (pose_ort <= 0.0) continue;
 
     norm_check = fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
     time_score = 1.0 / ((scan_pt_time - map_pt_time).seconds() + 1.0);
@@ -937,6 +942,7 @@ void MappingNode::tensor_registration(
 
   float obs_min = 10.0 * fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
   obs_min *= fmax(1.0 - fmin(10.0 * grav_check, 1.0), 1e-4);
+  // obs_min *= 1.0 / (curr_vel_streak + 1.0);
   obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
 
   ekfom_data_om[ekfom_obs_cnt] = obs_min;
@@ -949,6 +955,12 @@ void MappingNode::tensor_registration(
   ekfom_data_h.block(0, 0, feat_tot, 1) = ekfom_data_h_v.head(feat_tot);
   ekfom_data_w_x.block(0, 0, feat_tot, 1) = ekfom_data_w.head(feat_tot);
   ekfom_data_h_x.block(0, 0, feat_tot, 6) = ekfom_data_h_x_v.topRows(feat_tot);
+
+  wt_min = ekfom_data_w.head(feat_tot).minCoeff();
+  wt_max = ekfom_data_w.head(feat_tot).maxCoeff();
+  wt_mean = ekfom_data_w.head(feat_tot).mean();
+  wt_std = (ekfom_data_w.head(feat_tot) - wt_mean).square().sum();
+  wt_std = sqrt(wt_std / (feat_tot - 1));
 
   rng_min = 1;
   rng_max += 1;

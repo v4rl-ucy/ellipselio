@@ -86,6 +86,7 @@ class MappingNode : public rclcpp::Node {
          mean_state_time = 0, mean_map_time = 0, mean_total_time = 0;
 
   int pub_map_n_secs;
+  int vel_pose_counter = 0, curr_vel_streak = 0;
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   double start_time;
@@ -93,7 +94,7 @@ class MappingNode : public rclcpp::Node {
   bool use_map_res = false;
   bool line_sep_res = true;
   bool last_ekf_fail = true;
-  bool init_search_rad = true;
+  bool scale_search = true;
 
   float centroid_mean = 0.0;
 
@@ -132,6 +133,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<Eigen::Vector3f> colors;
   std::vector<Eigen::MatrixXf> sh_mats;
 
+  std::vector<Eigen::Vector3f> vel_poses;
   std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::Quaternionf> rotes;
 
