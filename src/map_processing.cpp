@@ -433,7 +433,9 @@ void MappingNode::map_incremental() {
     curr_vel_streak++;
   }
 
-  if (poses.back().norm() > mean_bin && scale_search) scale_search = false;
+  if (poses.back().norm() > mean_bin && scale_search) {
+    scale_search = false;
+  }
 
 #pragma omp parallel for
   for (int i = 0; i < scan_cloud->size(); i++) {
@@ -475,7 +477,8 @@ void MappingNode::map_incremental() {
 
     const float& min_oct_res = lid_process->octree_resolutions_.front();
     pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
-    if (pose_diff < min_oct_res && ort_val && scale_search && init_poses[i])
+    if (pose_diff < min_oct_res && mean_bin > start_bin && scale_search &&
+        init_poses[i])
       continue;
     pose_val = pose_diff < line_sep && pose_diff > 0;
 
@@ -777,8 +780,10 @@ void MappingNode::tensor_registration(
     const float& oct_res = lid_process->octree_resolutions_[bin_idx];
     const float& min_oct_res = lid_process->octree_resolutions_.front();
 
+    float bin_scale = 10.0 / mean_bin;
+    if (ort_val) bin_scale = fmin(mean_bin, 20.0);
     float search_rad = lid_process->match_radii_[bin_idx];
-    float search_rad_scale = poses.back().norm() / (10.0 * search_rad);
+    float search_rad_scale = poses.back().norm() / (bin_scale * search_rad);
     float octree_res = fmin(oct_res, MIN_SEARCH_RES);
 
     search_rad_scale = fmax(search_rad_scale, octree_res);
@@ -940,7 +945,8 @@ void MappingNode::tensor_registration(
   ekfom_data_oit.topRows(feat_tot) *= tran_obs.transpose();
   ekfom_data_oir.topRows(feat_tot) *= rot_obs.transpose();
 
-  float obs_min = 10.0 * fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
+  float rng_scale = ((1e4 - fmin(rng_max, 1e4)) / 1000.0) + 10.0;
+  float obs_min = rng_scale * fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
   obs_min *= fmax(1.0 - fmin(10.0 * grav_check, 1.0), 1e-4);
   // obs_min *= 1.0 / (curr_vel_streak + 1.0);
   obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
@@ -949,6 +955,7 @@ void MappingNode::tensor_registration(
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
   obs_min = fmax(ekfom_data_om.mean(), 0.1);
 
+  // std::cerr << "Rng scale: " << rng_scale << std::endl;
   // std::cerr << "Obs min weight: " << obs_min << std::endl;
 
   ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_min);
