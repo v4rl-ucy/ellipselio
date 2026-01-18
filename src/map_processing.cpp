@@ -419,6 +419,7 @@ void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
 // Add new points to the map and update geometric primitives
 void MappingNode::map_incremental() {
   int start_idx, end_idx;
+  V3F grav_norm, axis_norm;
   std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
 
   poses.push_back(kf_state_.state.pos.cast<float>());
@@ -435,6 +436,12 @@ void MappingNode::map_incremental() {
 
   if (poses.back().norm() > mean_bin && scale_search) {
     scale_search = false;
+  }
+
+  if (!map_counter) {
+    grav_norm = kf_state_.state.grav.get_vect().normalized().cast<float>();
+    axis_norm = kf_state_.state.rot.cast<float>() * Eigen::Vector3f::UnitZ();
+    axis_grav_align = fabs(grav_norm.dot(axis_norm)) > 0.8;
   }
 
 #pragma omp parallel for
@@ -684,7 +691,6 @@ void MappingNode::publish_odometry() {
 // Register new scan points to the map using tensor registration
 void MappingNode::tensor_registration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
-  bool ort_val;
   double t0, t1, res_mean;
   int feat_tot, reject_cnt;
   float wt_min, wt_max, wt_mean, wt_std, obs_min, rng_scale;
@@ -695,17 +701,14 @@ void MappingNode::tensor_registration(
 
   Eigen::Array3i cnts(3);
   Eigen::Array3d rot_obs, tran_obs;
-  V3F grav_norm, axis_norm, poses_diff;
+  V3F grav_norm, poses_diff;
 
   feat_cnt = 0;
   prim_cnts[0] = 0;
   prim_cnts[1] = 0;
   prim_cnts[2] = 0;
 
-  grav_norm = s.grav.get_vect().normalized().cast<float>();
-  axis_norm = kf_state_.state.rot.cast<float>() * Eigen::Vector3f::UnitZ();
-  ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
-
+  grav_norm = kf_state_.state.grav.get_vect().normalized().cast<float>();
   poses_diff = s.pos.cast<float>();
   poses_diff -= vel_poses[fmax(vel_pose_counter - 10, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
@@ -741,7 +744,7 @@ void MappingNode::tensor_registration(
     const float& min_oct_res = lid_process->octree_resolutions_.front();
 
     bin_scale = 10.0 / mean_bin;
-    if (ort_val) bin_scale = 20.0;
+    if (!axis_grav_align) bin_scale = 20.0;
     search_rad = lid_process->match_radii_[bin_idx];
     search_rad_scale = poses.back().norm() / (bin_scale * search_rad);
     octree_res = fmin(oct_res, MIN_SEARCH_RES);
@@ -841,7 +844,7 @@ void MappingNode::tensor_registration(
     ekfom_data.valid = false;
     return;
   }
-  if (feat_tot < 100) {
+  if (feat_tot < 200) {
     ekfom_data.finish = true;
   }
 
@@ -881,8 +884,6 @@ void MappingNode::tensor_registration(
   tran_obs = tran_obs.inverse();
   rot_obs = rot_obs.inverse();
 
-  // std::cerr << " rot wt: " << rot_obs.transpose() << std::endl;
-
   ekfom_data_oit.topRows(feat_tot) *= tran_obs.transpose();
   ekfom_data_oir.topRows(feat_tot) *= rot_obs.transpose();
 
@@ -896,17 +897,13 @@ void MappingNode::tensor_registration(
 
   obs_min = rng_scale * fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
   obs_min *= fmax(1.0 - fmin(1.0 * grav_check, 1.0), 1e-4);
-  if (!ort_val) obs_min *= fmin(20.0 / pow(cent_proj.norm(), 2), 1.0);
-  if (!ort_val) obs_min *= mean_bin / 10.0;
+  if (axis_grav_align) obs_min *= fmin(20.0 / pow(cent_proj.norm(), 2), 1.0);
+  if (axis_grav_align) obs_min *= mean_bin / 10.0;
   obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
 
   ekfom_data_om[ekfom_obs_cnt] = obs_min;
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
   obs_min = fmax(ekfom_data_om.mean(), 0.1);
-
-  // std::cerr << "Scan centroid: " << cent_proj.norm() << std::endl;
-  // std::cerr << "Rng scale: " << rng_scale << std::endl;
-  // std::cerr << "Obs min weight: " << obs_min << std::endl;
 
   ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_min);
   ekfom_data_h.block(0, 0, feat_tot, 1) = ekfom_data_h_v.head(feat_tot);
