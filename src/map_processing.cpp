@@ -750,7 +750,7 @@ void MappingNode::tensor_registration(
     octree_res = fmin(oct_res, MIN_SEARCH_RES);
 
     search_rad_scale = fmax(search_rad_scale, octree_res);
-    search_rad /= ekfom_iter_cnt + 1;
+    search_rad /= ekfom_div_cnt + 1;
     if (scale_search) search_rad = fmin(search_rad, search_rad_scale);
     search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
 
@@ -844,9 +844,6 @@ void MappingNode::tensor_registration(
     ekfom_data.valid = false;
     return;
   }
-  if (feat_tot < 200) {
-    ekfom_data.finish = true;
-  }
 
   wt_min = ekfom_data_w.head(feat_tot).minCoeff();
   wt_max = ekfom_data_w.head(feat_tot).maxCoeff();
@@ -931,6 +928,7 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
   ekfom_iter_cnt++;
+  if (feat_tot > 100) ekfom_div_cnt++;
 
   analytics_msg_.num_planes = cnts(0);
   analytics_msg_.num_lines = cnts(1);
@@ -1393,6 +1391,7 @@ void MappingNode::timer_callback() {
     t2 = omp_get_wtime();
 
     if (map_counter) {
+      ekfom_div_cnt = 0;
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);

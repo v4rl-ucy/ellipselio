@@ -108,6 +108,7 @@ class MappingNode : public rclcpp::Node {
 
   int ekfom_obs_cnt = 0;
   int ekfom_iter_cnt = 0;
+  int ekfom_div_cnt = 0;
   int ekfom_upd_cnt = 0;
   int feats_per_bin = 0;
 
