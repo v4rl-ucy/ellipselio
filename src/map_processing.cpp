@@ -424,7 +424,7 @@ void MappingNode::map_incremental() {
   poses.push_back(kf_state_.state.pos.cast<float>());
   rotes.push_back(kf_state_.state.rot.cast<float>());
 
-  if (kf_state_.state.vel.norm() > 0.1 || vel_poses.empty()) {
+  if (kf_state_.state.vel.norm() > 0.5 || vel_poses.empty()) {
     vel_pose_counter++;
     curr_vel_streak--;
     curr_vel_streak = fmax(curr_vel_streak, 0);
@@ -707,7 +707,7 @@ void MappingNode::tensor_registration(
   ort_val = fabs(grav_norm.dot(axis_norm)) < 0.8;
 
   poses_diff = s.pos.cast<float>();
-  poses_diff -= vel_poses[fmax(vel_pose_counter - 100, 0)];
+  poses_diff -= vel_poses[fmax(vel_pose_counter - 10, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
   grav_check = fmin(grav_check, 1.0);
@@ -741,7 +741,7 @@ void MappingNode::tensor_registration(
     const float& min_oct_res = lid_process->octree_resolutions_.front();
 
     bin_scale = 10.0 / mean_bin;
-    if (ort_val) bin_scale = fmin(mean_bin, 20.0);
+    if (ort_val) bin_scale = 20.0;
     search_rad = lid_process->match_radii_[bin_idx];
     search_rad_scale = poses.back().norm() / (bin_scale * search_rad);
     octree_res = fmin(oct_res, MIN_SEARCH_RES);
@@ -837,11 +837,11 @@ void MappingNode::tensor_registration(
   feat_tot = feat_cnt.load();
   reject_cnt = scan_cloud->size() - feat_tot;
 
-  if (feat_tot < fmin(0.05 * scan_cloud->size(), 50)) {
+  if (feat_tot < 50) {
     ekfom_data.valid = false;
     return;
   }
-  if (feat_tot < fmin(0.1 * scan_cloud->size(), 100)) {
+  if (feat_tot < 100) {
     ekfom_data.finish = true;
   }
 
@@ -881,21 +881,30 @@ void MappingNode::tensor_registration(
   tran_obs = tran_obs.inverse();
   rot_obs = rot_obs.inverse();
 
-  // std::cerr << "Trans wt: " << tran_obs.transpose()
-  //           << " rot wt: " << rot_obs.transpose() << std::endl;
+  // std::cerr << " rot wt: " << rot_obs.transpose() << std::endl;
 
   ekfom_data_oit.topRows(feat_tot) *= tran_obs.transpose();
   ekfom_data_oir.topRows(feat_tot) *= rot_obs.transpose();
 
+  Eigen::Vector3f cent_proj;
+  Eigen::Vector4f scan_centroid;
+  pcl::compute3DCentroid(*scan_cloud, scan_centroid);
+
+  cent_proj = scan_centroid.head(3).dot(grav_norm) * grav_norm;
+  cent_proj = scan_centroid.head(3) - cent_proj;
   rng_scale = ((1e4 - fmin(rng_max, 1e4)) / 1000.0) + 10.0;
+
   obs_min = rng_scale * fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
-  obs_min *= fmax(1.0 - fmin(10.0 * grav_check, 1.0), 1e-4);
+  obs_min *= fmax(1.0 - fmin(1.0 * grav_check, 1.0), 1e-4);
+  if (!ort_val) obs_min *= fmin(20.0 / pow(cent_proj.norm(), 2), 1.0);
+  if (!ort_val) obs_min *= mean_bin / 10.0;
   obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
 
   ekfom_data_om[ekfom_obs_cnt] = obs_min;
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
   obs_min = fmax(ekfom_data_om.mean(), 0.1);
 
+  // std::cerr << "Scan centroid: " << cent_proj.norm() << std::endl;
   // std::cerr << "Rng scale: " << rng_scale << std::endl;
   // std::cerr << "Obs min weight: " << obs_min << std::endl;
 
@@ -1045,8 +1054,6 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
 
-  ekfom_data_i = Eigen::ArrayXXi(MAX_PROC_POINTS, 3);
-  ekfom_data_v = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_w = Eigen::ArrayXd(MAX_PROC_POINTS);
   ekfom_data_om = Eigen::ArrayXd::Zero(100);
   ekfom_data_ot = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
