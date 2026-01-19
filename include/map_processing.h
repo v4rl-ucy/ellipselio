@@ -53,7 +53,7 @@ class MappingNode : public rclcpp::Node {
   void publish_map();
   void publish_scan();
   void publish_markers();
-  void publish_opt_odometry();
+  void publish_lid_odometry();
   void publish_imu_odometry();
 
   void tensor_registration(state_ikfom& s,
@@ -75,10 +75,12 @@ class MappingNode : public rclcpp::Node {
       pub_analytics_;
 
   rclcpp::TimerBase::SharedPtr loop_timer_;
-  rclcpp::TimerBase::SharedPtr pub_odo_timer_;
+  rclcpp::TimerBase::SharedPtr pub_odom_lid_timer_;
+  rclcpp::TimerBase::SharedPtr pub_odom_imu_timer_;
   rclcpp::TimerBase::SharedPtr pub_map_timer_;
   rclcpp::CallbackGroup::SharedPtr pub_map_callback_group_;
-  rclcpp::CallbackGroup::SharedPtr pub_odo_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr pub_odom_lid_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr pub_odom_imu_callback_group_;
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
 
