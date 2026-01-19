@@ -45,15 +45,17 @@ void CamProcess::CamCallback(
 }
 
 // Get the closest image time less than the input match time
-void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
-                                      rclcpp::Time &img_time) {
+void CamProcess::GetMatchingImageTime(rclcpp::Time& match_time,
+                                      rclcpp::Time& img_time) {
   int match_idx;
   double time_diff;
   bool match_flag = false;
 
+  has_img_match_ = false;
+  if (!img_buffer_.size()) return;
+
   cam_mutex_.lock();
 
-  has_img_match_ = false;
   time_diff = (match_time - img_buffer_.front().time).seconds();
   match_idx = std::floor(time_diff * params_.rate);
   match_idx = std::max(match_idx, 0);
@@ -80,19 +82,21 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time &match_time,
     img_time = img_buffer_[match_idx].time;
     matched_img_ = img_buffer_[match_idx];
   }
+
   cam_mutex_.unlock();
 }
 
 // Project the lidar point to the camera image and get the color
-bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
+bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
   float x, y;
   int cols, rows, valid_num;
   Eigen::MatrixXi pt_cols;
-  Eigen::Vector3i pt_sum;
+  Eigen::VectorXi pt_sum;
   Eigen::Vector2i x_vals, y_vals;
 
   if (pt_img(2) <= 0) return false;
 
+  pt_sum = Eigen::VectorXi::Zero(4);
   pt_cols = Eigen::MatrixXi::Zero(4, 3);
 
   cols = matched_img_.img->image.cols;
@@ -116,17 +120,16 @@ bool CamProcess::ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col) {
         pt_cols(i * 2 + j, 0) = color[2];
         pt_cols(i * 2 + j, 1) = color[1];
         pt_cols(i * 2 + j, 2) = color[0];
+        if (pt_cols.row(i * 2 + j).sum()) {
+          pt_sum(i * 2 + j) = 1;
+        }
       }
     }
   }
 
   pt_col = pt_cols.colwise().sum();
-  pt_sum = (pt_cols.array() > 0 && pt_cols.array() < 255)
-               .rowwise()
-               .all()
-               .cast<int>();
+  valid_num = pt_sum.sum();
 
-  valid_num = pt_sum.count();
   if (!valid_num) return false;
 
   pt_col /= valid_num;

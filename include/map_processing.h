@@ -53,7 +53,8 @@ class MappingNode : public rclcpp::Node {
   void publish_map();
   void publish_scan();
   void publish_markers();
-  void publish_odometry();
+  void publish_opt_odometry();
+  void publish_imu_odometry();
 
   void tensor_registration(state_ikfom& s,
                            esekfom::dyn_share_datastruct<double>& ekfom_data);
@@ -197,7 +198,7 @@ class MappingNode : public rclcpp::Node {
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_;
   ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
-  rclcpp::Time last_pub_time, last_imu_time_;
+  rclcpp::Time last_opt_pub_time, last_imu_pub_time, last_imu_time_;
   rclcpp::Time imu_start_time_, imu_end_time_;
   rclcpp::Time raw_start_time_, raw_end_time_;
   rclcpp::Time scan_start_time_, scan_end_time_;

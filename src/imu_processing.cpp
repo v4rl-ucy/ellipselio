@@ -93,6 +93,8 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   kf_state_.cov = kf_->get_P();
   kf_state_.time = msg_time;
 
+  SetKfState();
+
   imu_state.state = kf_state_;
   imu_state.acc << msg->linear_acceleration.x, msg->linear_acceleration.y,
       msg->linear_acceleration.z;
@@ -113,14 +115,14 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
   if (b_first_frame_) {
     init_iter_num = 1;
     b_first_frame_ = false;
-    const auto &imu_acc = msg->linear_acceleration;
-    const auto &gyr_acc = msg->angular_velocity;
+    const auto& imu_acc = msg->linear_acceleration;
+    const auto& gyr_acc = msg->angular_velocity;
     mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
   } else {
     V3D cur_acc, cur_gyr;
-    const auto &imu_acc = msg->linear_acceleration;
-    const auto &gyr_acc = msg->angular_velocity;
+    const auto& imu_acc = msg->linear_acceleration;
+    const auto& gyr_acc = msg->angular_velocity;
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
     cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
 
@@ -149,8 +151,8 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
   }
 }
 
-void ImuProcess::SyncWithLidar(rclcpp::Time &imu_start_time,
-                               rclcpp::Time &imu_end_time) {
+void ImuProcess::SyncWithLidar(rclcpp::Time& imu_start_time,
+                               rclcpp::Time& imu_end_time) {
   imu_mutex_.lock();
   synced_imu_states_ = imu_states_;
   imu_start_time = imu_start_time_;
@@ -159,8 +161,8 @@ void ImuProcess::SyncWithLidar(rclcpp::Time &imu_start_time,
 }
 
 // Get the closest imu state greater than the input match time
-void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
-                              boost::circular_buffer<ImuState> &imu_states) {
+void ImuProcess::GetTimeMatch(int& match_idx, rclcpp::Time& match_time,
+                              boost::circular_buffer<ImuState>& imu_states) {
   double time_diff;
   bool match_flag = false;
 
@@ -188,10 +190,10 @@ void ImuProcess::GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
 
 // Undistort the lidar point cloud using the kalman filter imu states
 void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
-                                     KfState &kf_state,
-                                     rclcpp::Time &lidar_start_time,
-                                     rclcpp::Time &lidar_end_time,
-                                     CamProcessVec &cams) {
+                                     KfState& kf_state,
+                                     rclcpp::Time& lidar_start_time,
+                                     rclcpp::Time& lidar_end_time,
+                                     CamProcessVec& cams) {
   int match_idx;
   Eigen::Isometry3d T_imu_lidar, T_world_imu_e;
 
@@ -243,8 +245,8 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
 
 // Compute the camera pose at the time of the closest matching image
 void ImuProcess::GetMatchingImages(
-    rclcpp::Time &min_time, rclcpp::Time &match_time, CamProcessVec &cams,
-    boost::circular_buffer<ImuState> &imu_states) {
+    rclcpp::Time& min_time, rclcpp::Time& match_time, CamProcessVec& cams,
+    boost::circular_buffer<ImuState>& imu_states) {
 #pragma omp parallel for
   for (size_t i = 0; i < cams.size(); i++) {
     rclcpp::Time img_time;
@@ -278,12 +280,13 @@ void ImuProcess::GetMatchingImages(
 }
 
 // Colorise a lidar point using the camera images
-void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
-                               Eigen::Isometry3d &T_world_pt,
-                               Eigen::Isometry3d &T_imu_lidar) {
+void ImuProcess::ColorisePoint(EllipseLioPoint& pt, CamProcessVec& cams,
+                               Eigen::Isometry3d& T_world_pt,
+                               Eigen::Isometry3d& T_imu_lidar) {
   int valid_num;
   Eigen::MatrixXi cam_cols;
-  Eigen::Vector3i cam_col, cam_sum;
+  Eigen::Vector3i cam_col;
+  Eigen::VectorXi cam_sum;
 
   pt.r = 0;
   pt.g = 0;
@@ -292,6 +295,7 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
   pt.has_rgb = false;
 
   if (!cams.size()) return;
+  cam_sum = Eigen::VectorXi::Zero(cams.size());
   cam_cols = Eigen::MatrixXi::Zero(cams.size(), 3);
 
 #pragma omp parallel for
@@ -301,8 +305,8 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
 
     if (!cams[i]->has_img_match_) continue;
 
-    Eigen::Isometry3d &T_cam_lidar = cams[i]->T_cam_lidar_;
-    Eigen::Isometry3d &T_world_img = cams[i]->T_world_img_;
+    Eigen::Isometry3d& T_cam_lidar = cams[i]->T_cam_lidar_;
+    Eigen::Isometry3d& T_world_img = cams[i]->T_world_img_;
 
     pt_col = Eigen::Vector3i::Zero();
     pt_img = T_cam_lidar * T_imu_lidar.inverse() * T_world_img.inverse() *
@@ -310,15 +314,12 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
 
     if (cams[i]->ColorPoint(pt_img, pt_col)) {
       cam_cols.row(i) = pt_col;
+      cam_sum(i) = 1;
     }
   }
 
   cam_col = cam_cols.colwise().sum();
-  cam_sum = (cam_cols.array() > 0 && cam_cols.array() < 255)
-                .rowwise()
-                .all()
-                .cast<int>();
-  valid_num = cam_sum.count();
+  valid_num = cam_sum.sum();
 
   if (valid_num) {
     cam_col /= valid_num;
@@ -333,13 +334,13 @@ void ImuProcess::ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
 
 // Update the kalman filter state with the latest lidar point cloud tensor
 // registration and recompute newer imu states
-void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
-                                       rclcpp::Time &lidar_end_time,
+void ImuProcess::UpdateStatesWithLidar(KfState& kf_state,
+                                       rclcpp::Time& lidar_end_time,
                                        double max_solve_time) {
   int match_idx;
   double solve_time;
   IkfomSPtr kf(new Ikfom());
-  auto &clk = *node_->get_clock();
+  auto& clk = *node_->get_clock();
 
   imu_mutex_.lock();
   *kf = *kf_;
@@ -397,12 +398,20 @@ void ImuProcess::UpdateStatesWithLidar(KfState &kf_state,
   kf_state_.cov = imu_states_.back().state.cov;
   kf_state_.time = imu_states_.back().state.time;
 
+  SetKfState();
   imu_mutex_.unlock();
 }
 
-// Get the current kalman filter state
-void ImuProcess::GetKfState(KfState &kf_state) {
-  imu_mutex_.lock();
-  kf_state = kf_state_;
-  imu_mutex_.unlock();
+// Set the current publishable kalman filter state
+void ImuProcess::SetKfState() {
+  pub_mutex_.lock();
+  pub_kf_state_ = kf_state_;
+  pub_mutex_.unlock();
+}
+
+// Get the current publishable kalman filter state
+void ImuProcess::GetKfState(KfState& kf_state) {
+  pub_mutex_.lock();
+  kf_state = pub_kf_state_;
+  pub_mutex_.unlock();
 }

@@ -16,6 +16,17 @@ bool MappingNode::sync_packages() {
   if (!last_sync_time) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), clk, 1000, "Waiting for data...");
   }
+
+  if (imu_process->lidar_ready_ &&
+      imu_process->imu_end_time_ <= last_imu_time_) {
+    if (inter_sync_time > 1.0) {
+      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
+                            "IMU has no new data");
+    }
+    return false;
+  }
+  publish_imu_odometry();
+
   if (!lid_process->lidar_has_data_ && buffer_cloud->empty() &&
       raw_cloud->empty()) {
     if (inter_sync_time > 1.0) {
@@ -25,21 +36,7 @@ bool MappingNode::sync_packages() {
     return false;
   }
   imu_process->lidar_ready_ = true;
-  if (imu_process->imu_end_time_ <= last_imu_time_) {
-    if (inter_sync_time > 1.0) {
-      RCLCPP_ERROR_THROTTLE(this->get_logger(), clk, 1000,
-                            "IMU has no new data");
-    }
-    return false;
-  }
-  for (int i = 0; i < num_cams; i++) {
-    if (!cams_process[i]->cam_has_data_) {
-      if (inter_sync_time > 1.0) {
-        RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
-                                     "Camera " << i << " has no new data");
-      }
-    }
-  }
+
   if (lid_process->lidar_start_time_ < imu_process->imu_start_time_) {
     lid_process->ClearPointCloud();
     RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
@@ -57,6 +54,15 @@ bool MappingNode::sync_packages() {
                                    "No synced measurements");
     }
     return false;
+  }
+
+  for (int i = 0; i < num_cams; i++) {
+    if (!cams_process[i]->cam_has_data_) {
+      if (inter_sync_time > 1.0) {
+        RCLCPP_ERROR_STREAM_THROTTLE(this->get_logger(), clk, 1000,
+                                     "Camera " << i << " has no new data");
+      }
+    }
   }
 
   imu_start_time_ = imu_process->imu_start_time_;
@@ -663,12 +669,36 @@ void MappingNode::publish_markers() {
 }
 
 // Publish odometry transform
-void MappingNode::publish_odometry() {
+void MappingNode::publish_imu_odometry() {
+  KfState imu_state;
+
   if (!map_counter) return;
 
-  if (last_pub_time == kf_state_pub_.time) return;
+  imu_process->GetKfState(imu_state);
+  if (last_imu_pub_time == imu_state.time) return;
+  last_imu_pub_time = imu_state.time;
+
+  geometry_msgs::msg::TransformStamped trans;
+  trans.header.frame_id = "odom_ellipselio";
+  trans.child_frame_id = "raw_ellipselio";
+  trans.header.stamp = imu_state.time;
+  trans.transform.translation.x = imu_state.state.pos(0);
+  trans.transform.translation.y = imu_state.state.pos(1);
+  trans.transform.translation.z = imu_state.state.pos(2);
+  trans.transform.rotation.x = imu_state.state.rot.coeffs()[0];
+  trans.transform.rotation.y = imu_state.state.rot.coeffs()[1];
+  trans.transform.rotation.z = imu_state.state.rot.coeffs()[2];
+  trans.transform.rotation.w = imu_state.state.rot.coeffs()[3];
+  tf_br_->sendTransform(trans);
+}
+
+// Publish odometry transform
+void MappingNode::publish_opt_odometry() {
+  if (!map_counter) return;
+
+  if (last_opt_pub_time == kf_state_pub_.time) return;
   odom_mutex_.lock();
-  last_pub_time = kf_state_pub_.time;
+  last_opt_pub_time = kf_state_pub_.time;
 
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = "odom_ellipselio";
@@ -1118,7 +1148,8 @@ MappingNode::MappingNode(
                                 std::placeholders::_1, std::placeholders::_2),
                       10, epsi);
 
-  last_pub_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_imu_pub_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_opt_pub_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   loop_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -1143,10 +1174,11 @@ MappingNode::MappingNode(
       this, this->get_clock(),
       std::chrono::milliseconds(1000 / imu_params.rate),
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
-  pub_odo_timer_ = rclcpp::create_timer(
-      this, this->get_clock(),
-      std::chrono::milliseconds(1000 / lidar_params.rate),
-      std::bind(&MappingNode::publish_odometry, this), pub_odo_callback_group_);
+  pub_odo_timer_ =
+      rclcpp::create_timer(this, this->get_clock(),
+                           std::chrono::milliseconds(1000 / lidar_params.rate),
+                           std::bind(&MappingNode::publish_opt_odometry, this),
+                           pub_odo_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(), std::chrono::milliseconds(pub_map_n_secs * 1000),
       std::bind(&MappingNode::publish_map, this), pub_map_callback_group_);
