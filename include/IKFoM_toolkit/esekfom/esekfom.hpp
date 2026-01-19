@@ -80,6 +80,7 @@ struct share_datastruct {
 template <typename T>
 struct dyn_share_datastruct {
   bool valid;
+  bool finish;
   bool converge;
   Eigen::Matrix<T, Eigen::Dynamic, 1> z;
   Eigen::Matrix<T, Eigen::Dynamic, 1> h;
@@ -117,36 +118,35 @@ class esekf {
   typedef SparseMatrix<scalar_type> spMt;
   typedef Matrix<scalar_type, n, 1> vectorized_state;
   typedef Matrix<scalar_type, m, 1> flatted_state;
-  typedef flatted_state processModel(state &, const input &);
-  typedef Eigen::Matrix<scalar_type, m, n> processMatrix1(state &,
-                                                          const input &);
+  typedef flatted_state processModel(state&, const input&);
+  typedef Eigen::Matrix<scalar_type, m, n> processMatrix1(state&, const input&);
   typedef Eigen::Matrix<scalar_type, m, process_noise_dof> processMatrix2(
-      state &, const input &);
+      state&, const input&);
   typedef Eigen::Matrix<scalar_type, process_noise_dof, process_noise_dof>
       processnoisecovariance;
-  typedef measurement measurementModel(state &, bool &);
+  typedef measurement measurementModel(state&, bool&);
   typedef measurement measurementModel_share(
-      state &, share_datastruct<state, measurement, measurement_noise_dof> &);
+      state&, share_datastruct<state, measurement, measurement_noise_dof>&);
   typedef Eigen::Matrix<scalar_type, Eigen::Dynamic, 1> measurementModel_dyn(
-      state &, bool &);
+      state&, bool&);
   // typedef Eigen::Matrix<scalar_type, Eigen::Dynamic, 1>
   // measurementModel_dyn_share(state &,  dyn_share_datastruct<scalar_type> &);
-  typedef void measurementModel_dyn_share(state &,
-                                          dyn_share_datastruct<scalar_type> &);
-  typedef Eigen::Matrix<scalar_type, l, n> measurementMatrix1(state &, bool &);
+  typedef void measurementModel_dyn_share(state&,
+                                          dyn_share_datastruct<scalar_type>&);
+  typedef Eigen::Matrix<scalar_type, l, n> measurementMatrix1(state&, bool&);
   typedef Eigen::Matrix<scalar_type, Eigen::Dynamic, n> measurementMatrix1_dyn(
-      state &, bool &);
+      state&, bool&);
   typedef Eigen::Matrix<scalar_type, l, measurement_noise_dof>
-  measurementMatrix2(state &, bool &);
+  measurementMatrix2(state&, bool&);
   typedef Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>
-  measurementMatrix2_dyn(state &, bool &);
+  measurementMatrix2_dyn(state&, bool&);
   typedef Eigen::Matrix<scalar_type, measurement_noise_dof,
                         measurement_noise_dof>
       measurementnoisecovariance;
   typedef Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>
       measurementnoisecovariance_dyn;
 
-  esekf(const state &x = state(), const cov &P = cov::Identity())
+  esekf(const state& x = state(), const cov& P = cov::Identity())
       : x_(x), P_(P) {
 #ifdef USE_sparse
     SparseMatrix<scalar_type> ref(n, n);
@@ -255,7 +255,7 @@ class esekf {
   // one function (h_dyn_share_in).
   void init_dyn_share(
       processModel f_in, processMatrix1 f_x_in, processMatrix2 f_w_in,
-      std::function<void(state &, dyn_share_datastruct<scalar_type> &)>
+      std::function<void(state&, dyn_share_datastruct<scalar_type>&)>
           h_dyn_share_in,
       int maximum_iteration, scalar_type limit_vector[n]) {
     f = f_in;
@@ -296,7 +296,7 @@ class esekf {
   }
 
   // iterated error state EKF propogation
-  void predict(double &dt, processnoisecovariance &Q, const input &i_in) {
+  void predict(double& dt, processnoisecovariance& Q, const input& i_in) {
     flatted_state f_ = f(x_, i_in);
     cov_ f_x_ = f_x(x_, i_in);
     cov f_x_final;
@@ -415,7 +415,7 @@ class esekf {
   }
 
   // iterated error state EKF update for measurement as a manifold.
-  void update_iterated(measurement &z, measurementnoisecovariance &R) {
+  void update_iterated(measurement& z, measurementnoisecovariance& R) {
     if (!(is_same<typename measurement::scalar, scalar_type>())) {
       std::cerr << "the scalar type of measurment must be the same as the state"
                 << std::endl;
@@ -1751,8 +1751,9 @@ class esekf {
     }
   }
 
-  bool update_iterated_dyn_share_modified_R(double R, double &max_solve_time) {
+  bool update_iterated_dyn_share_modified_R(double R, double& max_solve_time) {
     dyn_share_datastruct<scalar_type> dyn_share;
+    dyn_share.finish = false;
     dyn_share.valid = true;
     dyn_share.converge = true;
     int t = 0;
@@ -1768,6 +1769,7 @@ class esekf {
     double solve_time = 0;
     double solve_start = omp_get_wtime();
     for (int i = -1; i < maximum_iter; i++) {
+      dyn_share.finish = false;
       dyn_share.valid = true;
       h_dyn_share(x_, dyn_share);
 
@@ -1899,7 +1901,8 @@ class esekf {
       }
 
       solve_time = omp_get_wtime() - solve_start;
-      if (t > 1 || i == maximum_iter - 1 || solve_time > 0.5 * max_solve_time) {
+      if (t > 1 || i == maximum_iter - 1 || solve_time > 0.5 * max_solve_time ||
+          dyn_share.finish) {
         L_ = P_;
         Matrix<scalar_type, 3, 3> res_temp_SO3;
         MTK::vect<3, scalar_type> seg_SO3;
@@ -1970,7 +1973,7 @@ class esekf {
   }
 
   // iterated error state EKF update modified for one specific system.
-  void update_iterated_dyn_share_modified(double R, double &solve_time) {
+  void update_iterated_dyn_share_modified(double R, double& solve_time) {
     dyn_share_datastruct<scalar_type> dyn_share;
     dyn_share.valid = true;
     dyn_share.converge = true;
@@ -2182,7 +2185,7 @@ class esekf {
     }
   }
 
-  void change_x(state &input_state) {
+  void change_x(state& input_state) {
     x_ = input_state;
     if ((!x_.vect_state.size()) && (!x_.SO3_state.size()) &&
         (!x_.S2_state.size())) {
@@ -2192,10 +2195,10 @@ class esekf {
     }
   }
 
-  void change_P(cov &input_cov) { P_ = input_cov; }
+  void change_P(cov& input_cov) { P_ = input_cov; }
 
-  const state &get_x() const { return x_; }
-  const cov &get_P() const { return P_; }
+  const state& get_x() const { return x_; }
+  const cov& get_P() const { return P_; }
 
  private:
   state x_;
@@ -2208,20 +2211,20 @@ class esekf {
   cov F_x2 = cov::Identity();
   cov L_ = cov::Identity();
 
-  processModel *f;
-  processMatrix1 *f_x;
-  processMatrix2 *f_w;
+  processModel* f;
+  processMatrix1* f_x;
+  processMatrix2* f_w;
 
-  measurementModel *h;
-  measurementMatrix1 *h_x;
-  measurementMatrix2 *h_v;
+  measurementModel* h;
+  measurementMatrix1* h_x;
+  measurementMatrix2* h_v;
 
-  measurementModel_dyn *h_dyn;
-  measurementMatrix1_dyn *h_x_dyn;
-  measurementMatrix2_dyn *h_v_dyn;
+  measurementModel_dyn* h_dyn;
+  measurementMatrix1_dyn* h_x_dyn;
+  measurementMatrix2_dyn* h_v_dyn;
 
-  measurementModel_share *h_share;
-  std::function<void(state &, dyn_share_datastruct<scalar_type> &)> h_dyn_share;
+  measurementModel_share* h_share;
+  std::function<void(state&, dyn_share_datastruct<scalar_type>&)> h_dyn_share;
 
   int maximum_iter = 0;
   scalar_type limit[n];

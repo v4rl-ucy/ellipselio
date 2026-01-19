@@ -87,6 +87,7 @@ class MappingNode : public rclcpp::Node {
          mean_state_time = 0, mean_map_time = 0, mean_total_time = 0;
 
   int pub_map_n_secs;
+  int vel_pose_counter = 0, curr_vel_streak = 0;
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   double start_time;
@@ -94,6 +95,8 @@ class MappingNode : public rclcpp::Node {
   bool use_map_res = false;
   bool line_sep_res = true;
   bool last_ekf_fail = true;
+  bool scale_search = true;
+  bool axis_grav_align = true;
 
   float centroid_mean = 0.0;
 
@@ -104,7 +107,9 @@ class MappingNode : public rclcpp::Node {
   int numProcessors;
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
-  int ekfom_iter_cnt;
+  int ekfom_obs_cnt = 0;
+  int ekfom_iter_cnt = 0;
+  int ekfom_div_cnt = 0;
   int ekfom_upd_cnt = 0;
   int feats_per_bin = 0;
 
@@ -113,19 +118,23 @@ class MappingNode : public rclcpp::Node {
   Eigen::ArrayXXi n_cnts;
   Eigen::ArrayXXi n_bins;
 
-  Eigen::ArrayXXi ekfom_data_i;
-  Eigen::ArrayXXd ekfom_data_v;
-  Eigen::ArrayXXd ekfom_data_w;
+  Eigen::ArrayXd ekfom_data_w;
+  Eigen::ArrayXd ekfom_data_om;
+  Eigen::ArrayXXd ekfom_data_ot;
+  Eigen::ArrayXXd ekfom_data_or;
   Eigen::VectorXd ekfom_data_h;
   Eigen::ArrayXd ekfom_data_w_x;
   Eigen::MatrixXd ekfom_data_h_x;
   Eigen::MatrixXd ekfom_data_h_x_R;
-  std::vector<Eigen::ArrayXd> ekfom_data_h_v;
-  std::vector<Eigen::MatrixXd> ekfom_data_h_x_v;
+  Eigen::ArrayXd ekfom_data_h_v;
+  Eigen::MatrixXd ekfom_data_h_x_v;
+  Eigen::ArrayXXd ekfom_data_oit;
+  Eigen::ArrayXXd ekfom_data_oir;
 
   std::vector<Eigen::Vector3f> colors;
   std::vector<Eigen::MatrixXf> sh_mats;
 
+  std::vector<Eigen::Vector3f> vel_poses;
   std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::Quaternionf> rotes;
 
