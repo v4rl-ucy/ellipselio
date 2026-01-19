@@ -928,7 +928,7 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
   ekfom_iter_cnt++;
-  if (feat_tot > 100) ekfom_div_cnt++;
+  if (feat_tot > 200) ekfom_div_cnt++;
 
   analytics_msg_.num_planes = cnts(0);
   analytics_msg_.num_lines = cnts(1);
