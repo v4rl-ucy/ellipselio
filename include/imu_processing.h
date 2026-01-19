@@ -44,45 +44,50 @@ class ImuProcess {
   ~ImuProcess();
   ImuProcess(IkfomSPtr kf, ImuParams params, rclcpp::Node::SharedPtr node);
 
-  void UndistortPointCloud(EllipseLioPointCloudPtr pc, KfState &kf_state,
-                           rclcpp::Time &lidar_end_time, CamProcessVec &cams);
-  void UpdateStatesWithLidar(KfState &kf_state, rclcpp::Time &lidar_end_time);
-  void GetKfState(KfState &kf_state);
+  void UndistortPointCloud(EllipseLioPointCloudPtr pc, KfState& kf_state,
+                           rclcpp::Time& lidar_start_time,
+                           rclcpp::Time& lidar_end_time, CamProcessVec& cams);
+  void UpdateStatesWithLidar(KfState& kf_state, rclcpp::Time& lidar_end_time,
+                             double max_solve_time);
+  void GetKfState(KfState& kf_state);
+  void SyncWithLidar(rclcpp::Time& imu_start_time, rclcpp::Time& imu_end_time);
 
-  void set_gyr_cov(const V3D &gyr_cov);
-  void set_acc_cov(const V3D &acc_cov);
-  void set_gyr_bias_cov(const V3D &b_g);
-  void set_acc_bias_cov(const V3D &b_a);
-  void set_extrinsic(const V3D &transl, const M3D &rot);
+  void set_gyr_cov(const V3D& gyr_cov);
+  void set_acc_cov(const V3D& acc_cov);
+  void set_gyr_bias_cov(const V3D& b_g);
+  void set_acc_bias_cov(const V3D& b_a);
+  void set_extrinsic(const V3D& transl, const M3D& rot);
 
-  bool imu_has_data_;
   std::atomic<int> imu_counter_;
+  bool imu_has_data_, lidar_ready_;
   rclcpp::Time imu_start_time_, imu_end_time_;
 
  private:
+  void SetKfState();
   void Process(const sensor_msgs::msg::Imu::SharedPtr msg);
   void InitImu(const sensor_msgs::msg::Imu::SharedPtr msg);
   void ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in);
-  void GetTimeMatch(int &match_idx, rclcpp::Time &match_time,
-                    boost::circular_buffer<ImuState> &imu_states);
-  void GetMatchingImages(rclcpp::Time &match_time, CamProcessVec &cams,
-                         boost::circular_buffer<ImuState> &imu_states);
-  void ColorisePoint(EllipseLioPoint &pt, CamProcessVec &cams,
-                     Eigen::Isometry3d &T_world_pt,
-                     Eigen::Isometry3d &T_imu_lidar);
+  void GetTimeMatch(int& match_idx, rclcpp::Time& match_time,
+                    boost::circular_buffer<ImuState>& imu_states);
+  void GetMatchingImages(rclcpp::Time& min_time, rclcpp::Time& match_time,
+                         CamProcessVec& cams,
+                         boost::circular_buffer<ImuState>& imu_states);
+  void ColorisePoint(EllipseLioPoint& pt, CamProcessVec& cams,
+                     Eigen::Isometry3d& T_world_pt,
+                     Eigen::Isometry3d& T_imu_lidar);
 
   IkfomSPtr kf_;
-  KfState kf_state_;
+  KfState kf_state_, pub_kf_state_;
 
   ImuParams params_;
 
   std::mutex imu_mutex_;
-
+  std::mutex pub_mutex_;
   rclcpp::Node::SharedPtr node_;
   rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
 
-  boost::circular_buffer<ImuState> imu_states_;
+  boost::circular_buffer<ImuState> imu_states_, synced_imu_states_;
 
   V3D mean_acc;
   V3D mean_gyr;
