@@ -997,7 +997,11 @@ void MappingNode::tensor_registration(
   if (axis_grav_align) obs_scale *= mean_bin / 10.0;
   obs_scale = fmin(fmax(obs_scale, 1e-4), 1.0);
 
-  ekfom_data_om[ekfom_obs_cnt] = obs_scale;
+  if (!ekfom_data_om.sum()) {
+    ekfom_data_om += obs_scale;
+  } else {
+    ekfom_data_om[ekfom_obs_cnt] = obs_scale;
+  }
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
   obs_scale = fmax(ekfom_data_om.mean(), 0.1);
 
@@ -1027,6 +1031,14 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
   ekfom_iter_cnt++;
+
+  if (!ekfom_data_oe.sum()) {
+    ekfom_data_oe += obs_min;
+  } else {
+    ekfom_data_oe[ekfom_end_cnt] = obs_min;
+  }
+  ekfom_end_cnt = (ekfom_end_cnt + 1) % ekfom_data_oe.size();
+  obs_min = ekfom_data_oe.mean();
 
   if (obs_min < 1e-2) ekfom_data.finish = true;
   if (obs_min < 1e-4) ekfom_data.valid = false;
@@ -1151,6 +1163,7 @@ MappingNode::MappingNode(
 
   ekfom_data_w = Eigen::ArrayXd(MAX_PROC_POINTS);
   ekfom_data_om = Eigen::ArrayXd::Zero(100);
+  ekfom_data_oe = Eigen::ArrayXd::Zero(5);
   ekfom_data_ot = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_or = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_h = Eigen::VectorXd(MAX_PROC_POINTS);

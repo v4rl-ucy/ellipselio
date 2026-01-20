@@ -119,6 +119,7 @@ class MappingNode : public rclcpp::Node {
   int numProcessors;
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
+  int ekfom_end_cnt = 0;
   int ekfom_obs_cnt = 0;
   int ekfom_iter_cnt = 0;
   int ekfom_upd_cnt = 0;
@@ -131,6 +132,7 @@ class MappingNode : public rclcpp::Node {
 
   Eigen::ArrayXd ekfom_data_w;
   Eigen::ArrayXd ekfom_data_om;
+  Eigen::ArrayXd ekfom_data_oe;
   Eigen::ArrayXXd ekfom_data_ot;
   Eigen::ArrayXXd ekfom_data_or;
   Eigen::VectorXd ekfom_data_h;
