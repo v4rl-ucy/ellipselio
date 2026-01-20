@@ -796,7 +796,7 @@ void MappingNode::tensor_registration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   double t0, t1, res_mean;
   int feat_tot, reject_cnt;
-  float wt_min, wt_max, wt_mean, wt_std, obs_min, rng_scale;
+  float wt_min, wt_max, wt_mean, wt_std, obs_min, obs_scale, rng_scale;
   float rng_min, rng_max, rng_mean, rng_min_scale, rng_max_scale, grav_check;
 
   std::atomic<int> feat_cnt;
@@ -853,7 +853,7 @@ void MappingNode::tensor_registration(
     octree_res = fmin(oct_res, MIN_SEARCH_RES);
 
     search_rad_scale = fmax(search_rad_scale, octree_res);
-    search_rad /= ekfom_div_cnt + 1;
+    search_rad /= ekfom_iter_cnt + 1;
     if (scale_search) search_rad = fmin(search_rad, search_rad_scale);
     search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
 
@@ -943,11 +943,6 @@ void MappingNode::tensor_registration(
   feat_tot = feat_cnt.load();
   reject_cnt = scan_cloud->size() - feat_tot;
 
-  if (feat_tot < 50) {
-    ekfom_data.valid = false;
-    return;
-  }
-
   wt_min = ekfom_data_w.head(feat_tot).minCoeff();
   wt_max = ekfom_data_w.head(feat_tot).maxCoeff();
   wt_mean = ekfom_data_w.head(feat_tot).mean();
@@ -995,17 +990,18 @@ void MappingNode::tensor_registration(
   cent_proj = scan_centroid.head(3) - cent_proj;
   rng_scale = ((1e4 - fmin(rng_max, 1e4)) / 1000.0) + 10.0;
 
-  obs_min = rng_scale * fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
-  obs_min *= fmax(1.0 - fmin(1.0 * grav_check, 1.0), 1e-4);
-  if (axis_grav_align) obs_min *= fmin(20.0 / pow(cent_proj.norm(), 2), 1.0);
-  if (axis_grav_align) obs_min *= mean_bin / 10.0;
-  obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
+  obs_min = fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
+  obs_scale = obs_min * rng_scale;
+  obs_scale *= fmax(1.0 - fmin(1.0 * grav_check, 1.0), 1e-4);
+  if (axis_grav_align) obs_scale *= fmin(20.0 / pow(cent_proj.norm(), 2), 1.0);
+  if (axis_grav_align) obs_scale *= mean_bin / 10.0;
+  obs_scale = fmin(fmax(obs_scale, 1e-4), 1.0);
 
-  ekfom_data_om[ekfom_obs_cnt] = obs_min;
+  ekfom_data_om[ekfom_obs_cnt] = obs_scale;
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
-  obs_min = fmax(ekfom_data_om.mean(), 0.1);
+  obs_scale = fmax(ekfom_data_om.mean(), 0.1);
 
-  ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_min);
+  ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_scale);
   ekfom_data_h.block(0, 0, feat_tot, 1) = ekfom_data_h_v.head(feat_tot);
   ekfom_data_w_x.block(0, 0, feat_tot, 1) = ekfom_data_w.head(feat_tot);
   ekfom_data_h_x.block(0, 0, feat_tot, 6) = ekfom_data_h_x_v.topRows(feat_tot);
@@ -1031,7 +1027,9 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
   ekfom_iter_cnt++;
-  if (feat_tot > 200) ekfom_div_cnt++;
+
+  if (obs_min < 1e-2) ekfom_data.finish = true;
+  if (obs_min < 1e-4) ekfom_data.valid = false;
 
   analytics_msg_.num_planes = cnts(0);
   analytics_msg_.num_lines = cnts(1);
@@ -1499,7 +1497,6 @@ void MappingNode::timer_callback() {
     t2 = omp_get_wtime();
 
     if (map_counter) {
-      ekfom_div_cnt = 0;
       ekfom_iter_cnt = 0;
       imu_process->UpdateStatesWithLidar(kf_state_, scan_end_time_,
                                          0.5 / lidar_params.rate);
