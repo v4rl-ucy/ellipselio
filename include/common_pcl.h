@@ -87,23 +87,38 @@ struct EIGEN_ALIGN16 HesaiPoint {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
+struct EIGEN_ALIGN16 GazeboPoint {
+  PCL_ADD_POINT4D;
+  float intensity;
+  uint16_t ring;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(
+    LivoxPoint,
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
+        uint8_t, tag, tag)(uint8_t, line, line)(double, timestamp, timestamp))
+
 POINT_CLOUD_REGISTER_POINT_STRUCT(VelodynePoint,
                                   (float, x, x)(float, y, y)(float, z, z)(
                                       float, intensity,
                                       intensity)(float, time, time)(uint16_t,
                                                                     ring, ring))
+
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     OusterPoint,
     (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
         std::uint32_t, t, t)(std::uint16_t, reflectivity,
                              reflectivity)(std::uint32_t, range, range))
+
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     HesaiPoint,
     (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
         double, timestamp, timestamp)(uint16_t, ring, ring))
+
 POINT_CLOUD_REGISTER_POINT_STRUCT(
-    LivoxPoint,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
-        uint8_t, tag, tag)(uint8_t, line, line)(double, timestamp, timestamp))
+    GazeboPoint,
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity,
+                                            intensity)(uint16_t, ring, ring))
 
 #endif  // COMMON_PCL_H

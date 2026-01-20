@@ -126,6 +126,9 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     case HESAI:
       PointCloudHandler<HesaiPoint>(msg);
       break;
+    case GAZEBO:
+      PointCloudHandler<GazeboPoint>(msg);
+      break;
   }
 
   int end_bin = num_bins_;
@@ -282,6 +285,12 @@ void LidarProcess::SetPoint(HesaiPoint& in_pt0, HesaiPoint& in_pt,
                             EllipseLioPoint& out_pt, rclcpp::Time& point_time) {
   out_pt.intensity = in_pt.intensity;
   point_time = rclcpp::Time(in_pt.timestamp * 1e9, RCL_ROS_TIME);
+}
+
+// Set the point intensity and time for gazebo points
+void LidarProcess::SetPoint(GazeboPoint& in_pt0, GazeboPoint& in_pt,
+                            EllipseLioPoint& out_pt, rclcpp::Time& point_time) {
+  out_pt.intensity = in_pt.intensity;
 }
 
 // Convert the input point type to an ellipselio point
