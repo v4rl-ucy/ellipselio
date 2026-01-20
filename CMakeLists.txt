@@ -52,7 +52,7 @@ set(dependencies
   image_transport
 )
 
-ament_auto_add_library(ellipselio_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp src/ellipsoid_harmonics.cpp)
+ament_auto_add_library(ellipselio_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp)
 target_include_directories(ellipselio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
 
 target_include_directories(ellipselio_mapping PUBLIC

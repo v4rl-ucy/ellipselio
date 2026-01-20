@@ -1,5 +1,9 @@
 #include <map_processing.h>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 namespace ellipselio {
 
 // Sync lidar, imu, and camera data
@@ -183,6 +187,123 @@ void MappingNode::compute_tensor_eigen(int i, M3F& tensor, bool first_pass) {
   }
 }
 
+// Compute line-sphere intersection and map hit to 10x10 UV grid
+bool MappingNode::line_sphere_to_uv_map(const V3F& line_p0, const V3F& line_p1,
+                                        const V3F& sphere_center,
+                                        float sphere_radius, int& u_idx,
+                                        int& v_idx,
+                                        Eigen::Array<float, 10, 10>& uv_map) {
+  constexpr float inv_two_pi = 0.15915494309189535f;  // 1 / (2 * pi)
+  constexpr float inv_pi = 0.3183098861837907f;       // 1 / pi
+
+  uv_map.setZero();
+
+  V3F dir = line_p1 - line_p0;
+  float dir_norm = dir.norm();
+  if (dir_norm <= 1e-6f) return false;
+  dir /= dir_norm;
+
+  V3F oc = line_p0 - sphere_center;
+
+  float a = dir.dot(dir);
+  float b = 2.0f * oc.dot(dir);
+  float c = oc.dot(oc) - sphere_radius * sphere_radius;
+  float discriminant = b * b - 4.0f * a * c;
+
+  if (discriminant < 0.0f) return false;
+
+  float sqrt_disc = std::sqrt(discriminant);
+  float t0 = (-b - sqrt_disc) / (2.0f * a);
+  float t1 = (-b + sqrt_disc) / (2.0f * a);
+
+  float t = std::numeric_limits<float>::max();
+  if (t0 > 0.0f) t = t0;
+  if (t1 > 0.0f) t = std::min(t, t1);
+  if (!std::isfinite(t) || t <= 0.0f) return false;
+
+  V3F hit = line_p0 + t * dir;
+  V3F rel = (hit - sphere_center) / sphere_radius;
+
+  float u = 0.5f + std::atan2(rel.z(), rel.x()) * inv_two_pi;
+  float v = 0.5f - std::asin(rel.y()) * inv_pi;
+
+  u = std::fmod(u + 1.0f, 1.0f);
+  v = std::min(std::max(v, 0.0f), 1.0f);
+
+  u_idx = std::min(9, std::max(0, static_cast<int>(std::floor(u * 10.0f))));
+  v_idx = std::min(9, std::max(0, static_cast<int>(std::floor(v * 10.0f))));
+
+  uv_map(v_idx, u_idx) = 1.0f;
+  return true;
+}
+
+// Compute line-ellipsoid intersection (oriented), project to sphere, and map to
+// 10x10 UV grid
+bool MappingNode::line_ellipsoid_to_uv_map(
+    const V3F& line_p0, const V3F& line_p1, const V3F& ellipsoid_center,
+    const V3F& ellipsoid_radii, const Eigen::Matrix3f& ellipsoid_rot,
+    float sphere_radius, int& u_idx, int& v_idx,
+    Eigen::Array<float, 10, 10>& uv_map) {
+  constexpr float inv_two_pi = 0.15915494309189535f;  // 1 / (2 * pi)
+  constexpr float inv_pi = 0.3183098861837907f;       // 1 / pi
+
+  uv_map.setZero();
+
+  if (ellipsoid_radii.minCoeff() <= 0.0f) return false;
+  if (sphere_radius <= 0.0f) return false;
+
+  V3F dir_world = line_p1 - line_p0;
+  float dir_norm = dir_world.norm();
+  if (dir_norm <= 1e-6f) return false;
+  dir_world /= dir_norm;
+
+  // Bring line into ellipsoid-aligned frame: p' = R^T (p - c)
+  V3F p0_local = ellipsoid_rot.transpose() * (line_p0 - ellipsoid_center);
+  V3F dir_local = ellipsoid_rot.transpose() * dir_world;
+
+  // Scale by radii -> unit sphere intersection
+  V3F p0_unit = p0_local.cwiseQuotient(ellipsoid_radii);
+  V3F dir_unit = dir_local.cwiseQuotient(ellipsoid_radii);
+
+  float a = dir_unit.dot(dir_unit);
+  float b = 2.0f * p0_unit.dot(dir_unit);
+  float c = p0_unit.dot(p0_unit) - 1.0f;
+  float discriminant = b * b - 4.0f * a * c;
+
+  if (discriminant < 0.0f) return false;
+
+  float sqrt_disc = std::sqrt(discriminant);
+  float t0 = (-b - sqrt_disc) / (2.0f * a);
+  float t1 = (-b + sqrt_disc) / (2.0f * a);
+
+  float t = std::numeric_limits<float>::max();
+  if (t0 > 0.0f) t = t0;
+  if (t1 > 0.0f) t = std::min(t, t1);
+  if (!std::isfinite(t) || t <= 0.0f) return false;
+
+  // Hit point back in world frame
+  V3F hit_local = p0_local + t * dir_local;
+  V3F hit_world = ellipsoid_center + ellipsoid_rot * hit_local;
+
+  // Map to target sphere by normalizing direction and scaling to radius
+  V3F dir_to_hit = hit_world - ellipsoid_center;
+  float dir_to_hit_norm = dir_to_hit.norm();
+  if (dir_to_hit_norm <= 1e-6f) return false;
+  V3F sphere_pt = (dir_to_hit / dir_to_hit_norm) * sphere_radius;
+
+  float u = 0.5f + std::atan2(sphere_pt.z(), sphere_pt.x()) * inv_two_pi;
+  float v = 0.5f - std::asin(sphere_pt.y() / sphere_radius) * inv_pi;
+
+  u = std::fmod(u + 1.0f, 1.0f);
+  v = std::min(std::max(v, 0.0f), 1.0f);
+
+  u_idx = std::min(9, std::max(0, static_cast<int>(std::floor(u * 10.0f))));
+  v_idx = std::min(9, std::max(0, static_cast<int>(std::floor(v * 10.0f))));
+
+  uv_map(v_idx, u_idx) = 1.0f;
+  return true;
+}
+
 // Compute first pass tensor voting for new points and find neighbours
 void MappingNode::tensor_vote_pass_1(int old_map_size,
                                      std::vector<int>& added_idxs,
@@ -334,12 +455,10 @@ void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
 
 #pragma omp parallel for
   for (int i = 0; i < total_size; i++) {
-    SHCoeffs SH;
     M3F tensor_i2;
     Eigen::MatrixXf K;
-    V3F sh_dir, sh_color;
-    Eigen::VectorXi K_filter, SH_filter;
-    int map_i, loop_cnt, filter_cnt, color_cnt;
+    Eigen::VectorXi K_filter;
+    int map_i, loop_cnt, filter_cnt;
 
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
@@ -355,15 +474,6 @@ void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
     K = Eigen::MatrixXf::Zero(loop_cnt, 9);
     K_filter = Eigen::VectorXi::Zero(loop_cnt);
 
-    // if (num_cams) {
-    //   SH_filter = Eigen::VectorXi::Zero(loop_cnt + 1);
-    //   SH = SHCoeffs(loop_cnt + 1, harmonics->getNumCoeffs());
-    // }
-    // if (map_cloud->points[map_i].has_rgb) {
-    //   SH_filter(loop_cnt) = 1;
-    //   compute_harmonics(map_i, map_i, loop_cnt, SH);
-    // }
-
 #pragma omp parallel for
     for (int j = 0; j < loop_cnt; j++) {
       int map_j = neighbours[map_i][j];
@@ -373,11 +483,6 @@ void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
       compute_tensor_vote(map_i, map_j, A_j, false);
       K.row(j) = A_j.reshaped(1, 9);
       K_filter(j) = 1;
-
-      // if (map_cloud->points[map_j].has_rgb) {
-      //   SH_filter(j) = 1;
-      //   compute_harmonics(map_i, map_j, j, SH);
-      // }
     }
 
     filter_cnt = K_filter.sum();
@@ -386,34 +491,7 @@ void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
     tensor_i2 = K.colwise().sum().reshaped(3, 3);
     tensor_i2 /= float(filter_cnt);
     compute_tensor_eigen(map_i, tensor_i2, false);
-
-    // if (num_cams) {
-    //   color_cnt = SH_filter.sum();
-    //   if (color_cnt < min_neigh) continue;
-
-    //   sh_dir = poses[map_cloud->points[map_i].scan_idx];
-    //   sh_dir -= map_cloud->points[map_i].getVector3fMap();
-    //   harmonics->finalizeCoefficients(SH, sh_mats[map_i]);
-    //   harmonics->evaluateColorFromDirection(sh_mats[map_i], sh_dir,
-    //   sh_color); map_cloud->points[map_i].r = sh_color(0) * 255.0f;
-    //   map_cloud->points[map_i].g = sh_color(1) * 255.0f;
-    //   map_cloud->points[map_i].b = sh_color(2) * 255.0f;
-    // }
   }
-}
-
-void MappingNode::compute_harmonics(int map_i, int map_j, int loop_idx,
-                                    SHCoeffs& SH) {
-  Eigen::Vector3f dir;
-
-  const int& bin_idx = map_cloud->points[map_i].bin_idx;
-  const float& search_rad = bin_idx;
-  const Eigen::Vector3f& pose = poses[map_cloud->points[map_j].scan_idx];
-  const Eigen::Vector3f& p_i = map_cloud->points[map_i].getVector3fMap();
-  const Eigen::Vector3f& p_j = map_cloud->points[map_j].getVector3fMap();
-
-  harmonics->dirFromNeighbouringPoint(p_i, p_j, pose, dir, search_rad);
-  harmonics->computeCoefficients(dir, colors[map_j], SH, loop_idx);
 }
 
 // Add new points to the map and update geometric primitives
@@ -504,6 +582,7 @@ void MappingNode::map_incremental() {
   salivalues.resize(map_cloud->size(), V3F::Zero());
   eigenvalues.resize(map_cloud->size(), V3F::Zero());
   eigenvectors.resize(map_cloud->size(), M3F::Zero());
+  uv_color_maps.resize(map_cloud->size(), -1 * Eigen::ArrayXXf::Ones(10, 10));
 
   if (new_idxs.size() > 0) {
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
@@ -982,7 +1061,6 @@ MappingNode::MappingNode(
       filter_cloud(new EllipseLioPointCloud()),
       buffer_cloud(new EllipseLioPointCloud()),
       scan_cloud_pub(new EllipseLioPointCloud()),
-      harmonics(new EllipsoidHarmonics()),
       kf_(new Ikfom()) {
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
   this->declare_parameter<double>("mapping.map_resolution", 0.1);
@@ -1086,10 +1164,6 @@ MappingNode::MappingNode(
   ekfom_data_h_x_v = Eigen::MatrixXd(MAX_PROC_POINTS, 6);
   ekfom_data_oit = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_oir = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
-  // if (num_cams) {
-  //   sh_mats = std::vector<Eigen::MatrixXf>(
-  //       MAX_MAP_POINTS, Eigen::MatrixXf(3, harmonics->getNumCoeffs()));
-  // }
 
   colors.reserve(MAX_MAP_POINTS);
   valid_reg.reserve(MAX_MAP_POINTS);
@@ -1103,6 +1177,7 @@ MappingNode::MappingNode(
   salivalues.reserve(MAX_MAP_POINTS);
   eigenvalues.reserve(MAX_MAP_POINTS);
   eigenvectors.reserve(MAX_MAP_POINTS);
+  uv_color_maps.reserve(MAX_MAP_POINTS);
 
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);

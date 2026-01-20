@@ -1,6 +1,5 @@
 #include <common_lib.h>
 #include <common_pcl.h>
-#include <ellipsoid_harmonics.h>
 #include <imu_processing.h>
 #include <ioctree.h>
 #include <lidar_processing.h>
@@ -39,12 +38,23 @@ class MappingNode : public rclcpp::Node {
   void compute_tensor_vote(int i, int j, M3F& A_j, bool first_pass);
   void compute_tensor_eigen(int i, M3F& tensor, bool first_pass);
 
+  bool line_sphere_to_uv_map(const V3F& line_p0, const V3F& line_p1,
+                             const V3F& sphere_center, float sphere_radius,
+                             int& u_idx, int& v_idx,
+                             Eigen::Array<float, 10, 10>& uv_map);
+
+  bool line_ellipsoid_to_uv_map(const V3F& line_p0, const V3F& line_p1,
+                                const V3F& ellipsoid_center,
+                                const V3F& ellipsoid_radii,
+                                const Eigen::Matrix3f& ellipsoid_rot,
+                                float sphere_radius, int& u_idx, int& v_idx,
+                                Eigen::Array<float, 10, 10>& uv_map);
+
   void tensor_vote_pass_1(int old_map_size, std::vector<int>& added_idxs,
                           std::vector<int>& updated_idxs);
   void tensor_vote_pass_2(std::vector<int>& added_idxs,
                           std::vector<int>& updated_idxs);
 
-  void compute_harmonics(int map_i, int map_j, int loop_idx, SHCoeffs& SH);
   void compute_geometric_primitive(int map_i, int sali_idx, V3F& p_world,
                                    V3F& norm_vec);
 
@@ -134,7 +144,6 @@ class MappingNode : public rclcpp::Node {
   Eigen::ArrayXXd ekfom_data_oir;
 
   std::vector<Eigen::Vector3f> colors;
-  std::vector<Eigen::MatrixXf> sh_mats;
 
   std::vector<Eigen::Vector3f> vel_poses;
   std::vector<Eigen::Vector3f> poses;
@@ -150,6 +159,7 @@ class MappingNode : public rclcpp::Node {
   std::vector<M3F> eigenvectors;
   std::vector<V3F> eigenvalues;
   std::vector<V3F> salivalues;
+  std::vector<Eigen::Array<float, 10, 10>> uv_color_maps;
 
   Eigen::ArrayXi raw_cloud_bins;
   Eigen::ArrayXi scan_cloud_bins;
@@ -211,6 +221,5 @@ class MappingNode : public rclcpp::Node {
   CamProcessVec cams_process;
   std::shared_ptr<ImuProcess> imu_process;
   std::shared_ptr<LidarProcess> lid_process;
-  std::shared_ptr<EllipsoidHarmonics> harmonics;
 };
 }  // namespace ellipselio
