@@ -1067,10 +1067,13 @@ void MappingNode::tensor_registration(
   ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
 
-  ekfom_iter_cnt++;
+  if (obs_min < 1e-4 && !ekfom_iter_cnt) {
+    ekfom_data.valid = false;
+  } else if (obs_min < 1e-2) {
+    ekfom_data.finish = true;
+  }
 
-  if (feat_tot < 100 || obs_min < 1e-2) ekfom_data.finish = true;
-  if (feat_tot < 50 || obs_min < 1e-4) ekfom_data.valid = false;
+  ekfom_iter_cnt++;
 
   analytics_msg_.num_planes = cnts(0);
   analytics_msg_.num_lines = cnts(1);
@@ -1078,6 +1081,7 @@ void MappingNode::tensor_registration(
   analytics_msg_.wt_std = wt_std;
   analytics_msg_.wt_min = wt_min;
   analytics_msg_.wt_max = wt_max;
+  analytics_msg_.obs_min = obs_min;
   analytics_msg_.wt_mean = wt_mean;
   analytics_msg_.rng_min = rng_min;
   analytics_msg_.rng_max = rng_max;
