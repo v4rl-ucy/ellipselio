@@ -61,6 +61,7 @@ class ImuProcess {
   std::atomic<int> imu_counter_;
   bool imu_has_data_, lidar_ready_;
   rclcpp::Time imu_start_time_, imu_end_time_;
+  Eigen::Matrix<double, 12, 12> Q;
 
  private:
   void SetKfState();
@@ -95,8 +96,6 @@ class ImuProcess {
   V3D gyr_noise;
   V3D acc_bias;
   V3D gyr_bias;
-
-  Eigen::Matrix<double, 12, 12> Q;
 
   int init_iter_num;
   double last_imu_time_;

@@ -92,6 +92,8 @@ void ImuProcess::Process(const sensor_msgs::msg::Imu::SharedPtr msg) {
   kf_state_.state = kf_->get_x();
   kf_state_.cov = kf_->get_P();
   kf_state_.time = msg_time;
+  kf_state_.gyr << msg->angular_velocity.x, msg->angular_velocity.y,
+      msg->angular_velocity.z;
 
   SetKfState();
 
@@ -116,15 +118,15 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
     init_iter_num = 1;
     b_first_frame_ = false;
     const auto& imu_acc = msg->linear_acceleration;
-    const auto& gyr_acc = msg->angular_velocity;
+    const auto& gyr_vel = msg->angular_velocity;
     mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
-    mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+    mean_gyr << gyr_vel.x, gyr_vel.y, gyr_vel.z;
   } else {
     V3D cur_acc, cur_gyr;
     const auto& imu_acc = msg->linear_acceleration;
-    const auto& gyr_acc = msg->angular_velocity;
+    const auto& gyr_vel = msg->angular_velocity;
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
-    cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+    cur_gyr << gyr_vel.x, gyr_vel.y, gyr_vel.z;
 
     mean_acc += cur_acc;
     mean_gyr += cur_gyr;
@@ -148,6 +150,7 @@ void ImuProcess::InitImu(const sensor_msgs::msg::Imu::SharedPtr msg) {
 
     kf_state_.cov = P_cov();
     kf_->change_P(kf_state_.cov);
+    kf_state_.gyr = mean_gyr;
   }
 }
 
@@ -222,7 +225,7 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
     head_idx = max(tail_idx - 1, 0);
 
     M3D R_imu = synced_imu_states_[head_idx].state.state.rot.toRotationMatrix();
-    V3D vel_imu = synced_imu_states_[head_idx].state.state.linvel;
+    V3D vel_imu = synced_imu_states_[head_idx].state.state.vel;
     V3D pos_imu = synced_imu_states_[head_idx].state.state.pos;
     V3D acc_avr = synced_imu_states_[tail_idx].acc_avr;
     V3D gyr_avr = synced_imu_states_[tail_idx].gyr_avr;
@@ -264,7 +267,7 @@ void ImuProcess::GetMatchingImages(
     head_idx = max(tail_idx - 1, 0);
 
     M3D R_imu = imu_states[head_idx].state.state.rot.toRotationMatrix();
-    V3D vel_imu = imu_states[head_idx].state.state.linvel;
+    V3D vel_imu = imu_states[head_idx].state.state.vel;
     V3D pos_imu = imu_states[head_idx].state.state.pos;
     V3D acc_avr = imu_states[tail_idx].acc_avr;
     V3D gyr_avr = imu_states[tail_idx].gyr_avr;
@@ -397,6 +400,7 @@ void ImuProcess::UpdateStatesWithLidar(KfState& kf_state,
   kf_state_.state = imu_states_.back().state.state;
   kf_state_.cov = imu_states_.back().state.cov;
   kf_state_.time = imu_states_.back().state.time;
+  kf_state_.gyr = imu_states_.back().gyr;
 
   SetKfState();
   imu_mutex_.unlock();

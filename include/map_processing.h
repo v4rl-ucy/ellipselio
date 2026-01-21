@@ -78,6 +78,7 @@ class MappingNode : public rclcpp::Node {
 
   void sync_raw_cloud_with_imu();
 
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
@@ -97,6 +98,8 @@ class MappingNode : public rclcpp::Node {
   double last_sync_time = 0, max_imu_time = 0, max_state_time = 0,
          max_map_time = 0, max_total_time = 0, mean_imu_time = 0,
          mean_state_time = 0, mean_map_time = 0, mean_total_time = 0;
+
+  std::string node_namespace;
 
   int pub_map_n_secs;
   int vel_pose_counter = 0, curr_vel_streak = 0;
