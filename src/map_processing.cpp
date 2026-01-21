@@ -754,7 +754,7 @@ void MappingNode::publish_imu_odometry() {
 
   geometry_msgs::msg::TransformStamped trans;
   trans.header.frame_id = node_namespace + "/odom_ellipselio";
-  trans.child_frame_id = node_namespace + "/ekf_ellipselio";
+  trans.child_frame_id = node_namespace + "/imu_prop_ellipselio";
   trans.header.stamp = imu_state.time;
   trans.transform.translation.x = imu_state.state.pos(0);
   trans.transform.translation.y = imu_state.state.pos(1);
@@ -766,7 +766,7 @@ void MappingNode::publish_imu_odometry() {
   tf_br_->sendTransform(trans);
 
   odom_msg.header.frame_id = node_namespace + "/odom_ellipselio";
-  odom_msg.child_frame_id = node_namespace + "/imu_ellipselio";
+  odom_msg.child_frame_id = node_namespace + "/imu_prop_ellipselio";
   odom_msg.header.stamp = imu_state.time;
 
   odom_msg.pose.pose.position.x = imu_state.state.pos(0);
@@ -1271,7 +1271,7 @@ MappingNode::MappingNode(
   tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
 
   pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>(
-      node_namespace + "/ekf_odom", rclcpp::SensorDataQoS());
+      node_namespace + "/ellipselio_odom", rclcpp::SensorDataQoS());
   pub_analytics_ =
       this->create_publisher<ellipse_lio::msg::EllipseLioAnalytics>(
           node_namespace + "/analytics", rclcpp::SensorDataQoS());
