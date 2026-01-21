@@ -222,7 +222,7 @@ void ImuProcess::UndistortPointCloud(EllipseLioPointCloudPtr pc,
     head_idx = max(tail_idx - 1, 0);
 
     M3D R_imu = synced_imu_states_[head_idx].state.state.rot.toRotationMatrix();
-    V3D vel_imu = synced_imu_states_[head_idx].state.state.vel;
+    V3D vel_imu = synced_imu_states_[head_idx].state.state.linvel;
     V3D pos_imu = synced_imu_states_[head_idx].state.state.pos;
     V3D acc_avr = synced_imu_states_[tail_idx].acc_avr;
     V3D gyr_avr = synced_imu_states_[tail_idx].gyr_avr;
@@ -264,7 +264,7 @@ void ImuProcess::GetMatchingImages(
     head_idx = max(tail_idx - 1, 0);
 
     M3D R_imu = imu_states[head_idx].state.state.rot.toRotationMatrix();
-    V3D vel_imu = imu_states[head_idx].state.state.vel;
+    V3D vel_imu = imu_states[head_idx].state.state.linvel;
     V3D pos_imu = imu_states[head_idx].state.state.pos;
     V3D acc_avr = imu_states[tail_idx].acc_avr;
     V3D gyr_avr = imu_states[tail_idx].gyr_avr;
