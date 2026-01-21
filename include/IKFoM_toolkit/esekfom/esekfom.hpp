@@ -257,7 +257,7 @@ class esekf {
       processModel f_in, processMatrix1 f_x_in, processMatrix2 f_w_in,
       std::function<void(state&, dyn_share_datastruct<scalar_type>&)>
           h_dyn_share_in,
-      int maximum_iteration, scalar_type limit_vector[n]) {
+      int maximum_iteration, float epsi) {
     f = f_in;
     f_x = f_x_in;
     f_w = f_w_in;
@@ -265,7 +265,7 @@ class esekf {
 
     maximum_iter = maximum_iteration;
     for (int i = 0; i < n; i++) {
-      limit[i] = limit_vector[i];
+      limit[i] = epsi;
     }
 
     x_.build_S2_state();
