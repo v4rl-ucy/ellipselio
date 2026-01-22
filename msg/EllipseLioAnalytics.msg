@@ -51,5 +51,6 @@ float64 lid_offset
 float64 imu_offset
 
 int64 run_time
+int64 traj_dist
 int64 ram_usage
 int64 cpu_usage

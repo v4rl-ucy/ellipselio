@@ -134,6 +134,7 @@ class MappingNode : public rclcpp::Node {
 
   Eigen::ArrayXd ekfom_data_w;
   Eigen::ArrayXd ekfom_data_om;
+  Eigen::ArrayXd ekfom_data_oe;
   Eigen::ArrayXXd ekfom_data_ot;
   Eigen::ArrayXXd ekfom_data_or;
   Eigen::VectorXd ekfom_data_h;
@@ -147,6 +148,7 @@ class MappingNode : public rclcpp::Node {
 
   std::vector<Eigen::Vector3f> colors;
 
+  std::vector<float> traj_dist;
   std::vector<Eigen::Vector3f> vel_poses;
   std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::Quaternionf> rotes;
