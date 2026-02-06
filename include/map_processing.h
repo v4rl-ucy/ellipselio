@@ -102,30 +102,23 @@ class MappingNode : public rclcpp::Node {
   std::string node_namespace;
 
   int pub_map_n_secs;
-  int vel_pose_counter = 0, curr_vel_streak = 0;
+  int vel_pose_counter = 0;
   int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
 
   double start_time;
   bool initialized = false;
-  bool use_map_res = false;
-  bool line_sep_res = true;
-  bool last_ekf_fail = true;
-  bool scale_search = true;
-  bool axis_grav_align = true;
 
-  float centroid_mean = 0.0;
-
-  int scan_num_cnt = 0;
   double map_resolution, map_search_rad;
-  int start_bin, mean_bin, max_mean_bin = 0;
+  int start_bin, mean_bin;
 
   int numProcessors;
   clock_t lastCPU, lastSysCPU, lastUserCPU;
 
+  int start_bin_cnt = 0;
+  int ekfom_grav_cnt = 0;
   int ekfom_obs_cnt = 0;
   int ekfom_iter_cnt = 0;
   int ekfom_upd_cnt = 0;
-  int feats_per_bin = 0;
 
   Eigen::ArrayXf n_res;
   Eigen::ArrayXi n_means;
@@ -133,6 +126,7 @@ class MappingNode : public rclcpp::Node {
   Eigen::ArrayXXi n_bins;
 
   Eigen::ArrayXd ekfom_data_w;
+  Eigen::ArrayXi ekfom_data_sb;
   Eigen::ArrayXd ekfom_data_om;
   Eigen::ArrayXd ekfom_data_oe;
   Eigen::ArrayXXd ekfom_data_ot;
@@ -153,11 +147,6 @@ class MappingNode : public rclcpp::Node {
   std::vector<Eigen::Vector3f> poses;
   std::vector<Eigen::Quaternionf> rotes;
 
-  std::vector<int> sep_factor;
-  std::vector<bool> init_poses;
-  std::vector<Eigen::Vector3f> last_updated_poses;
-  std::vector<Eigen::Quaternionf> last_updated_rotes;
-
   std::vector<M3F> tensors_p1;
   std::vector<M3F> tensors_p2;
   std::vector<M3F> eigenvectors;
@@ -176,7 +165,6 @@ class MappingNode : public rclcpp::Node {
   std::vector<std::vector<int>> new_neighbours;
   std::vector<std::atomic<int>> new_neighbours_size;
 
-  std::vector<int> valid_reg;
   std::vector<int> update_idx;
   std::vector<int> saliency_idxs;
   std::vector<vector<int>> neighbours;

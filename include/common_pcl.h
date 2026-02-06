@@ -6,12 +6,16 @@
 #define PCL_NO_PRECOMPILE
 
 #include <pcl/common/centroid.h>
+#include <pcl/common/common.h>
+#include <pcl/common/transforms.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <Eigen/Core>
 #include <pcl/common/impl/centroid.hpp>
+#include <pcl/common/impl/common.hpp>
+#include <pcl/common/impl/transforms.hpp>
 #include <pcl/impl/point_types.hpp>
 
 struct EIGEN_ALIGN16 PointXYZNRGBIT {

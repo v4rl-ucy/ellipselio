@@ -316,11 +316,8 @@ void MappingNode::tensor_vote_pass_1(int old_map_size,
     int map_i;
 
     map_i = added_idxs[i];
-    valid_reg[map_i] = 1;
     updated_pt[map_i] = 0;
     map_cloud->points[map_i].prim_type = 0;
-    colors[map_i] =
-        map_cloud->points[map_i].getRGBVector3i().cast<float>() / 255.0f;
 
     const int& bin_idx = map_cloud->points[map_i].bin_idx;
     const int& bucket_size = lid_process->bucket_sizes_[bin_idx];
@@ -462,7 +459,6 @@ void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
 
     map_i = i < added_idxs.size() ? added_idxs[i]
                                   : updated_idxs[i - added_idxs.size()];
-    valid_reg[map_i] = 1;
 
     const int& bin_idx = map_cloud->points[map_i].bin_idx;
     const int& min_neigh = lid_process->min_neighbours_[bin_idx];
@@ -497,7 +493,6 @@ void MappingNode::tensor_vote_pass_2(std::vector<int>& added_idxs,
 // Add new points to the map and update geometric primitives
 void MappingNode::map_incremental() {
   int start_idx, end_idx;
-  V3F grav_norm, axis_norm;
   std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
 
   poses.push_back(kf_state_.state.pos.cast<float>());
@@ -510,23 +505,8 @@ void MappingNode::map_incremental() {
     traj_dist.push_back(traj_dist.back() + curr_dist);
   }
 
-  if (kf_state_.state.vel.norm() > 0.5 || vel_poses.empty()) {
-    vel_pose_counter++;
-    curr_vel_streak--;
-    curr_vel_streak = fmax(curr_vel_streak, 0);
+  if (kf_state_.state.vel.norm() > 0.1 || vel_poses.empty()) {
     vel_poses.push_back(kf_state_.state.pos.cast<float>());
-  } else {
-    curr_vel_streak++;
-  }
-
-  if (poses.back().norm() > mean_bin && scale_search) {
-    scale_search = false;
-  }
-
-  if (!map_counter) {
-    grav_norm = kf_state_.state.grav.get_vect().normalized().cast<float>();
-    axis_norm = kf_state_.state.rot.cast<float>() * Eigen::Vector3f::UnitZ();
-    axis_grav_align = fabs(grav_norm.dot(axis_norm)) > 0.8;
   }
 
 #pragma omp parallel for
@@ -552,36 +532,19 @@ void MappingNode::map_incremental() {
     if (!scan_cloud_bins[i]) continue;
     if (end_idx > scan_cloud->size()) break;
 
-    if (!init_poses[i]) {
-      last_updated_poses[i] = poses[map_counter];
-      last_updated_rotes[i] = rotes[map_counter];
-    }
-
-    const float& min_oct_res = lid_process->octree_resolutions_.front();
-    float pose_diff = (poses[map_counter] - last_updated_poses[i]).norm();
-    bool add_check = pose_diff < min_oct_res && mean_bin > start_bin;
-    if (add_check && scale_search && init_poses[i]) continue;
-
-    last_updated_poses[i] = poses[map_counter];
-    last_updated_rotes[i] = rotes[map_counter];
-
     ioctree.set_bucket_size(lid_process->bucket_sizes_[fmax(i, start_bin)]);
     ioctree.update(*scan_cloud, added_idxs, map_idxs, start_idx, end_idx,
                    map_resolution);
     *map_cloud += EllipseLioPointCloud(*scan_cloud, added_idxs);
     new_idxs.insert(new_idxs.end(), map_idxs.begin(), map_idxs.end());
     start_idx = end_idx;
-
-    if (!init_poses[i]) init_poses[i] = true;
   }
 
   new_map_size = map_cloud->size();
 
-  valid_reg.resize(map_cloud->size(), 0);
   update_idx.resize(map_cloud->size(), 0);
   saliency_idxs.resize(map_cloud->size(), 0);
   neighbours.resize(map_cloud->size(), std::vector<int>());
-  colors.resize(map_cloud->size(), Eigen::Vector3f::Zero());
   filters.resize(map_cloud->size(), Eigen::Vector2i::Zero());
 
   tensors_p1.resize(map_cloud->size(), M3F::Zero());
@@ -841,7 +804,7 @@ void MappingNode::tensor_registration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   double t0, t1, res_mean;
   int feat_tot, reject_cnt;
-  float grav_check;
+  float grav_check, poses_orth_norm;
   float wt_min, wt_max, wt_mean, wt_std, obs_min, obs_scale, obs_term;
   float rng_min, rng_max, rng_mean, rng_scale, rng_min_scale, rng_max_scale;
 
@@ -852,6 +815,10 @@ void MappingNode::tensor_registration(
   Eigen::Array3d rot_obs, tran_obs;
   V3F grav_norm, poses_diff;
 
+  M3F cov_mat;
+  V3F cov_scales, poses_orth;
+  Eigen::Vector4f centroid;
+
   feat_cnt = 0;
   prim_cnts[0] = 0;
   prim_cnts[1] = 0;
@@ -859,10 +826,18 @@ void MappingNode::tensor_registration(
 
   grav_norm = kf_state_.state.grav.get_vect().normalized().cast<float>();
   poses_diff = s.pos.cast<float>();
-  poses_diff -= vel_poses[fmax(vel_pose_counter - 10, 0)];
+  poses_diff -= vel_poses[fmax(vel_pose_counter - 100, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
   grav_check = fmin(grav_check, 1.0);
+
+  poses_orth = poses_diff - grav_norm * grav_norm.dot(poses_diff);
+  poses_orth_norm = grav_check / poses_orth.norm();
+
+  pcl::computeCovarianceMatrixNormalized(*scan_cloud, centroid, cov_mat);
+
+  cov_scales = cov_mat.diagonal();
+  cov_scales /= cov_scales.maxCoeff();
 
   t0 = omp_get_wtime();
 
@@ -874,8 +849,7 @@ void MappingNode::tensor_registration(
     std::vector<float> N_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
-    float bin_scale, search_rad, search_rad_scale, octree_res;
-    float residual, time_score, time_pow, norm_check, traj_diff;
+    float search_rad, octree_res, residual, time_score, time_pow, traj_diff;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a, obs_trans, obs_rot, obs_idx_trans, obs_idx_rot;
@@ -892,30 +866,33 @@ void MappingNode::tensor_registration(
     const float& oct_res = lid_process->octree_resolutions_[bin_idx];
     const float& min_oct_res = lid_process->octree_resolutions_.front();
 
-    bin_scale = 10.0 / mean_bin;
-    if (!axis_grav_align) bin_scale = 20.0;
     search_rad = lid_process->match_radii_[bin_idx];
-    search_rad_scale = poses.back().norm() / (bin_scale * search_rad);
-    octree_res = fmin(oct_res, MIN_SEARCH_RES);
-
-    search_rad_scale = fmax(search_rad_scale, octree_res);
     search_rad /= ekfom_iter_cnt + 1;
-    if (scale_search) search_rad = fmin(search_rad, search_rad_scale);
     search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
     if (N_idxs.size() == 0) continue;
-
     map_i = N_idxs[0];
-    if (!filters[map_i][1]) continue;
-    if (!valid_reg[map_i]) continue;
 
-    // map_pt_time =
-    //     rclcpp::Time(map_cloud->points[map_i].time_secs,
-    //                  map_cloud->points[map_i].time_nsecs, RCL_ROS_TIME);
-    // scan_pt_time = rclcpp::Time(scan_cloud->points[i].time_secs,
-    //                             scan_cloud->points[i].time_nsecs,
-    //                             RCL_ROS_TIME);
+    if (!filters[map_i][1]) continue;
+
+    traj_diff = traj_dist.back();
+    traj_diff -= traj_dist[map_cloud->points[map_i].scan_idx];
+
+    if (map_cloud->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
+        traj_dist.back() < 0.5 * mean_bin &&
+        traj_diff < 2 * fmax(search_rad, MIN_SEARCH_RES))
+      continue;
+
+    n_world = map_cloud->points[map_i].getVector3fMap();
+
+    V3F obs_vec = poses[map_cloud->points[map_i].scan_idx] - n_world;
+    V3F cur_vec = s.pos.cast<float>() - n_world;
+
+    float obs_dot = eigenvectors[map_i].col(2).dot(obs_vec.normalized());
+    float cur_dot = eigenvectors[map_i].col(2).dot(cur_vec.normalized());
+
+    if (obs_dot * cur_dot < 0) continue;
 
     sali_vals = salivalues[map_i] / salivalues[map_i].sum();
 
@@ -927,9 +904,7 @@ void MappingNode::tensor_registration(
     scores(2) = sali_vals(2);
     scores /= scores.sum();
 
-    n_world = map_cloud->points[map_i].getVector3fMap();
     q = p_world - n_world;
-
     // Point to plane
     q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
     p_dash = scores(0) * (p_world - q_dash);
@@ -943,12 +918,10 @@ void MappingNode::tensor_registration(
     residual = norm_vec.norm();
     norm_vec.normalize();
 
-    traj_diff = traj_dist.back();
-    traj_diff -= traj_dist[map_cloud->points[map_i].scan_idx];
-    norm_check = fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
-
+    time_pow = fmax(1.0 - (10.0 * poses_orth_norm), 0.1);
     time_score = 1.0 / (traj_diff + 1.0);
-    time_score *= norm_check;
+    time_score *= fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
+    time_score = pow(time_score, time_pow);
     time_score = 1.0 / fmin(fmax(time_score, 1e-4), 1.0);
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
@@ -956,11 +929,11 @@ void MappingNode::tensor_registration(
     a_world = (s.rot * a).normalized().cast<float>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
-    obs_trans(0) = pow(scores(0), 2);
+    obs_trans(0) = cov_scales(0) * pow(scores(0), 2);
     obs_trans(0) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitX()));
-    obs_trans(1) = pow(scores(0), 2);
+    obs_trans(1) = cov_scales(1) * pow(scores(0), 2);
     obs_trans(1) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitY()));
-    obs_trans(2) = pow(scores(0), 2);
+    obs_trans(2) = cov_scales(2) * pow(scores(0), 2);
     obs_trans(2) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitZ()));
     obs_rot(0) = fabs(a_world.dot(Eigen::Vector3f::UnitX()));
     obs_rot(1) = fabs(a_world.dot(Eigen::Vector3f::UnitY()));
@@ -1015,11 +988,7 @@ void MappingNode::tensor_registration(
   }
 
   ekfom_data_ot.topRows(feat_tot) *= ekfom_data_oit.topRows(feat_tot);
-  ekfom_data_ot.topRows(feat_tot) *=
-      ekfom_data_w.head(feat_tot).replicate(1, 3);
   ekfom_data_or.topRows(feat_tot) *= ekfom_data_oir.topRows(feat_tot);
-  ekfom_data_or.topRows(feat_tot) *=
-      ekfom_data_w.head(feat_tot).replicate(1, 3);
 
   tran_obs = ekfom_data_ot.topRows(feat_tot).colwise().sum() + 1e-4;
   rot_obs = ekfom_data_or.topRows(feat_tot).colwise().sum() + 1e-4;
@@ -1032,34 +1001,21 @@ void MappingNode::tensor_registration(
   ekfom_data_oit.topRows(feat_tot) *= tran_obs.transpose();
   ekfom_data_oir.topRows(feat_tot) *= rot_obs.transpose();
 
-  Eigen::Vector3f cent_proj;
-  Eigen::Vector4f scan_centroid;
-  pcl::compute3DCentroid(*scan_cloud, scan_centroid);
-
-  cent_proj = scan_centroid.head(3).dot(grav_norm) * grav_norm;
-  cent_proj = scan_centroid.head(3) - cent_proj;
-  rng_scale = ((1e4 - fmin(rng_max, 1e4)) / 1000.0) + 10.0;
-
-  obs_min = fmin(rot_obs.minCoeff(), tran_obs.minCoeff());
-  obs_scale = obs_min * rng_scale;
-  obs_scale *= fmax(1.0 - fmin(1.0 * grav_check, 1.0), 1e-4);
-  obs_scale *= fmin(s.vel.norm(), 1.0);
-  if (axis_grav_align) obs_scale *= fmin(20.0 / pow(cent_proj.norm(), 2), 1.0);
-  if (axis_grav_align) obs_scale *= mean_bin / 10.0;
-  obs_scale = fmin(fmax(obs_scale, 1e-4), 1.0);
+  obs_min = 1e4 * rot_obs.minCoeff() * tran_obs.minCoeff();
+  obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
 
   if (!ekfom_data_om.sum()) {
-    ekfom_data_om += obs_scale;
-    ekfom_data_oe += obs_min;
+    ekfom_data_om += obs_min;
+    ekfom_data_oe += fmax(1.0 - (10.0 * poses_orth_norm), 1e-4);
   } else {
-    ekfom_data_om[ekfom_obs_cnt] = obs_scale;
-    ekfom_data_oe[ekfom_obs_cnt] = obs_min;
+    ekfom_data_om[ekfom_obs_cnt] = obs_min;
+    ekfom_data_oe[ekfom_grav_cnt] = fmax(1.0 - (10.0 * poses_orth_norm), 1e-4);
   }
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
-  obs_scale = fmax(ekfom_data_om.mean(), 0.1);
-  obs_term = fmax(ekfom_data_oe.mean(), 0.01);
+  ekfom_grav_cnt = (ekfom_grav_cnt + 1) % ekfom_data_oe.size();
 
-  ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_scale);
+  obs_min = ekfom_data_om.mean() * ekfom_data_oe.mean() * ekfom_data_sb.mean();
+  ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_min);
   ekfom_data_h.block(0, 0, feat_tot, 1) = ekfom_data_h_v.head(feat_tot);
   ekfom_data_w_x.block(0, 0, feat_tot, 1) = ekfom_data_w.head(feat_tot);
   ekfom_data_h_x.block(0, 0, feat_tot, 6) = ekfom_data_h_x_v.topRows(feat_tot);
@@ -1083,12 +1039,6 @@ void MappingNode::tensor_registration(
   ekfom_data.h = ekfom_data_h.head(feat_tot);
   ekfom_data.h_x = ekfom_data_h_x.topRows(feat_tot);
   ekfom_data.h_x_R = ekfom_data_h_x_R.leftCols(feat_tot);
-
-  if (obs_min < 1e-2 * obs_term && !ekfom_iter_cnt) {
-    ekfom_data.valid = false;
-  } else if (obs_min < 0.1 * obs_term) {
-    ekfom_data.finish = true;
-  }
 
   ekfom_iter_cnt++;
 
@@ -1213,9 +1163,10 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
 
+  ekfom_data_sb = Eigen::ArrayXi::Zero(100);
+  ekfom_data_om = Eigen::ArrayXd::Zero(100);
+  ekfom_data_oe = Eigen::ArrayXd::Zero(100);
   ekfom_data_w = Eigen::ArrayXd(MAX_PROC_POINTS);
-  ekfom_data_om = Eigen::ArrayXd::Zero(10);
-  ekfom_data_oe = Eigen::ArrayXd::Zero(10);
   ekfom_data_ot = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_or = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_h = Eigen::VectorXd(MAX_PROC_POINTS);
@@ -1228,8 +1179,6 @@ MappingNode::MappingNode(
   ekfom_data_oit = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
   ekfom_data_oir = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
 
-  colors.reserve(MAX_MAP_POINTS);
-  valid_reg.reserve(MAX_MAP_POINTS);
   update_idx.reserve(MAX_MAP_POINTS);
   saliency_idxs.reserve(MAX_MAP_POINTS);
   neighbours.reserve(MAX_MAP_POINTS);
@@ -1471,6 +1420,13 @@ void MappingNode::sync_raw_cloud_with_imu() {
   raw_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   raw_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
+  if (!ekfom_data_sb.sum()) {
+    ekfom_data_sb += start_bin / 10.0;
+  } else {
+    ekfom_data_sb[start_bin_cnt] = start_bin / 10.0;
+  }
+  start_bin_cnt = (start_bin_cnt + 1) % ekfom_data_sb.size();
+
   analytics_msg_.imu_offset = imu_time_offset_;
   analytics_msg_.lid_offset = lid_time_offset_;
   analytics_msg_.scan_size = scan_cloud->size();
@@ -1543,12 +1499,6 @@ void MappingNode::timer_callback() {
     buffer_cloud_bins = Eigen::ArrayXi::Zero(lid_process->num_bins_);
     scan_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
     filter_bin_sizes = std::vector<std::atomic<int>>(lid_process->num_bins_);
-
-    sep_factor = std::vector<int>(lid_process->num_bins_, 10);
-    init_poses = std::vector<bool>(lid_process->num_bins_, false);
-    last_updated_poses = std::vector<Eigen::Vector3f>(lid_process->num_bins_);
-    last_updated_rotes =
-        std::vector<Eigen::Quaternionf>(lid_process->num_bins_);
   }
 
   if (sync_packages()) {
