@@ -849,7 +849,7 @@ void MappingNode::tensor_registration(
     std::vector<float> N_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
-    float search_rad, octree_res, residual, time_score, time_pow, traj_diff;
+    float search_rad, octree_res, residual, time_score, traj_diff;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a, obs_trans, obs_rot, obs_idx_trans, obs_idx_rot;
@@ -918,10 +918,8 @@ void MappingNode::tensor_registration(
     residual = norm_vec.norm();
     norm_vec.normalize();
 
-    time_pow = fmax(1.0 - (10.0 * poses_orth_norm), 0.1);
     time_score = 1.0 / (traj_diff + 1.0);
     time_score *= fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
-    time_score = pow(time_score, time_pow);
     time_score = 1.0 / fmin(fmax(time_score, 1e-4), 1.0);
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
@@ -1002,19 +1000,19 @@ void MappingNode::tensor_registration(
   ekfom_data_oir.topRows(feat_tot) *= rot_obs.transpose();
 
   obs_min = 1e4 * rot_obs.minCoeff() * tran_obs.minCoeff();
-  obs_min = fmin(fmax(obs_min, 1e-4), 1.0);
 
   if (!ekfom_data_om.sum()) {
-    ekfom_data_om += obs_min;
+    ekfom_data_om += fmin(fmax(obs_min, 1e-4), 1.0);
     ekfom_data_oe += fmax(1.0 - (10.0 * poses_orth_norm), 1e-4);
   } else {
-    ekfom_data_om[ekfom_obs_cnt] = obs_min;
+    ekfom_data_om[ekfom_obs_cnt] = fmin(fmax(obs_min, 1e-4), 1.0);
     ekfom_data_oe[ekfom_grav_cnt] = fmax(1.0 - (10.0 * poses_orth_norm), 1e-4);
   }
   ekfom_obs_cnt = (ekfom_obs_cnt + 1) % ekfom_data_om.size();
   ekfom_grav_cnt = (ekfom_grav_cnt + 1) % ekfom_data_oe.size();
 
   obs_min = ekfom_data_om.mean() * ekfom_data_oe.mean() * ekfom_data_sb.mean();
+  obs_min = fmax(obs_min, 0.1);
   ekfom_data_w.head(feat_tot) = ekfom_data_w.head(feat_tot).pow(obs_min);
   ekfom_data_h.block(0, 0, feat_tot, 1) = ekfom_data_h_v.head(feat_tot);
   ekfom_data_w_x.block(0, 0, feat_tot, 1) = ekfom_data_w.head(feat_tot);
@@ -1163,7 +1161,7 @@ MappingNode::MappingNode(
   ioctree.set_max_new_points(MAX_PROC_POINTS);
   ioctree.set_min_extent(map_resolution);
 
-  ekfom_data_sb = Eigen::ArrayXi::Zero(100);
+  ekfom_data_sb = Eigen::ArrayXd::Zero(100);
   ekfom_data_om = Eigen::ArrayXd::Zero(100);
   ekfom_data_oe = Eigen::ArrayXd::Zero(100);
   ekfom_data_w = Eigen::ArrayXd(MAX_PROC_POINTS);
@@ -1421,9 +1419,9 @@ void MappingNode::sync_raw_cloud_with_imu() {
   raw_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   if (!ekfom_data_sb.sum()) {
-    ekfom_data_sb += start_bin / 10.0;
+    ekfom_data_sb += fmax(start_bin / 10.0, 1e-4);
   } else {
-    ekfom_data_sb[start_bin_cnt] = start_bin / 10.0;
+    ekfom_data_sb[start_bin_cnt] = fmax(start_bin / 10.0, 1e-4);
   }
   start_bin_cnt = (start_bin_cnt + 1) % ekfom_data_sb.size();
 

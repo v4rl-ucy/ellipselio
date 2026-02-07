@@ -126,7 +126,7 @@ class MappingNode : public rclcpp::Node {
   Eigen::ArrayXXi n_bins;
 
   Eigen::ArrayXd ekfom_data_w;
-  Eigen::ArrayXi ekfom_data_sb;
+  Eigen::ArrayXd ekfom_data_sb;
   Eigen::ArrayXd ekfom_data_om;
   Eigen::ArrayXd ekfom_data_oe;
   Eigen::ArrayXXd ekfom_data_ot;
