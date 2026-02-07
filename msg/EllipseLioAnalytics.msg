@@ -17,6 +17,10 @@ float64 res_mean
 float64 obs_min
 int64 kf_iterations
 
+float64 obs_score
+float64 vert_score
+float64 bin_score
+
 int64 num_planes
 int64 num_lines
 int64 num_balls

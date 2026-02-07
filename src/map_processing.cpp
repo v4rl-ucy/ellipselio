@@ -160,6 +160,8 @@ void MappingNode::compute_tensor_eigen(int i, M3F& tensor, bool first_pass) {
     sali_val(2) = eig_val(0);
     sali_val.maxCoeff(&saliency_idxs[i]);
 
+    if ((sali_val(0) / sali_val.sum()) + traj_dist.back() < 0.5) return;
+
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
@@ -832,7 +834,7 @@ void MappingNode::tensor_registration(
   grav_check = fmin(grav_check, 1.0);
 
   poses_orth = poses_diff - grav_norm * grav_norm.dot(poses_diff);
-  poses_orth_norm = grav_check / poses_orth.norm();
+  poses_orth_norm = (10.0 * grav_check) / poses_orth.norm();
 
   pcl::computeCovarianceMatrixNormalized(*scan_cloud, centroid, cov_mat);
 
@@ -853,8 +855,7 @@ void MappingNode::tensor_registration(
 
     M3D P_skew;
     V3D p_lidar, p_imu, a, obs_trans, obs_rot, obs_idx_trans, obs_idx_rot;
-    V3F sali_vals, scores, p_world, n_world, p_dash, q, q_dash, norm_vec,
-        a_world;
+    V3F scores, p_world, n_world, p_dash, q, q_dash, norm_vec, a_world;
 
     const EllipseLioPoint& pt = scan_cloud->points[i];
 
@@ -884,27 +885,10 @@ void MappingNode::tensor_registration(
         traj_diff < 2 * fmax(search_rad, MIN_SEARCH_RES))
       continue;
 
+    scores = salivalues[map_i] / salivalues[map_i].sum();
     n_world = map_cloud->points[map_i].getVector3fMap();
-
-    V3F obs_vec = poses[map_cloud->points[map_i].scan_idx] - n_world;
-    V3F cur_vec = s.pos.cast<float>() - n_world;
-
-    float obs_dot = eigenvectors[map_i].col(2).dot(obs_vec.normalized());
-    float cur_dot = eigenvectors[map_i].col(2).dot(cur_vec.normalized());
-
-    if (obs_dot * cur_dot < 0) continue;
-
-    sali_vals = salivalues[map_i] / salivalues[map_i].sum();
-
-    // Point to plane
-    scores(0) = sali_vals(0);
-    //  Point to line
-    scores(1) = sali_vals(1);
-    //  Point to point
-    scores(2) = sali_vals(2);
-    scores /= scores.sum();
-
     q = p_world - n_world;
+
     // Point to plane
     q_dash = q.dot(eigenvectors[map_i].col(2)) * eigenvectors[map_i].col(2);
     p_dash = scores(0) * (p_world - q_dash);
@@ -1057,6 +1041,9 @@ void MappingNode::tensor_registration(
   analytics_msg_.num_feats = feat_tot;
   analytics_msg_.num_reject = reject_cnt;
   analytics_msg_.kf_iterations = ekfom_iter_cnt;
+  analytics_msg_.obs_score = ekfom_data_om.mean();
+  analytics_msg_.vert_score = ekfom_data_oe.mean();
+  analytics_msg_.bin_score = ekfom_data_sb.mean();
 }
 
 // Main mapping node
