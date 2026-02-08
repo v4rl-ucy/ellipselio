@@ -506,7 +506,6 @@ void MappingNode::map_incremental() {
   }
 
   if (kf_state_.state.vel.norm() > 0.1 || vel_poses.empty()) {
-    vel_pose_counter++;
     vel_poses.push_back(kf_state_.state.pos.cast<float>());
   }
 
@@ -818,9 +817,10 @@ void MappingNode::tensor_registration(
 
   M3F cov_mat;
   V3F cov_scales, poses_orth, grav_x, grav_y, grav_z;
-  Eigen::Vector4f centroid;
+
   Eigen::Quaternionf gq;
   Eigen::Matrix4f tf_grav;
+  Eigen::Vector4f centroid = Eigen::Vector4f::Zero();
 
   feat_cnt = 0;
   prim_cnts[0] = 0;
@@ -829,7 +829,7 @@ void MappingNode::tensor_registration(
 
   grav_norm = kf_state_.state.grav.get_vect().normalized().cast<float>();
   poses_diff = s.pos.cast<float>();
-  poses_diff -= vel_poses[fmax(vel_pose_counter - 100, 0)];
+  poses_diff -= vel_poses[fmax(vel_poses.size() - 100, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
   grav_check = fmin(grav_check, 1.0);
@@ -838,7 +838,7 @@ void MappingNode::tensor_registration(
   poses_orth_norm = (10.0 * grav_check) / poses_orth.norm();
 
   scan_cloud_grav->resize(scan_cloud->size());
-  gq = Eigen::Quaternionf::FromTwoVectors(Eigen::Vector3f::UnitZ(), grav_norm);
+  gq = Eigen::Quaternionf::FromTwoVectors(grav_norm, V3F::UnitZ());
   gq = gq * s.rot.cast<float>() * s.offset_R_L_I.cast<float>();
 
   tf_grav = Eigen::Matrix4f::Identity();
@@ -849,6 +849,7 @@ void MappingNode::tensor_registration(
   grav_z = gq.toRotationMatrix().col(2);
 
   pcl::transformPointCloud(*scan_cloud, *scan_cloud_grav, tf_grav);
+  pcl::compute3DCentroid(*scan_cloud_grav, centroid);
   pcl::computeCovarianceMatrixNormalized(*scan_cloud_grav, centroid, cov_mat);
 
   cov_scales = cov_mat.diagonal();
@@ -864,7 +865,8 @@ void MappingNode::tensor_registration(
     std::vector<float> N_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
-    float search_rad, octree_res, residual, time_score, traj_diff;
+    float search_rad, octree_res, residual, time_score, traj_diff,
+        curr_traj_dist;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a, obs_trans, obs_rot, obs_idx_trans, obs_idx_rot;
@@ -880,11 +882,17 @@ void MappingNode::tensor_registration(
     const float& oct_res = lid_process->octree_resolutions_[bin_idx];
     const float& min_oct_res = lid_process->octree_resolutions_.front();
 
+    curr_traj_dist = traj_dist.back();
+    curr_traj_dist += (s.pos.cast<float>() - poses.back()).norm();
+
     search_rad = lid_process->match_radii_[bin_idx];
     search_rad /= ekfom_iter_cnt + 1;
-    search_rad = fmin(search_rad, traj_dist.back());
-    search_rad = fmin(search_rad, MAX_SEARCH_RES);
-    search_rad = fmax(search_rad, min_oct_res);
+    search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
+
+    if (search_rad > curr_traj_dist) {
+      search_rad *= 0.5;
+      search_rad = fmax(search_rad, MIN_SEARCH_RES);
+    }
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
     if (N_idxs.size() == 0) continue;
@@ -892,12 +900,12 @@ void MappingNode::tensor_registration(
 
     if (!filters[map_i][1]) continue;
 
-    traj_diff = traj_dist.back();
+    traj_diff = curr_traj_dist;
     traj_diff -= traj_dist[map_cloud->points[map_i].scan_idx];
 
-    search_rad = fmax(search_rad, lid_process->search_radii_[0]);
+    search_rad = lid_process->search_radii_[bin_idx];
     if (map_cloud->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
-        traj_dist.back() < mean_bin && traj_diff < 2 * search_rad)
+        curr_traj_dist < mean_bin && traj_diff < 2 * search_rad)
       continue;
 
     scores = salivalues[map_i] / salivalues[map_i].sum();
