@@ -506,6 +506,7 @@ void MappingNode::map_incremental() {
   }
 
   if (kf_state_.state.vel.norm() > 0.1 || vel_poses.empty()) {
+    vel_pose_counter++;
     vel_poses.push_back(kf_state_.state.pos.cast<float>());
   }
 
@@ -838,12 +839,14 @@ void MappingNode::tensor_registration(
 
   scan_cloud_grav->resize(scan_cloud->size());
   gq = Eigen::Quaternionf::FromTwoVectors(Eigen::Vector3f::UnitZ(), grav_norm);
+  gq = gq * s.rot.cast<float>() * s.offset_R_L_I.cast<float>();
+
   tf_grav = Eigen::Matrix4f::Identity();
   tf_grav.block<3, 3>(0, 0) = gq.toRotationMatrix();
 
-  grav_x = tf_grav.col(0).head(3);
-  grav_y = tf_grav.col(1).head(3);
-  grav_z = tf_grav.col(2).head(3);
+  grav_x = gq.toRotationMatrix().col(0);
+  grav_y = gq.toRotationMatrix().col(1);
+  grav_z = gq.toRotationMatrix().col(2);
 
   pcl::transformPointCloud(*scan_cloud, *scan_cloud_grav, tf_grav);
   pcl::computeCovarianceMatrixNormalized(*scan_cloud_grav, centroid, cov_mat);
