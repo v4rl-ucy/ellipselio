@@ -850,12 +850,14 @@ void MappingNode::tensor_registration(
   grav_z = gq.toRotationMatrix().col(2);
 
   pcl::transformPointCloud(*scan_cloud, *scan_cloud_grav, tf_grav);
-  scan_cloud_grav->resize(scan_cloud_bins.head(mean_bin).sum());
   pcl::compute3DCentroid(*scan_cloud_grav, centroid);
   pcl::computeCovarianceMatrixNormalized(*scan_cloud_grav, centroid, cov_mat);
 
-  float cov_score = fmax(1.0 - fabs(0.5 * cov_mat(2, 2)), 1e-4);
+  float mean_bin_arc = lidar_params.vertical_fov * M_PI * mean_bin / 180.0;
+  float cov_score = fmin(fabs(cov_mat(2, 2)) / mean_bin_arc, 1.0);
+
   cov_scales = cov_mat.diagonal();
+  cov_scales(2) *= cov_score;
   cov_scales(2) *= 180.0 / lidar_params.vertical_fov;
   cov_scales /= cov_scales.maxCoeff();
 
@@ -931,7 +933,7 @@ void MappingNode::tensor_registration(
 
     time_score = 1.0 / (traj_diff + 1.0);
     time_score *= fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
-    time_score = 1.0 / fmin(fmax(time_score, cov_score), 1.0);
+    time_score = 1.0 / fmin(fmax(time_score, 1e-4), 1.0);
 
     P_skew << SKEW_SYM_MATRIX(p_imu);
     a = P_skew * s.rot.conjugate() * norm_vec.cast<double>();
