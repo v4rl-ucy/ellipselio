@@ -184,6 +184,7 @@ class MappingNode : public rclcpp::Node {
   EllipseLioPointCloudPtr map_cloud;
   EllipseLioPointCloudPtr raw_cloud;
   EllipseLioPointCloudPtr scan_cloud;
+  EllipseLioPointCloudPtr scan_cloud_grav;
   EllipseLioPointCloudPtr filter_cloud;
   EllipseLioPointCloudPtr buffer_cloud;
   EllipseLioPointCloudPtr scan_cloud_pub;

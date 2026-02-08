@@ -160,8 +160,6 @@ void MappingNode::compute_tensor_eigen(int i, M3F& tensor, bool first_pass) {
     sali_val(2) = eig_val(0);
     sali_val.maxCoeff(&saliency_idxs[i]);
 
-    if ((sali_val(0) / sali_val.sum()) + traj_dist.back() < 0.5) return;
-
     filters[i][1] = true;
     salivalues[i] = sali_val;
     eigenvalues[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
@@ -818,8 +816,10 @@ void MappingNode::tensor_registration(
   V3F grav_norm, poses_diff;
 
   M3F cov_mat;
-  V3F cov_scales, poses_orth;
+  V3F cov_scales, poses_orth, grav_x, grav_y, grav_z;
   Eigen::Vector4f centroid;
+  Eigen::Quaternionf gq;
+  Eigen::Matrix4f tf_grav;
 
   feat_cnt = 0;
   prim_cnts[0] = 0;
@@ -836,7 +836,17 @@ void MappingNode::tensor_registration(
   poses_orth = poses_diff - grav_norm * grav_norm.dot(poses_diff);
   poses_orth_norm = (10.0 * grav_check) / poses_orth.norm();
 
-  pcl::computeCovarianceMatrixNormalized(*scan_cloud, centroid, cov_mat);
+  scan_cloud_grav->resize(scan_cloud->size());
+  gq = Eigen::Quaternionf::FromTwoVectors(Eigen::Vector3f::UnitZ(), grav_norm);
+  tf_grav = Eigen::Matrix4f::Identity();
+  tf_grav.block<3, 3>(0, 0) = gq.toRotationMatrix();
+
+  grav_x = tf_grav.col(0).head(3);
+  grav_y = tf_grav.col(1).head(3);
+  grav_z = tf_grav.col(2).head(3);
+
+  pcl::transformPointCloud(*scan_cloud, *scan_cloud_grav, tf_grav);
+  pcl::computeCovarianceMatrixNormalized(*scan_cloud_grav, centroid, cov_mat);
 
   cov_scales = cov_mat.diagonal();
   cov_scales /= cov_scales.maxCoeff();
@@ -869,7 +879,9 @@ void MappingNode::tensor_registration(
 
     search_rad = lid_process->match_radii_[bin_idx];
     search_rad /= ekfom_iter_cnt + 1;
-    search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
+    search_rad = fmin(search_rad, traj_dist.back());
+    search_rad = fmin(search_rad, MAX_SEARCH_RES);
+    search_rad = fmax(search_rad, min_oct_res);
 
     ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
     if (N_idxs.size() == 0) continue;
@@ -880,9 +892,9 @@ void MappingNode::tensor_registration(
     traj_diff = traj_dist.back();
     traj_diff -= traj_dist[map_cloud->points[map_i].scan_idx];
 
+    search_rad = fmax(search_rad, lid_process->search_radii_[0]);
     if (map_cloud->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
-        traj_dist.back() < 0.5 * mean_bin &&
-        traj_diff < 2 * fmax(search_rad, MIN_SEARCH_RES))
+        traj_dist.back() < mean_bin && traj_diff < 2 * search_rad)
       continue;
 
     scores = salivalues[map_i] / salivalues[map_i].sum();
@@ -912,14 +924,14 @@ void MappingNode::tensor_registration(
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
     obs_trans(0) = cov_scales(0) * pow(scores(0), 2);
-    obs_trans(0) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitX()));
+    obs_trans(0) *= fabs(norm_vec.dot(grav_x));
     obs_trans(1) = cov_scales(1) * pow(scores(0), 2);
-    obs_trans(1) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitY()));
+    obs_trans(1) *= fabs(norm_vec.dot(grav_y));
     obs_trans(2) = cov_scales(2) * pow(scores(0), 2);
-    obs_trans(2) *= fabs(norm_vec.dot(Eigen::Vector3f::UnitZ()));
-    obs_rot(0) = fabs(a_world.dot(Eigen::Vector3f::UnitX()));
-    obs_rot(1) = fabs(a_world.dot(Eigen::Vector3f::UnitY()));
-    obs_rot(2) = fabs(a_world.dot(Eigen::Vector3f::UnitZ()));
+    obs_trans(2) *= fabs(norm_vec.dot(grav_z));
+    obs_rot(0) = fabs(a_world.dot(grav_x));
+    obs_rot(1) = fabs(a_world.dot(grav_y));
+    obs_rot(2) = fabs(a_world.dot(grav_z));
 
     obs_trans.head(3).maxCoeff(&tran_idx);
     obs_rot.head(3).maxCoeff(&rot_idx);
@@ -1053,6 +1065,7 @@ MappingNode::MappingNode(
       map_cloud(new EllipseLioPointCloud()),
       raw_cloud(new EllipseLioPointCloud()),
       scan_cloud(new EllipseLioPointCloud()),
+      scan_cloud_grav(new EllipseLioPointCloud()),
       filter_cloud(new EllipseLioPointCloud()),
       buffer_cloud(new EllipseLioPointCloud()),
       scan_cloud_pub(new EllipseLioPointCloud()),
@@ -1137,6 +1150,7 @@ MappingNode::MappingNode(
   map_cloud->reserve(MAX_MAP_POINTS);
   raw_cloud->reserve(MAX_PROC_POINTS);
   scan_cloud->reserve(MAX_PROC_POINTS);
+  scan_cloud_grav->reserve(MAX_PROC_POINTS);
   filter_cloud->reserve(MAX_PROC_POINTS);
   buffer_cloud->reserve(MAX_PROC_POINTS);
 
