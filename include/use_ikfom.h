@@ -3,6 +3,7 @@
 #ifndef USE_IKFOM_H
 #define USE_IKFOM_H
 
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <IKFoM_toolkit/esekfom/esekfom.hpp>
 
 typedef MTK::vect<3, double> vect3;
@@ -26,39 +27,19 @@ typedef std::shared_ptr<Ikfom> IkfomSPtr;
 inline Ikfom::cov P_cov() {
   Ikfom::cov cov;
   cov.setIdentity();
-  cov(6, 6) = 0.00001;
-  cov(7, 7) = 0.00001;
-  cov(8, 8) = 0.00001;
-  cov(9, 9) = 0.00001;
-  cov(10, 10) = 0.00001;
-  cov(11, 11) = 0.00001;
-  cov(15, 15) = 0.0001;
-  cov(16, 16) = 0.0001;
-  cov(17, 17) = 0.0001;
-  cov(18, 18) = 0.001;
-  cov(19, 19) = 0.001;
-  cov(20, 20) = 0.001;
-  cov(21, 21) = 0.00001;
-  cov(22, 22) = 0.00001;
+  cov *= 1e-3;
   return cov;
 }
 
 inline MTK::get_cov<process_noise_ikfom>::type process_noise_cov() {
   MTK::get_cov<process_noise_ikfom>::type cov =
-      MTK::get_cov<process_noise_ikfom>::type::Zero();
-  MTK::setDiagonal<process_noise_ikfom, vect3, 0>(cov, &process_noise_ikfom::ng,
-                                                  0.0001);
-  MTK::setDiagonal<process_noise_ikfom, vect3, 3>(cov, &process_noise_ikfom::na,
-                                                  0.0001);
-  MTK::setDiagonal<process_noise_ikfom, vect3, 6>(
-      cov, &process_noise_ikfom::nbg, 0.00001);
-  MTK::setDiagonal<process_noise_ikfom, vect3, 9>(
-      cov, &process_noise_ikfom::nba, 0.00001);
+      MTK::get_cov<process_noise_ikfom>::type::Identity();
+  cov *= 1e-3;
   return cov;
 }
 
-inline Eigen::Matrix<double, 24, 1> get_f(state_ikfom &s,
-                                          const input_ikfom &in) {
+inline Eigen::Matrix<double, 24, 1> get_f(state_ikfom& s,
+                                          const input_ikfom& in) {
   Eigen::Matrix<double, 24, 1> res = Eigen::Matrix<double, 24, 1>::Zero();
   vect3 omega;
   in.gyro.boxminus(omega, s.bg);
@@ -71,8 +52,8 @@ inline Eigen::Matrix<double, 24, 1> get_f(state_ikfom &s,
   return res;
 }
 
-inline Eigen::Matrix<double, 24, 23> df_dx(state_ikfom &s,
-                                           const input_ikfom &in) {
+inline Eigen::Matrix<double, 24, 23> df_dx(state_ikfom& s,
+                                           const input_ikfom& in) {
   Eigen::Matrix<double, 24, 23> cov = Eigen::Matrix<double, 24, 23>::Zero();
   cov.template block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();
   vect3 acc_;
@@ -90,8 +71,8 @@ inline Eigen::Matrix<double, 24, 23> df_dx(state_ikfom &s,
   return cov;
 }
 
-inline Eigen::Matrix<double, 24, 12> df_dw(state_ikfom &s,
-                                           const input_ikfom &in) {
+inline Eigen::Matrix<double, 24, 12> df_dw(state_ikfom& s,
+                                           const input_ikfom& in) {
   Eigen::Matrix<double, 24, 12> cov = Eigen::Matrix<double, 24, 12>::Zero();
   cov.template block<3, 3>(12, 3) = -s.rot.toRotationMatrix();
   cov.template block<3, 3>(3, 0) = -Eigen::Matrix3d::Identity();
@@ -100,7 +81,7 @@ inline Eigen::Matrix<double, 24, 12> df_dw(state_ikfom &s,
   return cov;
 }
 
-inline vect3 SO3ToEuler(const SO3 &orient) {
+inline vect3 SO3ToEuler(const SO3& orient) {
   Eigen::Matrix<double, 3, 1> _ang;
   Eigen::Vector4d q_data = orient.coeffs().transpose();
 

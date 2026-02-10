@@ -14,19 +14,24 @@ int64 buffer_size
 float64 scan_time
 
 float64 res_mean
-float64 hit_filter
+float64 obs_min
+int64 kf_iterations
+
+float64 obs_score
+float64 vert_score
+float64 bin_score
 
 int64 num_planes
 int64 num_lines
 int64 num_balls
 int64 num_feats
 int64 num_reject
-int64 kf_iterations
 
 float64 wt_mean
 float64 wt_std
 float64 wt_min
 float64 wt_max
+
 float64 rng_min
 float64 rng_max
 float64 rng_mean
@@ -50,5 +55,6 @@ float64 lid_offset
 float64 imu_offset
 
 int64 run_time
+int64 traj_dist
 int64 ram_usage
 int64 cpu_usage

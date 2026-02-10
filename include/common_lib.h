@@ -43,6 +43,7 @@ struct KfState {
   rclcpp::Time time = rclcpp::Time(0, 0, RCL_ROS_TIME);
   state_ikfom state;
   Ikfom::cov cov;
+  V3D gyr;
 };
 
 typedef std::shared_ptr<KfState> KfStateSPtr;

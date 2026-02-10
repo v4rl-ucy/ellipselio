@@ -10,7 +10,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
-enum LID_TYPE { LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4 };
+enum LID_TYPE { LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4, GAZEBO = 5 };
 
 struct LidarParams {
   int type;
@@ -67,6 +67,8 @@ class LidarProcess {
                 EllipseLioPoint& out_pt, rclcpp::Time& point_time);
   void SetPoint(HesaiPoint& in_pt0, HesaiPoint& in_pt, EllipseLioPoint& out_pt,
                 rclcpp::Time& point_time);
+  void SetPoint(GazeboPoint& in_pt0, GazeboPoint& in_pt,
+                EllipseLioPoint& out_pt, rclcpp::Time& point_time);
 
   template <typename InPtType>
   void ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
