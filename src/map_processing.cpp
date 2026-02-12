@@ -803,7 +803,7 @@ void MappingNode::publish_lid_odometry() {
 void MappingNode::tensor_registration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   double t0, t1, res_mean;
-  int feat_tot, reject_cnt;
+  int feat_tot, reject_cnt, start_bin_scale;
   float grav_check, poses_orth_norm;
   float wt_min, wt_max, wt_mean, wt_std, obs_min, obs_scale, obs_term;
   float rng_min, rng_max, rng_mean, rng_scale, rng_min_scale, rng_max_scale;
@@ -861,6 +861,8 @@ void MappingNode::tensor_registration(
   cov_scales(2) *= 180.0 / lidar_params.vertical_fov;
   cov_scales /= cov_scales.maxCoeff();
 
+  start_bin_scale = floor(MAX_SEARCH_RES / lid_process->match_radii_.front());
+
   t0 = omp_get_wtime();
 
 #pragma omp parallel for
@@ -906,7 +908,7 @@ void MappingNode::tensor_registration(
 
     traj_diff = curr_traj_dist;
     traj_diff -= traj_dist[map_cloud->points[map_i].scan_idx];
-    bin_scale = fmax(fmin(bin_idx / 4.0, 10.0), 4.0);
+    bin_scale = fmax(fmin(bin_idx / 4.0, 10.0), start_bin_scale);
     if (map_cloud->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
         match_rad > bin_scale * search_rad &&
         traj_diff < match_rad / bin_scale) {
