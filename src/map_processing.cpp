@@ -145,7 +145,7 @@ void MappingNode::compute_tensor_eigen(int i, M3F& tensor, bool first_pass) {
   eig_val = eig_solver.eigenvalues().cwiseAbs();
 
   const int& bin_idx = map_cloud->points[i].bin_idx;
-  float search_rad = lid_process->search_radii_[bin_idx];
+  const float& search_rad = lid_process->search_radii_[bin_idx];
 
   if (first_pass) {
     tensor_i2 =
@@ -803,7 +803,7 @@ void MappingNode::publish_lid_odometry() {
 void MappingNode::tensor_registration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   double t0, t1, res_mean;
-  int feat_tot, reject_cnt;
+  int feat_tot, reject_cnt, start_bin_scale;
   float grav_check, poses_orth_norm;
   float wt_min, wt_max, wt_mean, wt_std, obs_min, obs_scale, obs_term;
   float rng_min, rng_max, rng_mean, rng_scale, rng_min_scale, rng_max_scale;
@@ -861,6 +861,8 @@ void MappingNode::tensor_registration(
   cov_scales(2) *= 180.0 / lidar_params.vertical_fov;
   cov_scales /= cov_scales.maxCoeff();
 
+  start_bin_scale = floor(MAX_SEARCH_RES / lid_process->match_radii_.front());
+
   t0 = omp_get_wtime();
 
 #pragma omp parallel for
@@ -871,8 +873,8 @@ void MappingNode::tensor_registration(
     std::vector<float> N_dst;
     rclcpp::Time map_pt_time, scan_pt_time;
     int sali_idx, map_i, feat_num, prim_num;
-    float search_rad, octree_res, residual, time_score, traj_diff,
-        curr_traj_dist;
+    float inc_search_rad, octree_res, residual, time_score, traj_diff,
+        curr_traj_dist, bin_scale;
 
     M3D P_skew;
     V3D p_lidar, p_imu, a, obs_trans, obs_rot, obs_idx_trans, obs_idx_rot;
@@ -885,34 +887,33 @@ void MappingNode::tensor_registration(
     p_world = (s.rot * p_imu + s.pos).cast<float>();
 
     const int& bin_idx = scan_cloud->points[i].bin_idx;
-    const float& oct_res = lid_process->octree_resolutions_[bin_idx];
+    const float& match_rad = lid_process->match_radii_[bin_idx];
+    const float& search_rad = lid_process->search_radii_[bin_idx];
     const float& min_oct_res = lid_process->octree_resolutions_.front();
+
+    inc_search_rad = match_rad / (ekfom_iter_cnt + 1);
+    inc_search_rad = fmax(fmin(inc_search_rad, MAX_SEARCH_RES), min_oct_res);
 
     curr_traj_dist = traj_dist.back();
     curr_traj_dist += (s.pos.cast<float>() - poses.back()).norm();
-
-    search_rad = lid_process->match_radii_[bin_idx];
-    search_rad /= ekfom_iter_cnt + 1;
-    search_rad = fmax(fmin(search_rad, MAX_SEARCH_RES), min_oct_res);
-
-    if (search_rad > curr_traj_dist) {
-      search_rad *= 0.5;
-      search_rad = fmax(search_rad, MIN_SEARCH_RES);
+    if (inc_search_rad > curr_traj_dist) {
+      inc_search_rad = fmax(0.5 * inc_search_rad, MIN_SEARCH_RES);
     }
 
-    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, search_rad);
+    ioctree.knnNeighbors(p_world, 1, N_idxs, N_dst, inc_search_rad);
     if (N_idxs.size() == 0) continue;
-    map_i = N_idxs[0];
 
+    map_i = N_idxs[0];
     if (!filters[map_i][1]) continue;
 
     traj_diff = curr_traj_dist;
     traj_diff -= traj_dist[map_cloud->points[map_i].scan_idx];
-
-    search_rad = lid_process->search_radii_[bin_idx];
+    bin_scale = fmax(fmin(bin_idx / 4.0, 10.0), start_bin_scale);
     if (map_cloud->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
-        curr_traj_dist < mean_bin && traj_diff < 2 * search_rad)
+        match_rad > bin_scale * search_rad &&
+        traj_diff < match_rad / bin_scale) {
       continue;
+    }
 
     scores = salivalues[map_i] / salivalues[map_i].sum();
     n_world = map_cloud->points[map_i].getVector3fMap();
