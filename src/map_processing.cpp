@@ -1272,21 +1272,21 @@ MappingNode::MappingNode(
 
   loop_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
-      std::chrono::milliseconds(fmax(1000 / imu_params.rate, 10)),
+      std::chrono::milliseconds(std::max(1000 / imu_params.rate, 10)),
       std::bind(&MappingNode::timer_callback, this), loop_callback_group_);
   pub_odom_lid_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
-      std::chrono::milliseconds(fmax(1000 / lidar_params.rate, 10)),
+      std::chrono::milliseconds(std::max(1000 / lidar_params.rate, 10)),
       std::bind(&MappingNode::publish_lid_odometry, this),
       pub_odom_lid_callback_group_);
   pub_odom_imu_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
-      std::chrono::milliseconds(fmax(1000 / imu_params.rate, 10)),
+      std::chrono::milliseconds(std::max(1000 / imu_params.rate, 10)),
       std::bind(&MappingNode::publish_imu_odometry, this),
       pub_odom_imu_callback_group_);
   pub_map_timer_ = rclcpp::create_timer(
       this, this->get_clock(),
-      std::chrono::milliseconds(fmax(pub_map_n_secs * 1000, 10)),
+      std::chrono::milliseconds(std::max(pub_map_n_secs * 1000, 10)),
       std::bind(&MappingNode::publish_map, this), pub_map_callback_group_);
 
   char line[128];
