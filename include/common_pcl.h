@@ -45,9 +45,9 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZNRGBIT,
     (float, x, x)(float, y, y)(float, z, z)(uint32_t, bin_idx, bin_idx)(
-        uint32_t, has_rgb,
-        has_rgb)(uint32_t, prim_type,
-                 prim_type)(float, rgb, rgb)(float, intensity, intensity)(
+        uint32_t, scan_idx, scan_idx)(uint32_t, has_rgb, has_rgb)(
+        uint32_t, prim_type, prim_type)(float, rgb, rgb)(float, intensity,
+                                                         intensity)(
         uint32_t, time_secs, time_secs)(uint32_t, time_nsecs, time_nsecs))
 
 typedef PointXYZNRGBIT EllipseLioPoint;
