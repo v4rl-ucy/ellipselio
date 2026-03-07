@@ -832,12 +832,12 @@ void MappingNode::tensor_registration(
     obs_trans.maxCoeff(&tran_idx);
     obs_idx_trans = V3D::Zero();
     obs_idx_trans(tran_idx) = 1;
-    obs_trans.cwiseProduct(obs_idx_trans);
+    obs_trans = obs_trans.cwiseProduct(obs_idx_trans);
 
     obs_rot.maxCoeff(&rot_idx);
     obs_idx_rot = V3D::Zero();
     obs_idx_rot(rot_idx) = 1;
-    obs_rot.cwiseProduct(obs_idx_rot);
+    obs_rot = obs_rot.cwiseProduct(obs_idx_rot);
 
     feat_num = ++feat_cnt;
     sali_idx = saliency_idxs[map_i];
