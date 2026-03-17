@@ -187,123 +187,6 @@ void MappingNode::compute_tensor_eigen(int i, M3F& tensor, bool first_pass) {
   }
 }
 
-// Compute line-sphere intersection and map hit to 10x10 UV grid
-bool MappingNode::line_sphere_to_uv_map(const V3F& line_p0, const V3F& line_p1,
-                                        const V3F& sphere_center,
-                                        float sphere_radius, int& u_idx,
-                                        int& v_idx,
-                                        Eigen::Array<float, 10, 10>& uv_map) {
-  constexpr float inv_two_pi = 0.15915494309189535f;  // 1 / (2 * pi)
-  constexpr float inv_pi = 0.3183098861837907f;       // 1 / pi
-
-  uv_map.setZero();
-
-  V3F dir = line_p1 - line_p0;
-  float dir_norm = dir.norm();
-  if (dir_norm <= 1e-6f) return false;
-  dir /= dir_norm;
-
-  V3F oc = line_p0 - sphere_center;
-
-  float a = dir.dot(dir);
-  float b = 2.0f * oc.dot(dir);
-  float c = oc.dot(oc) - sphere_radius * sphere_radius;
-  float discriminant = b * b - 4.0f * a * c;
-
-  if (discriminant < 0.0f) return false;
-
-  float sqrt_disc = std::sqrt(discriminant);
-  float t0 = (-b - sqrt_disc) / (2.0f * a);
-  float t1 = (-b + sqrt_disc) / (2.0f * a);
-
-  float t = std::numeric_limits<float>::max();
-  if (t0 > 0.0f) t = t0;
-  if (t1 > 0.0f) t = std::min(t, t1);
-  if (!std::isfinite(t) || t <= 0.0f) return false;
-
-  V3F hit = line_p0 + t * dir;
-  V3F rel = (hit - sphere_center) / sphere_radius;
-
-  float u = 0.5f + std::atan2(rel.z(), rel.x()) * inv_two_pi;
-  float v = 0.5f - std::asin(rel.y()) * inv_pi;
-
-  u = std::fmod(u + 1.0f, 1.0f);
-  v = std::min(std::max(v, 0.0f), 1.0f);
-
-  u_idx = std::min(9, std::max(0, static_cast<int>(std::floor(u * 10.0f))));
-  v_idx = std::min(9, std::max(0, static_cast<int>(std::floor(v * 10.0f))));
-
-  uv_map(v_idx, u_idx) = 1.0f;
-  return true;
-}
-
-// Compute line-ellipsoid intersection (oriented), project to sphere, and map to
-// 10x10 UV grid
-bool MappingNode::line_ellipsoid_to_uv_map(
-    const V3F& line_p0, const V3F& line_p1, const V3F& ellipsoid_center,
-    const V3F& ellipsoid_radii, const Eigen::Matrix3f& ellipsoid_rot,
-    float sphere_radius, int& u_idx, int& v_idx,
-    Eigen::Array<float, 10, 10>& uv_map) {
-  constexpr float inv_two_pi = 0.15915494309189535f;  // 1 / (2 * pi)
-  constexpr float inv_pi = 0.3183098861837907f;       // 1 / pi
-
-  uv_map.setZero();
-
-  if (ellipsoid_radii.minCoeff() <= 0.0f) return false;
-  if (sphere_radius <= 0.0f) return false;
-
-  V3F dir_world = line_p1 - line_p0;
-  float dir_norm = dir_world.norm();
-  if (dir_norm <= 1e-6f) return false;
-  dir_world /= dir_norm;
-
-  // Bring line into ellipsoid-aligned frame: p' = R^T (p - c)
-  V3F p0_local = ellipsoid_rot.transpose() * (line_p0 - ellipsoid_center);
-  V3F dir_local = ellipsoid_rot.transpose() * dir_world;
-
-  // Scale by radii -> unit sphere intersection
-  V3F p0_unit = p0_local.cwiseQuotient(ellipsoid_radii);
-  V3F dir_unit = dir_local.cwiseQuotient(ellipsoid_radii);
-
-  float a = dir_unit.dot(dir_unit);
-  float b = 2.0f * p0_unit.dot(dir_unit);
-  float c = p0_unit.dot(p0_unit) - 1.0f;
-  float discriminant = b * b - 4.0f * a * c;
-
-  if (discriminant < 0.0f) return false;
-
-  float sqrt_disc = std::sqrt(discriminant);
-  float t0 = (-b - sqrt_disc) / (2.0f * a);
-  float t1 = (-b + sqrt_disc) / (2.0f * a);
-
-  float t = std::numeric_limits<float>::max();
-  if (t0 > 0.0f) t = t0;
-  if (t1 > 0.0f) t = std::min(t, t1);
-  if (!std::isfinite(t) || t <= 0.0f) return false;
-
-  // Hit point back in world frame
-  V3F hit_local = p0_local + t * dir_local;
-  V3F hit_world = ellipsoid_center + ellipsoid_rot * hit_local;
-
-  // Map to target sphere by normalizing direction and scaling to radius
-  V3F dir_to_hit = hit_world - ellipsoid_center;
-  float dir_to_hit_norm = dir_to_hit.norm();
-  if (dir_to_hit_norm <= 1e-6f) return false;
-  V3F sphere_pt = (dir_to_hit / dir_to_hit_norm) * sphere_radius;
-
-  float u = 0.5f + std::atan2(sphere_pt.z(), sphere_pt.x()) * inv_two_pi;
-  float v = 0.5f - std::asin(sphere_pt.y() / sphere_radius) * inv_pi;
-
-  u = std::fmod(u + 1.0f, 1.0f);
-  v = std::min(std::max(v, 0.0f), 1.0f);
-
-  u_idx = std::min(9, std::max(0, static_cast<int>(std::floor(u * 10.0f))));
-  v_idx = std::min(9, std::max(0, static_cast<int>(std::floor(v * 10.0f))));
-
-  uv_map(v_idx, u_idx) = 1.0f;
-  return true;
-}
-
 // Compute first pass tensor voting for new points and find neighbours
 void MappingNode::tensor_vote_pass_1(int old_map_size,
                                      std::vector<int>& added_idxs,
@@ -552,7 +435,6 @@ void MappingNode::map_incremental() {
   salivalues.resize(map_cloud->size(), V3F::Zero());
   eigenvalues.resize(map_cloud->size(), V3F::Zero());
   eigenvectors.resize(map_cloud->size(), M3F::Zero());
-  uv_color_maps.resize(map_cloud->size(), -1 * Eigen::ArrayXXf::Ones(10, 10));
 
   if (new_idxs.size() > 0) {
     tensor_vote_pass_1(old_map_size, new_idxs, updated_idxs);
@@ -808,15 +690,13 @@ void MappingNode::tensor_registration(
   float wt_min, wt_max, wt_mean, wt_std, obs_min, obs_scale, obs_term;
   float rng_min, rng_max, rng_mean, rng_scale, rng_min_scale, rng_max_scale;
 
+  Eigen::Array3i cnts(3);
   std::atomic<int> feat_cnt;
   std::vector<std::atomic<int>> prim_cnts(3);
 
-  Eigen::Array3i cnts(3);
-  Eigen::Array3d rot_obs, tran_obs;
-  V3F grav_norm, poses_diff;
-
   M3F cov_mat;
-  V3F cov_scales, poses_orth, grav_x, grav_y, grav_z;
+  V3D rot_obs, tran_obs, cov_scales;
+  V3F grav_norm, poses_diff, poses_orth, grav_x, grav_y, grav_z;
 
   Eigen::Quaternionf gq;
   Eigen::Matrix4f tf_grav;
@@ -856,7 +736,7 @@ void MappingNode::tensor_registration(
   float mean_bin_arc = lidar_params.vertical_fov * M_PI * mean_bin / 180.0;
   float cov_score = fmin(fabs(cov_mat(2, 2)) / mean_bin_arc, 1.0);
 
-  cov_scales = cov_mat.diagonal();
+  cov_scales = cov_mat.diagonal().cast<double>();
   cov_scales(2) *= cov_score;
   cov_scales(2) *= 180.0 / lidar_params.vertical_fov;
   cov_scales /= cov_scales.maxCoeff();
@@ -941,23 +821,23 @@ void MappingNode::tensor_registration(
     a_world = (s.rot * a).normalized().cast<float>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
-    obs_trans(0) = cov_scales(0) * pow(scores(0), 2);
+    obs_trans = cov_scales * pow(scores(0), 2);
     obs_trans(0) *= fabs(norm_vec.dot(grav_x));
-    obs_trans(1) = cov_scales(1) * pow(scores(0), 2);
     obs_trans(1) *= fabs(norm_vec.dot(grav_y));
-    obs_trans(2) = cov_scales(2) * pow(scores(0), 2);
     obs_trans(2) *= fabs(norm_vec.dot(grav_z));
     obs_rot(0) = fabs(a_world.dot(grav_x));
     obs_rot(1) = fabs(a_world.dot(grav_y));
     obs_rot(2) = fabs(a_world.dot(grav_z));
 
-    obs_trans.head(3).maxCoeff(&tran_idx);
-    obs_rot.head(3).maxCoeff(&rot_idx);
-
-    obs_idx_trans = Eigen::Vector3d::Zero(3);
+    obs_trans.maxCoeff(&tran_idx);
+    obs_idx_trans = V3D::Zero();
     obs_idx_trans(tran_idx) = 1;
-    obs_idx_rot = Eigen::Vector3d::Zero(3);
+    obs_trans = obs_trans.cwiseProduct(obs_idx_trans);
+
+    obs_rot.maxCoeff(&rot_idx);
+    obs_idx_rot = V3D::Zero();
     obs_idx_rot(rot_idx) = 1;
+    obs_rot = obs_rot.cwiseProduct(obs_idx_rot);
 
     feat_num = ++feat_cnt;
     sali_idx = saliency_idxs[map_i];
@@ -969,9 +849,6 @@ void MappingNode::tensor_registration(
 
     ekfom_data_h_v(feat_num - 1) = -residual;
     ekfom_data_h_x_v.row(feat_num - 1) = h_x_vec;
-
-    ekfom_data_oit.row(feat_num - 1) = obs_idx_trans;
-    ekfom_data_oir.row(feat_num - 1) = obs_idx_rot;
   }
 
   cnts << prim_cnts[0].load(), prim_cnts[1].load(), prim_cnts[2].load();
@@ -999,19 +876,11 @@ void MappingNode::tensor_registration(
     ekfom_data_w.head(feat_tot) += 1.0;
   }
 
-  ekfom_data_ot.topRows(feat_tot) *= ekfom_data_oit.topRows(feat_tot);
-  ekfom_data_or.topRows(feat_tot) *= ekfom_data_oir.topRows(feat_tot);
-
   tran_obs = ekfom_data_ot.topRows(feat_tot).colwise().sum() + 1e-4;
   rot_obs = ekfom_data_or.topRows(feat_tot).colwise().sum() + 1e-4;
 
-  tran_obs /= tran_obs.minCoeff();
-  rot_obs /= rot_obs.minCoeff();
-  tran_obs = tran_obs.inverse();
-  rot_obs = rot_obs.inverse();
-
-  ekfom_data_oit.topRows(feat_tot) *= tran_obs.transpose();
-  ekfom_data_oir.topRows(feat_tot) *= rot_obs.transpose();
+  tran_obs /= tran_obs.maxCoeff();
+  rot_obs /= rot_obs.maxCoeff();
 
   obs_min = 1e4 * rot_obs.minCoeff() * tran_obs.minCoeff();
 
@@ -1190,11 +1059,8 @@ MappingNode::MappingNode(
   ekfom_data_w_x = Eigen::ArrayXd(MAX_PROC_POINTS);
   ekfom_data_h_x = Eigen::MatrixXd(MAX_PROC_POINTS, 6);
   ekfom_data_h_x_R = Eigen::MatrixXd(6, MAX_PROC_POINTS);
-
   ekfom_data_h_v = Eigen::ArrayXd(MAX_PROC_POINTS);
   ekfom_data_h_x_v = Eigen::MatrixXd(MAX_PROC_POINTS, 6);
-  ekfom_data_oit = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
-  ekfom_data_oir = Eigen::ArrayXXd(MAX_PROC_POINTS, 3);
 
   update_idx.reserve(MAX_MAP_POINTS);
   saliency_idxs.reserve(MAX_MAP_POINTS);
@@ -1206,7 +1072,6 @@ MappingNode::MappingNode(
   salivalues.reserve(MAX_MAP_POINTS);
   eigenvalues.reserve(MAX_MAP_POINTS);
   eigenvectors.reserve(MAX_MAP_POINTS);
-  uv_color_maps.reserve(MAX_MAP_POINTS);
 
   updated_pt = std::vector<std::atomic<int>>(MAX_MAP_POINTS);
   new_neighbours_map_idx = std::vector<int>(MAX_SCAN_POINTS);
