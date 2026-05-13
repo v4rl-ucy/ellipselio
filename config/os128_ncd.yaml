@@ -1,0 +1,27 @@
+/**:
+    ros__parameters:
+
+        mapping:
+            map_resolution: 0.1
+            pub_map_n_secs: 10 
+            
+        lidar:
+            type: 3 # LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4
+            rate: 10
+            scan_lines: 128
+            vertical_fov: 90.0
+            min_range: 0.0
+            max_range: 100.0
+            topic:  "/os_cloud_node/points"
+            t_imu_lidar: [-0.037, -0.008, -0.026]
+            r_imu_lidar: [1., 0., 0.,
+                          0., -1., 0.,
+                          0., 0., -1.]
+
+        imu:
+            rate: 400
+            acc_noise: 0.019
+            gyr_noise: 0.019
+            acc_bias: 0.0043
+            gyr_bias: 0.000266
+            topic:  "/alphasense_driver_ros/imu"

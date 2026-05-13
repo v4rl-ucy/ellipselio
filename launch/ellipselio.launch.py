@@ -11,7 +11,7 @@ from launch_ros.actions import ComposableNodeContainer, Node, LoadComposableNode
 from launch_ros.descriptions import ComposableNode
 
 def generate_launch_description():
-    package_path = get_package_share_directory('ellipse_lio')
+    package_path = get_package_share_directory('ellipselio')
     default_config_path = os.path.join(package_path, 'config')
     default_rviz_config_path = os.path.join(
         package_path, 'rviz', 'ellipselio.rviz')
@@ -45,7 +45,7 @@ def generate_launch_description():
     )
     container_name_arg = DeclareLaunchArgument(
         name='container_name', 
-        default_value="osprey_container", 
+        default_value="ellipselio_container", 
         description="container name") 
 
     rviz_node = Node(
@@ -57,9 +57,9 @@ def generate_launch_description():
     )
 
     ellipse_lio_node = Node(
-        package='ellipse_lio',
+        package='ellipselio',
         executable='ellipselio_mapping_node',
-        name='ellipse_lio',
+        name='ellipselio',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
         output='screen',
@@ -67,9 +67,9 @@ def generate_launch_description():
     )
 
     ellipse_lio_comp = ComposableNode(
-        package='ellipse_lio',
+        package='ellipselio',
         plugin='ellipselio::MappingNode',
-        name='ellipse_lio',
+        name='ellipselio',
         parameters=[PathJoinSubstitution([config_path, config_file]),
                     {'use_sim_time': use_sim_time}],
         extra_arguments=[{'use_intra_process_comms': True}],

@@ -1,5 +1,5 @@
-#ifndef ELLIPSE_LIO_INCLUDE_IMU_PROCESSING_H_
-#define ELLIPSE_LIO_INCLUDE_IMU_PROCESSING_H_
+#ifndef IMU_PROCESSING_H_
+#define IMU_PROCESSING_H_
 
 #include <math.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -20,9 +20,6 @@
 
 #include "cam_processing.h"
 #include "common_lib.h"
-#include "common_pcl.h"
-#include "so3_math.h"
-#include "use_ikfom.h"
 
 inline constexpr double kGravityMetersPerSecondSquared = 9.80665;
 inline constexpr double kLidarPointCovariance = 0.001;
@@ -44,9 +41,11 @@ class ImuProcess {
   ImuProcess(IkfomSPtr kf, ImuParams params, rclcpp::Node::SharedPtr node);
 
   void UndistortPointCloud(EllipseLioPointCloudPtr pc, KfState* kf_state,
-                           const rclcpp::Time& lidar_start_time, const rclcpp::Time& lidar_end_time,
+                           const rclcpp::Time& lidar_start_time,
+                           const rclcpp::Time& lidar_end_time,
                            const CamProcessVec& cams);
-  void UpdateStatesWithLidar(KfState* kf_state, const rclcpp::Time& lidar_end_time,
+  void UpdateStatesWithLidar(KfState* kf_state,
+                             const rclcpp::Time& lidar_end_time,
                              double max_solve_time);
   void GetKfState(KfState* kf_state) const;
   void SyncWithLidar(rclcpp::Time* imu_start_time, rclcpp::Time* imu_end_time);
@@ -69,11 +68,13 @@ class ImuProcess {
   void ImuCallback(const sensor_msgs::msg::Imu::UniquePtr msg_in);
   void GetTimeMatch(int* match_idx, const rclcpp::Time& match_time,
                     const boost::circular_buffer<ImuState>& imu_states);
-  void GetMatchingImages(const rclcpp::Time& min_time, const rclcpp::Time& match_time,
+  void GetMatchingImages(const rclcpp::Time& min_time,
+                         const rclcpp::Time& match_time,
                          const CamProcessVec& cams,
                          const boost::circular_buffer<ImuState>& imu_states);
   void ColorisePoint(EllipseLioPoint* pt, const CamProcessVec& cams,
-                     const Eigen::Isometry3d& T_world_pt, const Eigen::Isometry3d& T_imu_lidar);
+                     const Eigen::Isometry3d& T_world_pt,
+                     const Eigen::Isometry3d& T_imu_lidar);
 
   IkfomSPtr kf_;
   KfState kf_state_, pub_kf_state_;
@@ -100,4 +101,4 @@ class ImuProcess {
   bool b_first_frame_, imu_need_init_;
 };
 
-#endif  // ELLIPSE_LIO_INCLUDE_IMU_PROCESSING_H_
+#endif  // IMU_PROCESSING_H_

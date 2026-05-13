@@ -1,5 +1,5 @@
-#ifndef ELLIPSE_LIO_INCLUDE_MAP_PROCESSING_H_
-#define ELLIPSE_LIO_INCLUDE_MAP_PROCESSING_H_
+#ifndef MAP_PROCESSING_H_
+#define MAP_PROCESSING_H_
 
 #include <math.h>
 #include <omp.h>
@@ -8,10 +8,13 @@
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <chrono>
-#include <ellipse_lio/msg/ellipse_lio_analytics.hpp>
+#include <cmath>
+#include <ellipselio/msg/ellipse_lio_analytics.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <limits>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <random>
@@ -23,11 +26,8 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "common_lib.h"
-#include "common_pcl.h"
 #include "imu_processing.h"
-#include "ioctree.h"
 #include "lidar_processing.h"
-#include "project_ellipse.h"
 
 namespace ellipselio {
 
@@ -44,7 +44,8 @@ class MappingNode : public rclcpp::Node {
 
   void TensorVotePass1(int old_map_size, std::vector<int>& added_idxs,
                        std::vector<int>& updated_idxs);
-  void TensorVotePass2(std::vector<int>& added_idxs, std::vector<int>& updated_idxs);
+  void TensorVotePass2(std::vector<int>& added_idxs,
+                       std::vector<int>& updated_idxs);
 
   void SplitMap(const sensor_msgs::msg::PointCloud2& input,
                 std::vector<sensor_msgs::msg::PointCloud2>& clouds, size_t n);
@@ -55,7 +56,8 @@ class MappingNode : public rclcpp::Node {
   void PublishLidarOdometry();
   void PublishImuOdometry();
 
-  void TensorRegistration(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data);
+  void TensorRegistration(state_ikfom& s,
+                          esekfom::dyn_share_datastruct<double>& ekfom_data);
 
   void TimerCallback();
   void InitCamProcess();
@@ -70,7 +72,8 @@ class MappingNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
-  rclcpp::Publisher<ellipse_lio::msg::EllipseLioAnalytics>::SharedPtr pub_analytics_;
+  rclcpp::Publisher<ellipselio::msg::EllipseLioAnalytics>::SharedPtr
+      pub_analytics_;
 
   rclcpp::TimerBase::SharedPtr loop_timer_;
   rclcpp::TimerBase::SharedPtr pub_odom_lid_timer_;
@@ -82,15 +85,16 @@ class MappingNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
 
-  double last_sync_time_ = 0, max_imu_time_ = 0, max_state_time_ = 0, max_map_time_ = 0,
-         max_total_time_ = 0, mean_imu_time_ = 0, mean_state_time_ = 0, mean_map_time_ = 0,
-         mean_total_time_ = 0;
+  double last_sync_time_ = 0, max_imu_time_ = 0, max_state_time_ = 0,
+         max_map_time_ = 0, max_total_time_ = 0, mean_imu_time_ = 0,
+         mean_state_time_ = 0, mean_map_time_ = 0, mean_total_time_ = 0;
 
   std::string node_namespace_;
 
   int pub_map_n_secs_;
   int vel_pose_counter_ = 0;
-  int map_counter_ = 0, old_map_size_ = 0, new_map_size_ = 0, last_map_size_ = 0;
+  int map_counter_ = 0, old_map_size_ = 0, new_map_size_ = 0,
+      last_map_size_ = 0;
 
   double start_time_;
   bool initialized_ = false;
@@ -182,8 +186,8 @@ class MappingNode : public rclcpp::Node {
   std::mutex map_mutex_;
   std::mutex odom_mutex_;
 
-  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_;
-  ellipse_lio::msg::EllipseLioAnalytics analytics_msg_pub_;
+  ellipselio::msg::EllipseLioAnalytics analytics_msg_;
+  ellipselio::msg::EllipseLioAnalytics analytics_msg_pub_;
 
   rclcpp::Time last_opt_pub_time, last_imu_pub_time, last_imu_time_;
   rclcpp::Time imu_start_time_, imu_end_time_;
@@ -199,4 +203,4 @@ class MappingNode : public rclcpp::Node {
 };
 }  // namespace ellipselio
 
-#endif  // ELLIPSE_LIO_INCLUDE_MAP_PROCESSING_H_
+#endif  // MAP_PROCESSING_H_

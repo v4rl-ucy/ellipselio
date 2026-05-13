@@ -1,5 +1,5 @@
-#ifndef ELLIPSE_LIO_INCLUDE_CAM_PROCESSING_H_
-#define ELLIPSE_LIO_INCLUDE_CAM_PROCESSING_H_
+#ifndef CAM_PROCESSING_H_
+#define CAM_PROCESSING_H_
 
 #include <cv_bridge/cv_bridge.h>
 
@@ -33,7 +33,8 @@ struct Img {
 class CamProcess {
  public:
   CamProcess(CamParams params, rclcpp::Node::SharedPtr node);
-  void GetMatchingImageTime(const rclcpp::Time& match_time, rclcpp::Time* img_time);
+  void GetMatchingImageTime(const rclcpp::Time& match_time,
+                            rclcpp::Time* img_time);
   bool ColorPoint(V3D* pt_img, Eigen::Vector3i* pt_col);
 
   bool cam_has_data_;
@@ -63,4 +64,4 @@ class CamProcess {
 using CamProcessPtr = std::shared_ptr<CamProcess>;
 using CamProcessVec = std::vector<CamProcessPtr>;
 
-#endif  // ELLIPSE_LIO_INCLUDE_CAM_PROCESSING_H_
+#endif  // CAM_PROCESSING_H_

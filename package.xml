@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>ellipse_lio</name>
-  <version>0.0.0</version>
+  <name>ellipselio</name>
+  <version>1.0.0</version>
 
   <description>
   EllipseLio package

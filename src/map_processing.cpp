@@ -1,9 +1,5 @@
 #include "map_processing.h"
 
-#include <algorithm>
-#include <cmath>
-#include <limits>
-
 namespace ellipselio {
 
 // Sync lidar, imu, and camera data
@@ -1084,8 +1080,8 @@ MappingNode::MappingNode(
   new_neighbours_ = std::vector<std::vector<int>>(
       kMaxScanPoints, std::vector<int>(kMaxNeighbours));
 
-  analytics_msg_ = ellipse_lio::msg::EllipseLioAnalytics();
-  analytics_msg_pub_ = ellipse_lio::msg::EllipseLioAnalytics();
+  analytics_msg_ = ellipselio::msg::EllipseLioAnalytics();
+  analytics_msg_pub_ = ellipselio::msg::EllipseLioAnalytics();
 
   last_imu_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   imu_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -1130,9 +1126,8 @@ MappingNode::MappingNode(
 
   pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>(
       node_namespace_ + "/ellipselio_odom", rclcpp::SensorDataQoS());
-  pub_analytics_ =
-      this->create_publisher<ellipse_lio::msg::EllipseLioAnalytics>(
-          node_namespace_ + "/analytics", rclcpp::SensorDataQoS());
+  pub_analytics_ = this->create_publisher<ellipselio::msg::EllipseLioAnalytics>(
+      node_namespace_ + "/analytics", rclcpp::SensorDataQoS());
   pub_map_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
       node_namespace_ + "/cloud_map", rclcpp::SensorDataQoS());
   pub_scan_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(

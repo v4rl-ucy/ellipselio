@@ -1,5 +1,5 @@
-#ifndef ELLIPSE_LIO_INCLUDE_COMMON_LIB_H_
-#define ELLIPSE_LIO_INCLUDE_COMMON_LIB_H_
+#ifndef COMMON_LIB_H_
+#define COMMON_LIB_H_
 
 #include <Eigen/Eigen>
 #include <nav_msgs/msg/odometry.hpp>
@@ -7,8 +7,8 @@
 #include <sensor_msgs/msg/imu.hpp>
 
 #include "common_pcl.h"
-#include "so3_math.h"
-#include "use_ikfom.h"
+#include "ikfom/use_ikfom.h"
+#include "ioctree/ioctree.h"
 
 inline constexpr int kMinNeighbours = 6;
 inline constexpr int kMaxNeighbours = 60;
@@ -39,8 +39,8 @@ inline Eigen::Quaterniond QuaterniondFromArray(const ContainerT& values) {
 template <typename ContainerT>
 inline Eigen::Matrix3d Mat3dFromArray(const ContainerT& values) {
   Eigen::Matrix3d matrix;
-  matrix << values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
-      values[8];
+  matrix << values[0], values[1], values[2], values[3], values[4], values[5],
+      values[6], values[7], values[8];
   return matrix;
 }
 
@@ -66,4 +66,4 @@ struct ImuState {
   V3D gyr_avr;
 };
 
-#endif  // ELLIPSE_LIO_INCLUDE_COMMON_LIB_H_
+#endif  // COMMON_LIB_H_

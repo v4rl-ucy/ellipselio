@@ -1,5 +1,5 @@
-#ifndef ELLIPSE_LIO_INCLUDE_IOCTREE_H_
-#define ELLIPSE_LIO_INCLUDE_IOCTREE_H_
+#ifndef IOCTREE_H_
+#define IOCTREE_H_
 
 // Copyright (c) 2023 Jun Zhu, Tsinghua University
 //
@@ -47,7 +47,9 @@ struct DistanceIndex {
 
   DistanceIndex(float dist, float* index) : dist_(dist), index_(index) {}
 
-  bool operator<(const DistanceIndex& dist_index) const { return dist_ < dist_index.dist_; }
+  bool operator<(const DistanceIndex& dist_index) const {
+    return dist_ < dist_index.dist_;
+  }
 };
 
 class KNNSimpleResultSet {
@@ -100,7 +102,8 @@ struct BoxDeleteType {
   float min[3];
   float max[3];
   void Show() {
-    printf("min:(%f, %f, %f), max:(%f, %f, %f)\n", min[0], min[1], min[2], max[0], max[1], max[2]);
+    printf("min:(%f, %f, %f), max:(%f, %f, %f)\n", min[0], min[1], min[2],
+           max[0], max[1], max[2]);
   }
 };
 
@@ -163,11 +166,16 @@ class Octree {
   bool down_size_;
   int dim = kDim;
   size_t ordered_indices_[8][7] = {
-      {1, 2, 4, 3, 5, 6, 7}, {0, 3, 5, 2, 4, 7, 6}, {0, 3, 6, 1, 4, 7, 5}, {1, 2, 7, 0, 5, 6, 4},
-      {0, 5, 6, 1, 2, 7, 3}, {1, 4, 7, 0, 3, 6, 2}, {2, 4, 7, 0, 3, 5, 1}, {3, 5, 6, 1, 2, 4, 0}};
+      {1, 2, 4, 3, 5, 6, 7}, {0, 3, 5, 2, 4, 7, 6}, {0, 3, 6, 1, 4, 7, 5},
+      {1, 2, 7, 0, 5, 6, 4}, {0, 5, 6, 1, 2, 7, 3}, {1, 4, 7, 0, 3, 6, 2},
+      {2, 4, 7, 0, 3, 5, 1}, {3, 5, 6, 1, 2, 4, 0}};
   bool ordered_;
 
-  Octree() : bucket_size_(32), min_extent_(0.01f), root_(nullptr), down_size_(false) {
+  Octree()
+      : bucket_size_(32),
+        min_extent_(0.01f),
+        root_(nullptr),
+        down_size_(false) {
     ordered_ = true;
     pts_num_deleted = last_pts_num = octant_num = 0;
     dim = kDim;
@@ -175,7 +183,10 @@ class Octree {
   }
 
   Octree(size_t bucketSize_, bool copyPoints_, float minExtent_)
-      : bucket_size_(bucketSize_), min_extent_(minExtent_), root_(nullptr), down_size_(false) {
+      : bucket_size_(bucketSize_),
+        min_extent_(minExtent_),
+        root_(nullptr),
+        down_size_(false) {
     ordered_ = true;
     pts_num_deleted = last_pts_num = octant_num = 0;
     dim = kDim;
@@ -183,7 +194,10 @@ class Octree {
   }
 
   Octree(size_t bucketSize_, bool copyPoints_, float minExtent_, int dim_)
-      : bucket_size_(bucketSize_), min_extent_(minExtent_), root_(nullptr), down_size_(false) {
+      : bucket_size_(bucketSize_),
+        min_extent_(minExtent_),
+        root_(nullptr),
+        down_size_(false) {
     ordered_ = true;
     pts_num_deleted = last_pts_num = octant_num = 0;
     dim = kDim;
@@ -194,7 +208,9 @@ class Octree {
 
   void SetOrder(bool ordered = false) { ordered_ = ordered; }
 
-  void SetMaxNewPoints(int max_new_points) { new_points = new float[max_new_points * kDim]; }
+  void SetMaxNewPoints(int max_new_points) {
+    new_points = new float[max_new_points * kDim];
+  }
 
   void SetMaxOctants(int max_octants) {
     octant_max = max_octants;
@@ -203,13 +219,16 @@ class Octree {
 
   void SetMinExtent(float extent) { min_extent_ = extent; }
 
-  void SetBucketSize(size_t bucket_size) { bucket_size_ = fmin(bucket_size, kMaxBucket); }
+  void SetBucketSize(size_t bucket_size) {
+    bucket_size_ = fmin(bucket_size, kMaxBucket);
+  }
 
   void SetDownSize(bool down_size) { down_size_ = down_size; }
 
   template <typename ContainerT>
-  void Initialize(ContainerT& pts_, int filter_size, std::vector<int>& filter_idxs,
-                  std::vector<int>& added_idxs, std::vector<int>& new_idxs, bool down_size = true) {
+  void Initialize(ContainerT& pts_, int filter_size,
+                  std::vector<int>& filter_idxs, std::vector<int>& added_idxs,
+                  std::vector<int>& new_idxs, bool down_size = true) {
     added_idxs.clear();
     new_idxs.clear();
     added_idxs.reserve(filter_size);
@@ -253,34 +272,44 @@ class Octree {
     points.resize(cloud_index);
 
     if (print_debug_) {
-      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
     }
 
     for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / min_extent_) * min_extent_;
       max[i] = ceil(max[i] / min_extent_) * min_extent_;
-      if (static_cast<int>(min[i] / min_extent_) % 2 != 0) min[i] += min_extent_;
-      if (static_cast<int>(max[i] / min_extent_) % 2 != 0) max[i] -= min_extent_;
+      if (static_cast<int>(min[i] / min_extent_) % 2 != 0)
+        min[i] += min_extent_;
+      if (static_cast<int>(max[i] / min_extent_) % 2 != 0)
+        max[i] -= min_extent_;
       extent[i] = 0.5f * (max[i] - min[i]);
       max_extent = fmax(max_extent, extent[i]);
       ctr[i] = min[i] + extent[i];
     }
 
     if (print_debug_) {
-      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
-      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2] << std::endl;
-      std::cerr << "extent: " << extent[0] << " " << extent[1] << " " << extent[2] << std::endl;
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
       std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
-    root_ = CreateOctant(ctr[0], ctr[1], ctr[2], max_extent, points, added_idxs, new_idxs);
+    root_ = CreateOctant(ctr[0], ctr[1], ctr[2], max_extent, points, added_idxs,
+                         new_idxs);
   }
 
   template <typename ContainerT>
-  void Initialize(ContainerT& pts_, std::vector<int>& added_idxs, std::vector<int>& new_idxs,
-                  bool down_size = true, int start_idx = 0, int end_idx = 0) {
+  void Initialize(ContainerT& pts_, std::vector<int>& added_idxs,
+                  std::vector<int>& new_idxs, bool down_size = true,
+                  int start_idx = 0, int end_idx = 0) {
     added_idxs.clear();
     new_idxs.clear();
 
@@ -326,36 +355,47 @@ class Octree {
     points.resize(cloud_index);
 
     if (print_debug_) {
-      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
     }
 
     for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / min_extent_) * min_extent_;
       max[i] = ceil(max[i] / min_extent_) * min_extent_;
-      if (static_cast<int>(min[i] / min_extent_) % 2 != 0) min[i] += min_extent_;
-      if (static_cast<int>(max[i] / min_extent_) % 2 != 0) max[i] -= min_extent_;
+      if (static_cast<int>(min[i] / min_extent_) % 2 != 0)
+        min[i] += min_extent_;
+      if (static_cast<int>(max[i] / min_extent_) % 2 != 0)
+        max[i] -= min_extent_;
       extent[i] = 0.5f * (max[i] - min[i]);
       max_extent = fmax(max_extent, extent[i]);
       ctr[i] = min[i] + extent[i];
     }
 
     if (print_debug_) {
-      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
-      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2] << std::endl;
-      std::cerr << "extent: " << extent[0] << " " << extent[1] << " " << extent[2] << std::endl;
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
       std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
-    root_ = CreateOctant(ctr[0], ctr[1], ctr[2], max_extent, points, added_idxs, new_idxs);
+    root_ = CreateOctant(ctr[0], ctr[1], ctr[2], max_extent, points, added_idxs,
+                         new_idxs);
   }
 
   template <typename ContainerT>
   void Update(ContainerT& pts_, int filter_size, std::vector<int>& filter_idxs,
-              std::vector<int>& added_idxs, std::vector<int>& new_idxs, bool down_size = true) {
+              std::vector<int>& added_idxs, std::vector<int>& new_idxs,
+              bool down_size = true) {
     if (root_ == nullptr) {
-      Initialize(pts_, filter_size, filter_idxs, added_idxs, new_idxs, down_size);
+      Initialize(pts_, filter_size, filter_idxs, added_idxs, new_idxs,
+                 down_size);
       return;
     }
     added_idxs.clear();
@@ -402,24 +442,32 @@ class Octree {
     points.resize(cloud_index);
 
     if (print_debug_) {
-      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
     }
     for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / min_extent_) * min_extent_;
       max[i] = ceil(max[i] / min_extent_) * min_extent_;
-      if (static_cast<int>(min[i] / min_extent_) % 2 != 0) min[i] += min_extent_;
-      if (static_cast<int>(max[i] / min_extent_) % 2 != 0) max[i] -= min_extent_;
+      if (static_cast<int>(min[i] / min_extent_) % 2 != 0)
+        min[i] += min_extent_;
+      if (static_cast<int>(max[i] / min_extent_) % 2 != 0)
+        max[i] -= min_extent_;
       extent[i] = 0.5f * (max[i] - min[i]);
       max_extent = fmax(max_extent, extent[i]);
       ctr[i] = min[i] + extent[i];
     }
 
     if (print_debug_) {
-      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
-      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2] << std::endl;
-      std::cerr << "extent: " << extent[0] << " " << extent[1] << " " << extent[2] << std::endl;
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
       std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
@@ -472,8 +520,9 @@ class Octree {
   }
 
   template <typename ContainerT>
-  void Update(ContainerT& pts_, std::vector<int>& added_idxs, std::vector<int>& new_idxs,
-              int start_idx, int end_idx, float res, bool down_size = true) {
+  void Update(ContainerT& pts_, std::vector<int>& added_idxs,
+              std::vector<int>& new_idxs, int start_idx, int end_idx, float res,
+              bool down_size = true) {
     if (root_ == nullptr) {
       Initialize(pts_, added_idxs, new_idxs, down_size, start_idx, end_idx);
       return;
@@ -524,25 +573,33 @@ class Octree {
     points.resize(cloud_index);
 
     if (print_debug_) {
-      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
+      std::cerr << "orig min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "orig max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
     }
 
     for (size_t i = 0; i < 3; ++i) {
       min[i] = floor(min[i] / min_extent_) * min_extent_;
       max[i] = ceil(max[i] / min_extent_) * min_extent_;
-      if (static_cast<int>(min[i] / min_extent_) % 2 != 0) min[i] += min_extent_;
-      if (static_cast<int>(max[i] / min_extent_) % 2 != 0) max[i] -= min_extent_;
+      if (static_cast<int>(min[i] / min_extent_) % 2 != 0)
+        min[i] += min_extent_;
+      if (static_cast<int>(max[i] / min_extent_) % 2 != 0)
+        max[i] -= min_extent_;
       extent[i] = 0.5f * (max[i] - min[i]);
       max_extent = fmax(max_extent, extent[i]);
       ctr[i] = min[i] + extent[i];
     }
 
     if (print_debug_) {
-      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2] << std::endl;
-      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2] << std::endl;
-      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2] << std::endl;
-      std::cerr << "extent: " << extent[0] << " " << extent[1] << " " << extent[2] << std::endl;
+      std::cerr << "proc min: " << min[0] << " " << min[1] << " " << min[2]
+                << std::endl;
+      std::cerr << "proc max: " << max[0] << " " << max[1] << " " << max[2]
+                << std::endl;
+      std::cerr << "ctr: " << ctr[0] << " " << ctr[1] << " " << ctr[2]
+                << std::endl;
+      std::cerr << "extent: " << extent[0] << " " << extent[1] << " "
+                << extent[2] << std::endl;
       std::cerr << "maxextent: " << max_extent << std::endl;
     }
 
@@ -603,7 +660,8 @@ class Octree {
   }
 
   template <typename PointT>
-  void RadiusNeighbors(const PointT& query, float radius, std::vector<int>& resultIndices,
+  void RadiusNeighbors(const PointT& query, float radius,
+                       std::vector<int>& resultIndices,
                        size_t bucket_size = 0) {
     resultIndices.clear();
     if (root_ == nullptr) return;
@@ -619,7 +677,8 @@ class Octree {
   }
 
   template <typename PointT>
-  void RadiusNeighbors(const PointT& query, float radius, std::vector<size_t>& resultIndices,
+  void RadiusNeighbors(const PointT& query, float radius,
+                       std::vector<size_t>& resultIndices,
                        std::vector<float>& distances, size_t bucket_size = 0) {
     resultIndices.clear();
     distances.clear();
@@ -627,7 +686,8 @@ class Octree {
     float sqrRadius = radius * radius;
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float*> points_ptr;
-    RadiusNeighbors(root_, query_, radius, sqrRadius, points_ptr, distances, bucket_size);
+    RadiusNeighbors(root_, query_, radius, sqrRadius, points_ptr, distances,
+                    bucket_size);
     resultIndices.resize(points_ptr.size());
 
     for (size_t i = 0; i < points_ptr.size(); i++) {
@@ -636,16 +696,18 @@ class Octree {
   }
 
   template <typename PointT>
-  void RadiusNeighbors(const PointT& query, float radius,
-                       std::vector<PointT, Eigen::aligned_allocator<PointT>>& resultPoints,
-                       std::vector<float>& distances, size_t bucket_size = 0) {
+  void RadiusNeighbors(
+      const PointT& query, float radius,
+      std::vector<PointT, Eigen::aligned_allocator<PointT>>& resultPoints,
+      std::vector<float>& distances, size_t bucket_size = 0) {
     resultPoints.clear();
     distances.clear();
     if (root_ == nullptr) return;
     float sqrRadius = radius * radius;
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float*> points_ptr;
-    RadiusNeighbors(root_, query_, radius, sqrRadius, points_ptr, distances, bucket_size);
+    RadiusNeighbors(root_, query_, radius, sqrRadius, points_ptr, distances,
+                    bucket_size);
     resultPoints.resize(points_ptr.size());
 
     for (size_t i = 0; i < resultPoints.size(); i++) {
@@ -658,14 +720,16 @@ class Octree {
   }
 
   template <typename PointT>
-  void RadiusNeighbors(const PointT& query, float radius, Eigen::MatrixXf& resultMatrix,
+  void RadiusNeighbors(const PointT& query, float radius,
+                       Eigen::MatrixXf& resultMatrix,
                        std::vector<float>& distances, size_t bucket_size = 0) {
     distances.clear();
     if (root_ == nullptr) return;
     float sqrRadius = radius * radius;  // "squared" radius
     float query_[3] = {query.x, query.y, query.z};
     std::vector<float*> points_ptr;
-    RadiusNeighbors(root_, query_, radius, sqrRadius, points_ptr, distances, bucket_size);
+    RadiusNeighbors(root_, query_, radius, sqrRadius, points_ptr, distances,
+                    bucket_size);
     resultMatrix.resize(points_ptr.size(), 3);
 
     for (size_t i = 0; i < resultMatrix.rows(); i++) {
@@ -676,8 +740,10 @@ class Octree {
   }
 
   template <typename PointT>
-  void RadiusNeighbors(const PointT& query, float radius, Eigen::MatrixXf& resultMatrix,
-                       std::vector<int>& resultIndices, size_t bucket_size = 0) {
+  void RadiusNeighbors(const PointT& query, float radius,
+                       Eigen::MatrixXf& resultMatrix,
+                       std::vector<int>& resultIndices,
+                       size_t bucket_size = 0) {
     resultIndices.clear();
     if (root_ == nullptr) return;
     float sqrRadius = radius * radius;
@@ -696,9 +762,10 @@ class Octree {
   }
 
   template <typename PointT>
-  int32_t KnnNeighbors(const PointT& query, int k,
-                       std::vector<PointT, Eigen::aligned_allocator<PointT>>& resultIndices,
-                       std::vector<float>& distances) {
+  int32_t KnnNeighbors(
+      const PointT& query, int k,
+      std::vector<PointT, Eigen::aligned_allocator<PointT>>& resultIndices,
+      std::vector<float>& distances) {
     if (root_ == nullptr) return 0;
 
     float query_[3] = {query.x, query.y, query.z};
@@ -723,7 +790,8 @@ class Octree {
   }
 
   template <typename PointT>
-  int32_t KnnNeighbors(const PointT& query, int k, std::vector<size_t>& resultIndices,
+  int32_t KnnNeighbors(const PointT& query, int k,
+                       std::vector<size_t>& resultIndices,
                        std::vector<float>& distances) {
     if (root_ == nullptr) return 0;
 
@@ -745,7 +813,8 @@ class Octree {
   }
 
   template <typename PointT>
-  int32_t KnnNeighbors(const PointT& query, int k, std::vector<int>& resultIndices,
+  int32_t KnnNeighbors(const PointT& query, int k,
+                       std::vector<int>& resultIndices,
                        std::vector<float>& distances) {
     if (root_ == nullptr) return 0;
 
@@ -766,7 +835,8 @@ class Octree {
     return data.size();
   }
 
-  int32_t KnnNeighbors(const Eigen::Vector3f& query, int k, std::vector<int>& resultIndices,
+  int32_t KnnNeighbors(const Eigen::Vector3f& query, int k,
+                       std::vector<int>& resultIndices,
                        std::vector<float>& distances) {
     if (root_ == nullptr) return 0;
 
@@ -787,7 +857,8 @@ class Octree {
     return data.size();
   }
 
-  int32_t KnnNeighbors(const Eigen::Vector3f& query, int k, std::vector<int>& resultIndices,
+  int32_t KnnNeighbors(const Eigen::Vector3f& query, int k,
+                       std::vector<int>& resultIndices,
                        std::vector<float>& distances, const float& search_rad) {
     if (root_ == nullptr) return 0;
 
@@ -835,7 +906,8 @@ class Octree {
 
   size_t size() { return last_pts_num - pts_num_deleted; }
 
-  void GetNodes(Octant* octant, std::vector<Octant*>& nodes, float min_extent = 0) {
+  void GetNodes(Octant* octant, std::vector<Octant*>& nodes,
+                float min_extent = 0) {
     if (octant == nullptr) return;
     if (min_extent > 0) {
       if (octant->extent <= min_extent) {
@@ -894,8 +966,10 @@ class Octree {
   Octree(const Octree&) = delete;
   Octree& operator=(const Octree&) = delete;
 
-  Octant* CreateOctant(float x, float y, float z, float extent, std::vector<float*>& points,
-                       std::vector<int>& added_idxs, std::vector<int>& new_idxs) {
+  Octant* CreateOctant(float x, float y, float z, float extent,
+                       std::vector<float*>& points,
+                       std::vector<int>& added_idxs,
+                       std::vector<int>& new_idxs) {
     Octant* octant = new Octant;
     const size_t size = points.size();
     octant->x = x;
@@ -923,8 +997,8 @@ class Octree {
         float childX = x + factor[(i & 1) > 0] * extent;
         float childY = y + factor[(i & 2) > 0] * extent;
         float childZ = z + factor[(i & 4) > 0] * extent;
-        octant->child[i] = CreateOctant(childX, childY, childZ, childExtent, child_points[i],
-                                        added_idxs, new_idxs);
+        octant->child[i] = CreateOctant(childX, childY, childZ, childExtent,
+                                        child_points[i], added_idxs, new_idxs);
       }
     } else {
       const size_t size = std::min(points.size(), bucket_size_);
@@ -932,12 +1006,14 @@ class Octree {
 
       if (octant->idx < 0 && size > 0) octant->idx = octant_num++;
       if (octant_num >= octant_max) {
-        std::cerr << "Octant overflow max: " << octant_max << " num: " << octant_num << std::endl;
+        std::cerr << "Octant overflow max: " << octant_max
+                  << " num: " << octant_num << std::endl;
         exit(1);
       }
       const size_t oct_idx = octant->idx * kMaxBucket * kDim;
       for (size_t i = 0; i < size; ++i) {
-        std::copy(points[i], points[i] + dim, all_points + oct_idx + (i * kDim));
+        std::copy(points[i], points[i] + dim,
+                  all_points + oct_idx + (i * kDim));
         octant->points[i] = all_points + oct_idx + (i * kDim);
         if (octant->points[i][3] < 0) {
           added_idxs.push_back(-(octant->points[i][3] + 1));
@@ -949,14 +1025,17 @@ class Octree {
     return octant;
   }
 
-  void UpdateOctant(Octant* octant, const std::vector<float*>& points, std::vector<int>& added_idxs,
-                    std::vector<int>& new_idxs) {
+  void UpdateOctant(Octant* octant, const std::vector<float*>& points,
+                    std::vector<int>& added_idxs, std::vector<int>& new_idxs) {
     static const float factor[] = {-0.5f, 0.5f};
-    const float x = octant->x, y = octant->y, z = octant->z, extent = octant->extent;
+    const float x = octant->x, y = octant->y, z = octant->z,
+                extent = octant->extent;
     octant->is_active_ = true;
     if (octant->child == nullptr) {
-      if (octant->points.size() + points.size() > bucket_size_ && extent >= 2 * min_extent_) {
-        octant->points.insert(octant->points.end(), points.begin(), points.end());
+      if (octant->points.size() + points.size() > bucket_size_ &&
+          extent >= 2 * min_extent_) {
+        octant->points.insert(octant->points.end(), points.begin(),
+                              points.end());
         const size_t size = octant->points.size();
         std::vector<std::vector<float*>> child_points(8, std::vector<float*>());
 
@@ -975,25 +1054,30 @@ class Octree {
           float childX = x + factor[(i & 1) > 0] * extent;
           float childY = y + factor[(i & 2) > 0] * extent;
           float childZ = z + factor[(i & 4) > 0] * extent;
-          octant->child[i] = CreateOctant(childX, childY, childZ, childExtent, child_points[i],
-                                          added_idxs, new_idxs);
+          octant->child[i] =
+              CreateOctant(childX, childY, childZ, childExtent, child_points[i],
+                           added_idxs, new_idxs);
         }
         octant->points.clear();
       } else {
         if (down_size_ && octant->points.size() >= bucket_size_) return;
         const size_t old_size = octant->points.size();
-        const size_t dif_size = std::min(points.size(), bucket_size_ - old_size);
-        octant->points.insert(octant->points.end(), points.begin(), points.begin() + dif_size);
+        const size_t dif_size =
+            std::min(points.size(), bucket_size_ - old_size);
+        octant->points.insert(octant->points.end(), points.begin(),
+                              points.begin() + dif_size);
         const size_t new_size = octant->points.size();
 
         if (octant->idx < 0 && new_size > 0) octant->idx = octant_num++;
         if (octant_num >= octant_max) {
-          std::cerr << "Octant overflow max: " << octant_max << " num: " << octant_num << std::endl;
+          std::cerr << "Octant overflow max: " << octant_max
+                    << " num: " << octant_num << std::endl;
           exit(1);
         }
         const size_t oct_idx = octant->idx * kMaxBucket * kDim;
         for (size_t i = 0; i < new_size; ++i) {
-          std::copy(octant->points[i], octant->points[i] + dim, all_points + oct_idx + (i * kDim));
+          std::copy(octant->points[i], octant->points[i] + dim,
+                    all_points + oct_idx + (i * kDim));
           octant->points[i] = all_points + oct_idx + (i * kDim);
           if (octant->points[i][3] < 0) {
             added_idxs.push_back(-(octant->points[i][3] + 1));
@@ -1021,19 +1105,23 @@ class Octree {
             float childX = x + factor[(i & 1) > 0] * extent;
             float childY = y + factor[(i & 2) > 0] * extent;
             float childZ = z + factor[(i & 4) > 0] * extent;
-            octant->child[i] = CreateOctant(childX, childY, childZ, childExtent, child_points[i],
-                                            added_idxs, new_idxs);
+            octant->child[i] =
+                CreateOctant(childX, childY, childZ, childExtent,
+                             child_points[i], added_idxs, new_idxs);
           } else
-            UpdateOctant(octant->child[i], child_points[i], added_idxs, new_idxs);
+            UpdateOctant(octant->child[i], child_points[i], added_idxs,
+                         new_idxs);
         }
       }
     }
   }
 
-  void RadiusNeighbors(const Octant* octant, const float* query, float radius, float sqrRadius,
-                       std::vector<float*>& resultIndices, size_t bucket_size) {
+  void RadiusNeighbors(const Octant* octant, const float* query, float radius,
+                       float sqrRadius, std::vector<float*>& resultIndices,
+                       size_t bucket_size) {
     if (!octant->is_active_) return;
-    if (3 * octant->extent * octant->extent < sqrRadius && contains(query, sqrRadius, octant)) {
+    if (3 * octant->extent * octant->extent < sqrRadius &&
+        contains(query, sqrRadius, octant)) {
       std::vector<const Octant*> candidate_octants;
       candidate_octants.reserve(8);
       GetLeafNodes(octant, candidate_octants);
@@ -1075,7 +1163,8 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (dist > 0 && dist < sqrRadius) resultIndices.push_back(octant->points[i]);
+        if (dist > 0 && dist < sqrRadius)
+          resultIndices.push_back(octant->points[i]);
       }
       return;
     }
@@ -1083,15 +1172,17 @@ class Octree {
     for (size_t c = 0; c < 8; ++c) {
       if (octant->child[c] == nullptr) continue;
       if (!overlaps(query, sqrRadius, octant->child[c])) continue;
-      RadiusNeighbors(octant->child[c], query, radius, sqrRadius, resultIndices, bucket_size);
+      RadiusNeighbors(octant->child[c], query, radius, sqrRadius, resultIndices,
+                      bucket_size);
     }
   }
 
-  void RadiusNeighbors(const Octant* octant, const float* query, float radius, float sqrRadius,
-                       std::vector<float*>& resultIndices, std::vector<float>& distances,
-                       size_t bucket_size) {
+  void RadiusNeighbors(const Octant* octant, const float* query, float radius,
+                       float sqrRadius, std::vector<float*>& resultIndices,
+                       std::vector<float>& distances, size_t bucket_size) {
     if (!octant->is_active_) return;
-    if (3 * octant->extent * octant->extent < sqrRadius && contains(query, sqrRadius, octant)) {
+    if (3 * octant->extent * octant->extent < sqrRadius &&
+        contains(query, sqrRadius, octant)) {
       std::vector<const Octant*> candidate_octants;
       GetLeafNodes(octant, candidate_octants);
 
@@ -1143,12 +1234,13 @@ class Octree {
     for (size_t c = 0; c < 8; ++c) {
       if (octant->child[c] == nullptr) continue;
       if (!overlaps(query, sqrRadius, octant->child[c])) continue;
-      RadiusNeighbors(octant->child[c], query, radius, sqrRadius, resultIndices, distances,
-                      bucket_size);
+      RadiusNeighbors(octant->child[c], query, radius, sqrRadius, resultIndices,
+                      distances, bucket_size);
     }
   }
 
-  bool KnnNeighbors(const Octant* octant, const float* query, KNNSimpleResultSet& heap) {
+  bool KnnNeighbors(const Octant* octant, const float* query,
+                    KNNSimpleResultSet& heap) {
     if (!octant->is_active_) return false;
     if (octant->child == nullptr) {
       const size_t size = octant->points.size();
@@ -1161,7 +1253,8 @@ class Octree {
           diff = p[j] - query[j];
           dist += diff * diff;
         }
-        if (dist > 0 && dist < heap.WorstDist()) heap.AddPoint(dist, octant->points[i]);
+        if (dist > 0 && dist < heap.WorstDist())
+          heap.AddPoint(dist, octant->points[i]);
       }
 
       return heap.full() && inside(query, heap.WorstDist(), octant);
@@ -1177,14 +1270,15 @@ class Octree {
     for (int i = 0; i < 7; ++i) {
       int c = ordered_indices_[mortonCode][i];
       if (octant->child[c] == nullptr) continue;
-      if (heap.full() && !overlaps(query, heap.WorstDist(), octant->child[c])) continue;
+      if (heap.full() && !overlaps(query, heap.WorstDist(), octant->child[c]))
+        continue;
       if (KnnNeighbors(octant->child[c], query, heap)) return true;
     }
     return heap.full() && inside(query, heap.WorstDist(), octant);
   }
 
-  bool KnnNeighbors(const Octant* octant, const float* query, KNNSimpleResultSet& heap,
-                    float& sqrRadius) {
+  bool KnnNeighbors(const Octant* octant, const float* query,
+                    KNNSimpleResultSet& heap, float& sqrRadius) {
     if (!octant->is_active_) return false;
     if (octant->child == nullptr) {
       const size_t size = octant->points.size();
@@ -1198,7 +1292,8 @@ class Octree {
           dist += diff * diff;
         }
         if (dist > sqrRadius) continue;
-        if (dist > 0 && dist < heap.WorstDist()) heap.AddPoint(dist, octant->points[i]);
+        if (dist > 0 && dist < heap.WorstDist())
+          heap.AddPoint(dist, octant->points[i]);
       }
 
       return heap.full() && inside(query, heap.WorstDist(), octant);
@@ -1208,21 +1303,23 @@ class Octree {
     if (query[1] > octant->y) mortonCode |= 2;
     if (query[2] > octant->z) mortonCode |= 4;
     if (octant->child[mortonCode] != nullptr) {
-      if (KnnNeighbors(octant->child[mortonCode], query, heap, sqrRadius)) return true;
+      if (KnnNeighbors(octant->child[mortonCode], query, heap, sqrRadius))
+        return true;
     }
 
     for (int i = 0; i < 7; ++i) {
       int c = ordered_indices_[mortonCode][i];
       if (octant->child[c] == nullptr) continue;
-      if (heap.full() && !overlaps(query, heap.WorstDist(), octant->child[c])) continue;
+      if (heap.full() && !overlaps(query, heap.WorstDist(), octant->child[c]))
+        continue;
       if (!overlaps(query, sqrRadius, octant->child[c])) continue;
       if (KnnNeighbors(octant->child[c], query, heap, sqrRadius)) return true;
     }
     return heap.full() && inside(query, heap.WorstDist(), octant);
   }
 
-  void BoxWiseDelete(Octant* octant, const BoxDeleteType& box_range, bool& deleted,
-                     bool clear_data) {
+  void BoxWiseDelete(Octant* octant, const BoxDeleteType& box_range,
+                     bool& deleted, bool clear_data) {
     float cur_min[3];
     float cur_max[3];
     cur_min[0] = octant->x - octant->extent;
@@ -1286,7 +1383,8 @@ class Octree {
         octant->points.resize(valid_num);
         if (octant->idx < 0 && valid_num > 0) octant->idx = octant_num++;
         if (octant_num >= octant_max) {
-          std::cerr << "Octant overflow max: " << octant_max << " num: " << octant_num << std::endl;
+          std::cerr << "Octant overflow max: " << octant_max
+                    << " num: " << octant_num << std::endl;
           exit(1);
         }
         const size_t oct_idx = octant->idx * kMaxBucket * kDim;
@@ -1333,7 +1431,8 @@ class Octree {
     // float maxdist = radius + o->extent;
     // Completely outside, since q' is outside the relevant area.
     // std::abs(query[0] - o->x) - o->extent > radius
-    if ((x > 0 && x * x > sqRadius) || (y > 0 && y * y > sqRadius) || (z > 0 && z * z > sqRadius))
+    if ((x > 0 && x * x > sqRadius) || (y > 0 && y * y > sqRadius) ||
+        (z > 0 && z * z > sqRadius))
       return false;
     int32_t num_less_extent = (x < 0) + (y < 0) + (z < 0);
     // Checking different cases:
@@ -1394,4 +1493,4 @@ class Octree {
 
 }  // namespace iOctree
 
-#endif  // ELLIPSE_LIO_INCLUDE_IOCTREE_H_
+#endif  // IOCTREE_H_

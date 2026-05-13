@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
-project(ellipse_lio)
+project(ellipselio)
 
-add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
+cmake_policy(SET CMP0074 NEW)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_BUILD_TYPE Release)
@@ -72,31 +72,7 @@ PLUGIN "ellipselio::MappingNode"
 EXECUTABLE ellipselio_mapping_node
 )
 
-find_program(CLANG_FORMAT_BIN NAMES clang-format)
-if(CLANG_FORMAT_BIN)
-  file(GLOB_RECURSE ELLIPSE_LIO_FORMAT_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-  )
-  list(FILTER ELLIPSE_LIO_FORMAT_FILES EXCLUDE REGEX ".*/include/IKFoM_toolkit/.*")
-
-  add_custom_target(format
-    COMMAND ${CLANG_FORMAT_BIN} -i ${ELLIPSE_LIO_FORMAT_FILES}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Formatting C++ sources with clang-format"
-  )
-
-  add_custom_target(format-check
-    COMMAND ${CLANG_FORMAT_BIN} -n --Werror ${ELLIPSE_LIO_FORMAT_FILES}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking C++ formatting with clang-format"
-  )
-else()
-  message(STATUS "clang-format not found: skipping format/format-check targets")
-endif()
-
-ament_auto_package(INSTALL_TO_SHARE
+ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR INSTALL_TO_SHARE
 launch
 rviz
 )
