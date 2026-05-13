@@ -1,14 +1,14 @@
-import os.path
+import os
 
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch.conditions import IfCondition
 
-from launch_ros.actions import ComposableNodeContainer, Node, LoadComposableNodes
-from launch_ros.descriptions import ComposableNode
+from launch_ros.actions import Node
+
 
 def generate_launch_description():
     package_path = get_package_share_directory('ellipselio')
@@ -44,42 +44,30 @@ def generate_launch_description():
         description='RViz config file path'
     )
     container_name_arg = DeclareLaunchArgument(
-        name='container_name', 
-        default_value="ellipselio_container", 
-        description="container name") 
+        name='container_name',
+        default_value='ellipselio_container',
+        description='container name')
 
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        arguments=['-d', rviz_cfg],
-        condition=IfCondition(rviz_use),
-        output='log'
-    )
-
-    ellipse_lio_node = Node(
-        package='ellipselio',
-        executable='ellipselio_mapping_node',
-        name='ellipselio',
-        parameters=[PathJoinSubstitution([config_path, config_file]),
-                    {'use_sim_time': use_sim_time}],
+    container = Node(
+        package='rclcpp_components',
+        executable='component_container_mt',
+        name=container_name,
         output='screen',
-        prefix=['gdbserver localhost:3000'],
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    ellipse_lio_comp = ComposableNode(
-        package='ellipselio',
-        plugin='ellipselio::MappingNode',
-        name='ellipselio',
-        parameters=[PathJoinSubstitution([config_path, config_file]),
-                    {'use_sim_time': use_sim_time}],
-        extra_arguments=[{'use_intra_process_comms': True}],
-    )
-
-    composable_node = LoadComposableNodes(
-        target_container=container_name,
-        composable_node_descriptions=[
-            ellipse_lio_comp,
-        ],
+    base_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([package_path, 'launch', 'ellipselio.launch.py'])
+        ),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'config_path': config_path,
+            'config_file': config_file,
+            'rviz': rviz_use,
+            'rviz_cfg': rviz_cfg,
+            'container_name': container_name,
+        }.items(),
     )
 
     ld = LaunchDescription()
@@ -89,8 +77,7 @@ def generate_launch_description():
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_rviz_config_path_cmd)
     ld.add_action(container_name_arg)
-    ld.add_action(rviz_node)
-    ld.add_action(composable_node)
-    # ld.add_action(ellipse_lio_node)
+    ld.add_action(container)
+    ld.add_action(base_launch)
 
     return ld
