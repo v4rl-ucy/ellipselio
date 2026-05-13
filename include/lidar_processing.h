@@ -1,16 +1,20 @@
-#pragma once
-
-#ifndef LIDARPROCESS_H
-#define LIDARPROCESS_H
-
-#include <common_lib.h>
-#include <common_pcl.h>
-#include <ioctree.h>
+#ifndef ELLIPSE_LIO_INCLUDE_LIDAR_PROCESSING_H_
+#define ELLIPSE_LIO_INCLUDE_LIDAR_PROCESSING_H_
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
-enum LID_TYPE { LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4, GAZEBO = 5 };
+#include "common_lib.h"
+#include "common_pcl.h"
+#include "ioctree.h"
+
+enum class LidType {
+  kLivox = 1,
+  kVelodyne = 2,
+  kOuster = 3,
+  kHesai = 4,
+  kGazebo = 5,
+};
 
 struct LidarParams {
   int type;
@@ -25,12 +29,10 @@ struct LidarParams {
 class LidarProcess {
  public:
   ~LidarProcess();
-  LidarProcess(LidarParams params, float map_resolution,
-               rclcpp::Node::SharedPtr node);
+  LidarProcess(LidarParams params, float map_resolution, rclcpp::Node::SharedPtr node);
   void ClearPointCloud();
-  bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time& start_time,
-                     rclcpp::Time& end_time, Eigen::ArrayXi& bin_pcs_sizes,
-                     int& start_bin, int& mean_bin);
+  bool GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time* start_time, rclcpp::Time* end_time,
+                     Eigen::ArrayXi* bin_pcs_sizes, int* start_bin, int* mean_bin);
 
   int num_bins_;
   bool lidar_has_data_;
@@ -59,20 +61,19 @@ class LidarProcess {
   void SetMinMaxTime(int bin_idx);
   void ClearBins();
 
-  void SetPoint(LivoxPoint& in_pt0, LivoxPoint& in_pt, EllipseLioPoint& out_pt,
-                rclcpp::Time& point_time);
-  void SetPoint(VelodynePoint& in_pt0, VelodynePoint& in_pt,
-                EllipseLioPoint& out_pt, rclcpp::Time& point_time);
-  void SetPoint(OusterPoint& in_pt0, OusterPoint& in_pt,
-                EllipseLioPoint& out_pt, rclcpp::Time& point_time);
-  void SetPoint(HesaiPoint& in_pt0, HesaiPoint& in_pt, EllipseLioPoint& out_pt,
-                rclcpp::Time& point_time);
-  void SetPoint(GazeboPoint& in_pt0, GazeboPoint& in_pt,
-                EllipseLioPoint& out_pt, rclcpp::Time& point_time);
+  void SetPoint(const LivoxPoint& in_pt0, const LivoxPoint& in_pt, EllipseLioPoint* out_pt,
+                rclcpp::Time* point_time);
+  void SetPoint(const VelodynePoint& in_pt0, const VelodynePoint& in_pt, EllipseLioPoint* out_pt,
+                rclcpp::Time* point_time);
+  void SetPoint(const OusterPoint& in_pt0, const OusterPoint& in_pt, EllipseLioPoint* out_pt,
+                rclcpp::Time* point_time);
+  void SetPoint(const HesaiPoint& in_pt0, const HesaiPoint& in_pt, EllipseLioPoint* out_pt,
+                rclcpp::Time* point_time);
+  void SetPoint(const GazeboPoint& in_pt0, const GazeboPoint& in_pt, EllipseLioPoint* out_pt,
+                rclcpp::Time* point_time);
 
   template <typename InPtType>
-  void ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
-                    rclcpp::Time& point_time);
+  void ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx, rclcpp::Time& point_time);
   template <typename InPtType>
   void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
@@ -99,4 +100,4 @@ class LidarProcess {
   LidarParams params_;
 };
 
-#endif  // LIDARPROCESS_H
+#endif  // ELLIPSE_LIO_INCLUDE_LIDAR_PROCESSING_H_

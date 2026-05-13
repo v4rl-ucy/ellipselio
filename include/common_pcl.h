@@ -1,7 +1,5 @@
-#pragma once
-
-#ifndef COMMON_PCL_H
-#define COMMON_PCL_H
+#ifndef ELLIPSE_LIO_INCLUDE_COMMON_PCL_H_
+#define ELLIPSE_LIO_INCLUDE_COMMON_PCL_H_
 
 #define PCL_NO_PRECOMPILE
 
@@ -45,14 +43,13 @@ struct EIGEN_ALIGN16 PointXYZNRGBIT {
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     PointXYZNRGBIT,
     (float, x, x)(float, y, y)(float, z, z)(uint32_t, bin_idx, bin_idx)(
-        uint32_t, scan_idx, scan_idx)(uint32_t, has_rgb, has_rgb)(
-        uint32_t, prim_type, prim_type)(float, rgb, rgb)(float, intensity,
-                                                         intensity)(
-        uint32_t, time_secs, time_secs)(uint32_t, time_nsecs, time_nsecs))
+        uint32_t, scan_idx, scan_idx)(uint32_t, has_rgb, has_rgb)(uint32_t, prim_type, prim_type)(
+        float, rgb, rgb)(float, intensity, intensity)(uint32_t, time_secs,
+                                                      time_secs)(uint32_t, time_nsecs, time_nsecs))
 
-typedef PointXYZNRGBIT EllipseLioPoint;
-typedef pcl::PointCloud<EllipseLioPoint> EllipseLioPointCloud;
-typedef pcl::PointCloud<EllipseLioPoint>::Ptr EllipseLioPointCloudPtr;
+using EllipseLioPoint = PointXYZNRGBIT;
+using EllipseLioPointCloud = pcl::PointCloud<EllipseLioPoint>;
+using EllipseLioPointCloudPtr = pcl::PointCloud<EllipseLioPoint>::Ptr;
 
 struct EIGEN_ALIGN16 LivoxPoint {
   float x;
@@ -99,30 +96,27 @@ struct EIGEN_ALIGN16 GazeboPoint {
 };
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
-    LivoxPoint,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
-        uint8_t, tag, tag)(uint8_t, line, line)(double, timestamp, timestamp))
+    LivoxPoint, (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
+                    uint8_t, tag, tag)(uint8_t, line, line)(double, timestamp, timestamp))
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(VelodynePoint,
-                                  (float, x, x)(float, y, y)(float, z, z)(
-                                      float, intensity,
-                                      intensity)(float, time, time)(uint16_t,
-                                                                    ring, ring))
+POINT_CLOUD_REGISTER_POINT_STRUCT(
+    VelodynePoint,
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity,
+                                            intensity)(float, time, time)(uint16_t, ring, ring))
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     OusterPoint,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
-        std::uint32_t, t, t)(std::uint16_t, reflectivity,
-                             reflectivity)(std::uint32_t, range, range))
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(std::uint32_t, t, t)(
+        std::uint16_t, reflectivity, reflectivity)(std::uint32_t, range, range))
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(
-    HesaiPoint,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
-        double, timestamp, timestamp)(uint16_t, ring, ring))
+    HesaiPoint, (float, x, x)(float, y, y)(float, z, z)(float, intensity,
+                                                        intensity)(double, timestamp,
+                                                                   timestamp)(uint16_t, ring, ring))
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(
-    GazeboPoint,
-    (float, x, x)(float, y, y)(float, z, z)(float, intensity,
-                                            intensity)(uint16_t, ring, ring))
+POINT_CLOUD_REGISTER_POINT_STRUCT(GazeboPoint,
+                                  (float, x, x)(float, y, y)(float, z, z)(float, intensity,
+                                                                          intensity)(uint16_t, ring,
+                                                                                     ring))
 
-#endif  // COMMON_PCL_H
+#endif  // ELLIPSE_LIO_INCLUDE_COMMON_PCL_H_

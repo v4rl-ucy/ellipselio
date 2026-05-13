@@ -1,7 +1,5 @@
-#pragma once
-
-#ifndef PROJECT_ELLIPSE_H
-#define PROJECT_ELLIPSE_H
+#ifndef ELLIPSE_LIO_INCLUDE_PROJECT_ELLIPSE_H_
+#define ELLIPSE_LIO_INCLUDE_PROJECT_ELLIPSE_H_
 
 #include <assert.h>
 #include <math.h>
@@ -51,8 +49,7 @@
 
 /// calculate `(pX, pY)`, the projection of `(wX, wY)` on the ellipse of axes
 /// `radX, radY`
-void projectEllipse(float& pX, float& pY, float wX, float wY, float radX,
-                    float radY) {
+void ProjectEllipse(float& pX, float& pY, float wX, float wY, float radX, float radY) {
   // handle the pathological cases:
   if (wX == 0) {
     pX = 0;
@@ -116,8 +113,7 @@ void projectEllipse(float& pX, float& pY, float wX, float wY, float radX,
 
 #if (0)
     if (cnt > 16)
-      fprintf(stderr, "projectEllipse fails %u :  h %+f  F %+e  dh %e\n", cnt,
-              h, F, h - h_old);
+      fprintf(stderr, "ProjectEllipse fails %u :  h %+f  F %+e  dh %e\n", cnt, h, F, h - h_old);
 #endif
 
     if (++cnt > 20) break;
@@ -163,7 +159,7 @@ void projectEllipse(float& pX, float& pY, float wX, float wY, float radX,
 
 /// calculate `p`, the projection of a 3D point `w` on the ellipse of axes given
 /// in `rad[]`
-bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
+bool ProjectEllipsoid(float p[3], const float w[3], const float rad[3]) {
   assert(rad[0] == rad[0] && rad[0] > 0);
   assert(rad[1] == rad[1] && rad[1] > 0);
   assert(rad[2] == rad[2] && rad[2] > 0);
@@ -171,17 +167,17 @@ bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
   // handle the pathological cases:
   if (w[0] == 0) {
     p[0] = 0;
-    projectEllipse(p[1], p[2], w[1], w[2], rad[1], rad[2]);
+    ProjectEllipse(p[1], p[2], w[1], w[2], rad[1], rad[2]);
     return false;
   }
   if (w[1] == 0) {
     p[1] = 0;
-    projectEllipse(p[0], p[2], w[0], w[2], rad[0], rad[2]);
+    ProjectEllipse(p[0], p[2], w[0], w[2], rad[0], rad[2]);
     return false;
   }
   if (w[2] == 0) {
     p[2] = 0;
-    projectEllipse(p[0], p[1], w[0], w[1], rad[0], rad[1]);
+    ProjectEllipse(p[0], p[1], w[0], w[1], rad[0], rad[1]);
     return false;
   }
 
@@ -193,10 +189,8 @@ bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
   // max(radX,radY,radZ)^2
   float RR = fmax(aa, fmax(bb, cc));
   // 'hmin' is the minimum value that 'h' can have
-  float hmin = sqrt((w[0] * w[0] * aa * aa + w[1] * w[1] * bb * bb +
-                     w[2] * w[2] * cc * cc) /
-                    RR) -
-               RR;
+  float hmin =
+      sqrt((w[0] * w[0] * aa * aa + w[1] * w[1] * bb * bb + w[2] * w[2] * cc * cc) / RR) - RR;
 
   // we derive another lower limit for 'h' from  |pX| < radX
   hmin = fmax(hmin, (fabs(w[0]) - rad[0]) * rad[0]);
@@ -252,8 +246,8 @@ bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
 
 #if (0)
     if (cnt > 16) {
-      fprintf(stderr, "projectEllipsoid fails %u :  h %+f  F %.6e dh %.6e\n",
-              cnt, h_old, F, h - h_old);
+      fprintf(stderr, "ProjectEllipsoid fails %u :  h %+f  F %.6e dh %.6e\n", cnt, h_old, F,
+              h - h_old);
       // fprintf(stderr, "    pos  %+.10f     %+.10f       %+.10f\n", w[0],
       // w[1], w[2]); fprintf(stderr, "    F    %+.10f  dF %+.10f   ddF
       // %+.10f\n", F, dF, ddF);
@@ -281,4 +275,4 @@ bool projectEllipsoid(float p[3], const float w[3], const float rad[3]) {
   return true;
 }
 
-#endif
+#endif  // ELLIPSE_LIO_INCLUDE_PROJECT_ELLIPSE_H_

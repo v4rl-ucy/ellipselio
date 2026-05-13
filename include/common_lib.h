@@ -1,38 +1,48 @@
-#pragma once
-
-#ifndef COMMON_LIB_H
-#define COMMON_LIB_H
-
-#include <common_pcl.h>
-#include <so3_math.h>
-#include <use_ikfom.h>
+#ifndef ELLIPSE_LIO_INCLUDE_COMMON_LIB_H_
+#define ELLIPSE_LIO_INCLUDE_COMMON_LIB_H_
 
 #include <Eigen/Eigen>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
-using namespace std;
+#include "common_pcl.h"
+#include "so3_math.h"
+#include "use_ikfom.h"
 
-#define MIN_NEIGHBOURS (6)
-#define MAX_NEIGHBOURS (60)
-#define MIN_MAP_RES (0.1)
-#define MIN_BIN_RES (0.01)
-#define MIN_SEARCH_RES (0.1)
-#define MAX_SEARCH_RES (1.0)
-#define MIN_PROC_POINTS (1000)
-#define MAX_PROC_POINTS (30000)
-#define MAX_SCAN_POINTS (200000)
-#define MAX_MAP_POINTS (10000000)
+inline constexpr int kMinNeighbours = 6;
+inline constexpr int kMaxNeighbours = 60;
+inline constexpr double kMinMapRes = 0.1;
+inline constexpr double kMinBinRes = 0.01;
+inline constexpr double kMinSearchRes = 0.1;
+inline constexpr double kMaxSearchRes = 1.0;
+inline constexpr int kMinProcPoints = 1000;
+inline constexpr int kMaxProcPoints = 30000;
+inline constexpr int kMaxScanPoints = 200000;
+inline constexpr int kMaxMapPoints = 10000000;
 
-#define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
-#define QUAT_FROM_ARRAY(v) v[3], v[0], v[1], v[2]
-#define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
+using V3D = Eigen::Vector3d;
+using M3D = Eigen::Matrix3d;
+using V3F = Eigen::Vector3f;
+using M3F = Eigen::Matrix3f;
 
-typedef Eigen::Vector3d V3D;
-typedef Eigen::Matrix3d M3D;
-typedef Eigen::Vector3f V3F;
-typedef Eigen::Matrix3f M3F;
+template <typename ContainerT>
+inline Eigen::Vector3d Vec3dFromArray(const ContainerT& values) {
+  return Eigen::Vector3d(values[0], values[1], values[2]);
+}
+
+template <typename ContainerT>
+inline Eigen::Quaterniond QuaterniondFromArray(const ContainerT& values) {
+  return Eigen::Quaterniond(values[3], values[0], values[1], values[2]);
+}
+
+template <typename ContainerT>
+inline Eigen::Matrix3d Mat3dFromArray(const ContainerT& values) {
+  Eigen::Matrix3d matrix;
+  matrix << values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
+      values[8];
+  return matrix;
+}
 
 static M3D Eye3d(M3D::Identity());
 static M3F Eye3f(M3F::Identity());
@@ -46,7 +56,7 @@ struct KfState {
   V3D gyr;
 };
 
-typedef std::shared_ptr<KfState> KfStateSPtr;
+using KfStateSPtr = std::shared_ptr<KfState>;
 
 struct ImuState {
   KfState state;
@@ -56,4 +66,4 @@ struct ImuState {
   V3D gyr_avr;
 };
 
-#endif
+#endif  // ELLIPSE_LIO_INCLUDE_COMMON_LIB_H_

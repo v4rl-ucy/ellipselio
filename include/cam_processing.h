@@ -1,9 +1,6 @@
-#pragma once
+#ifndef ELLIPSE_LIO_INCLUDE_CAM_PROCESSING_H_
+#define ELLIPSE_LIO_INCLUDE_CAM_PROCESSING_H_
 
-#ifndef CAM_PROCESSING_H
-#define CAM_PROCESSING_H
-
-#include <common_lib.h>
 #include <cv_bridge/cv_bridge.h>
 
 #include <Eigen/Eigen>
@@ -16,6 +13,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
+
+#include "common_lib.h"
 
 struct CamParams {
   int rate;
@@ -34,8 +33,8 @@ struct Img {
 class CamProcess {
  public:
   CamProcess(CamParams params, rclcpp::Node::SharedPtr node);
-  void GetMatchingImageTime(rclcpp::Time &match_time, rclcpp::Time &img_time);
-  bool ColorPoint(V3D &pt_img, Eigen::Vector3i &pt_col);
+  void GetMatchingImageTime(const rclcpp::Time& match_time, rclcpp::Time* img_time);
+  bool ColorPoint(V3D* pt_img, Eigen::Vector3i* pt_col);
 
   bool cam_has_data_;
   bool has_img_match_;
@@ -61,7 +60,7 @@ class CamProcess {
   void CamCallback(const sensor_msgs::msg::Image::ConstSharedPtr msg);
 };
 
-typedef std::shared_ptr<CamProcess> CamProcessPtr;
-typedef std::vector<CamProcessPtr> CamProcessVec;
+using CamProcessPtr = std::shared_ptr<CamProcess>;
+using CamProcessVec = std::vector<CamProcessPtr>;
 
-#endif  // SEE_CAM_PROCESSING_H
+#endif  // ELLIPSE_LIO_INCLUDE_CAM_PROCESSING_H_

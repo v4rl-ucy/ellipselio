@@ -1,12 +1,9 @@
-#include <common_lib.h>
-#include <common_pcl.h>
-#include <imu_processing.h>
-#include <ioctree.h>
-#include <lidar_processing.h>
+#ifndef ELLIPSE_LIO_INCLUDE_MAP_PROCESSING_H_
+#define ELLIPSE_LIO_INCLUDE_MAP_PROCESSING_H_
+
 #include <math.h>
 #include <omp.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <project_ellipse.h>
 #include <sys/times.h>
 #include <tf2_ros/transform_broadcaster.h>
 
@@ -25,6 +22,13 @@
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include "common_lib.h"
+#include "common_pcl.h"
+#include "imu_processing.h"
+#include "ioctree.h"
+#include "lidar_processing.h"
+#include "project_ellipse.h"
+
 namespace ellipselio {
 
 class MappingNode : public rclcpp::Node {
@@ -33,43 +37,40 @@ class MappingNode : public rclcpp::Node {
   ~MappingNode();
 
  private:
-  bool sync_packages();
+  bool SyncPackages();
 
-  void compute_tensor_vote(int i, int j, M3F& A_j, bool first_pass);
-  void compute_tensor_eigen(int i, M3F& tensor, bool first_pass);
+  void ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass);
+  void ComputeTensorEigen(int i, M3F* tensor, bool first_pass);
 
-  void tensor_vote_pass_1(int old_map_size, std::vector<int>& added_idxs,
-                          std::vector<int>& updated_idxs);
-  void tensor_vote_pass_2(std::vector<int>& added_idxs,
-                          std::vector<int>& updated_idxs);
+  void TensorVotePass1(int old_map_size, std::vector<int>& added_idxs,
+                       std::vector<int>& updated_idxs);
+  void TensorVotePass2(std::vector<int>& added_idxs, std::vector<int>& updated_idxs);
 
-  void split_map(const sensor_msgs::msg::PointCloud2& input,
-                 std::vector<sensor_msgs::msg::PointCloud2>& clouds, size_t n);
+  void SplitMap(const sensor_msgs::msg::PointCloud2& input,
+                std::vector<sensor_msgs::msg::PointCloud2>& clouds, size_t n);
 
-  void publish_map();
-  void publish_scan();
-  void publish_markers();
-  void publish_lid_odometry();
-  void publish_imu_odometry();
+  void PublishMap();
+  void PublishScan();
+  void PublishMarkers();
+  void PublishLidarOdometry();
+  void PublishImuOdometry();
 
-  void tensor_registration(state_ikfom& s,
-                           esekfom::dyn_share_datastruct<double>& ekfom_data);
+  void TensorRegistration(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data);
 
-  void timer_callback();
-  void init_cam_process();
-  void map_incremental();
+  void TimerCallback();
+  void InitCamProcess();
+  void MapIncremental();
 
-  void compute_ram_usage();
-  void compute_cpu_usage();
+  void ComputeRamUsage();
+  void ComputeCpuUsage();
 
-  void sync_raw_cloud_with_imu();
+  void SyncRawCloudWithImu();
 
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_map_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_mark_;
-  rclcpp::Publisher<ellipse_lio::msg::EllipseLioAnalytics>::SharedPtr
-      pub_analytics_;
+  rclcpp::Publisher<ellipse_lio::msg::EllipseLioAnalytics>::SharedPtr pub_analytics_;
 
   rclcpp::TimerBase::SharedPtr loop_timer_;
   rclcpp::TimerBase::SharedPtr pub_odom_lid_timer_;
@@ -81,99 +82,99 @@ class MappingNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr loop_callback_group_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
 
-  double last_sync_time = 0, max_imu_time = 0, max_state_time = 0,
-         max_map_time = 0, max_total_time = 0, mean_imu_time = 0,
-         mean_state_time = 0, mean_map_time = 0, mean_total_time = 0;
+  double last_sync_time_ = 0, max_imu_time_ = 0, max_state_time_ = 0, max_map_time_ = 0,
+         max_total_time_ = 0, mean_imu_time_ = 0, mean_state_time_ = 0, mean_map_time_ = 0,
+         mean_total_time_ = 0;
 
-  std::string node_namespace;
+  std::string node_namespace_;
 
-  int pub_map_n_secs;
-  int vel_pose_counter = 0;
-  int map_counter = 0, old_map_size = 0, new_map_size = 0, last_map_size = 0;
+  int pub_map_n_secs_;
+  int vel_pose_counter_ = 0;
+  int map_counter_ = 0, old_map_size_ = 0, new_map_size_ = 0, last_map_size_ = 0;
 
-  double start_time;
-  bool initialized = false;
+  double start_time_;
+  bool initialized_ = false;
 
-  double map_resolution, map_search_rad;
-  int start_bin, mean_bin;
+  double map_resolution_, map_search_rad_;
+  int start_bin_, mean_bin_;
 
-  int numProcessors;
-  clock_t lastCPU, lastSysCPU, lastUserCPU;
+  int num_processors_;
+  clock_t last_cpu_, last_sys_cpu_, last_user_cpu_;
 
-  int start_bin_cnt = 0;
-  int ekfom_grav_cnt = 0;
-  int ekfom_obs_cnt = 0;
-  int ekfom_iter_cnt = 0;
-  int ekfom_upd_cnt = 0;
+  int start_bin_cnt_ = 0;
+  int ekfom_grav_cnt_ = 0;
+  int ekfom_obs_cnt_ = 0;
+  int ekfom_iter_cnt_ = 0;
+  int ekfom_upd_cnt_ = 0;
 
-  Eigen::ArrayXf n_res;
-  Eigen::ArrayXi n_means;
-  Eigen::ArrayXXi n_cnts;
-  Eigen::ArrayXXi n_bins;
+  Eigen::ArrayXf n_res_;
+  Eigen::ArrayXi n_means_;
+  Eigen::ArrayXXi n_cnts_;
+  Eigen::ArrayXXi n_bins_;
 
-  Eigen::ArrayXd ekfom_data_w;
-  Eigen::ArrayXd ekfom_data_sb;
-  Eigen::ArrayXd ekfom_data_om;
-  Eigen::ArrayXd ekfom_data_oe;
-  Eigen::ArrayXXd ekfom_data_ot;
-  Eigen::ArrayXXd ekfom_data_or;
-  Eigen::VectorXd ekfom_data_h;
-  Eigen::ArrayXd ekfom_data_w_x;
-  Eigen::MatrixXd ekfom_data_h_x;
-  Eigen::MatrixXd ekfom_data_h_x_R;
-  Eigen::ArrayXd ekfom_data_h_v;
-  Eigen::MatrixXd ekfom_data_h_x_v;
+  Eigen::ArrayXd ekfom_data_w_;
+  Eigen::ArrayXd ekfom_data_sb_;
+  Eigen::ArrayXd ekfom_data_om_;
+  Eigen::ArrayXd ekfom_data_oe_;
+  Eigen::ArrayXXd ekfom_data_ot_;
+  Eigen::ArrayXXd ekfom_data_or_;
+  Eigen::VectorXd ekfom_data_h_;
+  Eigen::ArrayXd ekfom_data_w_x_;
+  Eigen::MatrixXd ekfom_data_h_x_;
+  Eigen::MatrixXd ekfom_data_h_x_r_;
+  Eigen::ArrayXd ekfom_data_h_v_;
+  Eigen::MatrixXd ekfom_data_h_x_v_;
 
-  std::vector<float> traj_dist;
-  std::vector<Eigen::Vector3f> vel_poses;
-  std::vector<Eigen::Vector3f> poses;
-  std::vector<Eigen::Quaternionf> rotes;
+  std::vector<float> traj_dist_;
+  std::vector<Eigen::Vector3f> vel_poses_;
+  std::vector<Eigen::Vector3f> poses_;
+  std::vector<Eigen::Quaternionf> rotes_;
 
-  std::vector<M3F> tensors_p1;
-  std::vector<M3F> tensors_p2;
-  std::vector<M3F> eigenvectors;
-  std::vector<V3F> eigenvalues;
-  std::vector<V3F> salivalues;
+  std::vector<M3F> tensors_p1_;
+  std::vector<M3F> tensors_p2_;
+  std::vector<M3F> eigenvectors_;
+  std::vector<V3F> eigenvalues_;
+  std::vector<V3F> salivalues_;
 
-  Eigen::ArrayXi raw_cloud_bins;
-  Eigen::ArrayXi scan_cloud_bins;
-  Eigen::ArrayXi buffer_cloud_bins;
-  std::vector<std::atomic<int>> scan_bin_sizes;
-  std::vector<std::atomic<int>> filter_bin_sizes;
+  Eigen::ArrayXi raw_cloud_bins_;
+  Eigen::ArrayXi scan_cloud_bins_;
+  Eigen::ArrayXi buffer_cloud_bins_;
+  std::vector<std::atomic<int>> scan_bin_sizes_;
+  std::vector<std::atomic<int>> filter_bin_sizes_;
 
-  std::vector<int> new_neighbours_map_idx;
-  std::vector<std::atomic<int>> updated_pt;
-  std::vector<std::vector<int>> new_neighbours;
-  std::vector<std::atomic<int>> new_neighbours_size;
+  std::vector<int> new_neighbours_map_idx_;
+  std::vector<std::atomic<int>> updated_pt_;
+  std::vector<std::vector<int>> new_neighbours_;
+  std::vector<std::atomic<int>> new_neighbours_size_;
 
-  std::vector<int> update_idx;
-  std::vector<int> saliency_idxs;
-  std::vector<vector<int>> neighbours;
-  std::vector<Eigen::Vector2i> filters;
+  std::vector<int> update_idx_;
+  std::vector<int> saliency_idxs_;
+  std::vector<std::vector<int>> neighbours_;
+  std::vector<Eigen::Vector2i> filters_;
 
-  int num_cams;
-  string cam_transport;
-  std::vector<string> cam_topics;
-  std::vector<double> t_cam_lidars;
-  std::vector<double> r_cam_lidars;
-  std::vector<double> cam_intrinsics;
-  std::vector<long int> cam_frame_rates;
+  int num_cams_;
+  std::string cam_transport_;
+  std::vector<std::string> cam_topics_;
+  std::vector<double> t_cam_lidars_;
+  std::vector<double> r_cam_lidars_;
+  std::vector<double> cam_intrinsics_;
+  std::vector<long int> cam_frame_rates_;
 
-  std::vector<double> t_imu_lidar;
-  std::vector<double> r_imu_lidar;
+  std::vector<double> t_imu_lidar_;
+  std::vector<double> r_imu_lidar_;
 
-  EllipseLioPointCloudPtr map_cloud;
-  EllipseLioPointCloudPtr raw_cloud;
-  EllipseLioPointCloudPtr scan_cloud;
-  EllipseLioPointCloudPtr scan_cloud_grav;
-  EllipseLioPointCloudPtr filter_cloud;
-  EllipseLioPointCloudPtr buffer_cloud;
-  EllipseLioPointCloudPtr scan_cloud_pub;
+  EllipseLioPointCloudPtr map_cloud_;
+  EllipseLioPointCloudPtr raw_cloud_;
+  EllipseLioPointCloudPtr scan_cloud_;
+  EllipseLioPointCloudPtr scan_cloud_grav_;
+  EllipseLioPointCloudPtr filter_cloud_;
+  EllipseLioPointCloudPtr buffer_cloud_;
+  EllipseLioPointCloudPtr scan_cloud_pub_;
 
-  iOctree::Octree ioctree;
+  iOctree::Octree ioctree_;
 
-  ImuParams imu_params;
-  LidarParams lidar_params;
+  ImuParams imu_params_;
+  LidarParams lidar_params_;
 
   IkfomSPtr kf_;
   KfState kf_state_, kf_state_pub_;
@@ -192,8 +193,10 @@ class MappingNode : public rclcpp::Node {
 
   double imu_time_offset_ = 0, lid_time_offset_ = 0;
 
-  CamProcessVec cams_process;
-  std::shared_ptr<ImuProcess> imu_process;
-  std::shared_ptr<LidarProcess> lid_process;
+  CamProcessVec cams_process_;
+  std::shared_ptr<ImuProcess> imu_process_;
+  std::shared_ptr<LidarProcess> lid_process_;
 };
 }  // namespace ellipselio
+
+#endif  // ELLIPSE_LIO_INCLUDE_MAP_PROCESSING_H_
