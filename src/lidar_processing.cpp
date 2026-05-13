@@ -2,16 +2,16 @@
 
 LidarProcess::~LidarProcess() {}
 
-// Setup the lidar process
-LidarProcess::LidarProcess(LidarParams params, float map_resolution, rclcpp::Node::SharedPtr node)
+LidarProcess::LidarProcess(LidarParams params, float map_resolution,
+                           rclcpp::Node::SharedPtr node)
     : params_(params),
       node_(node),
       lidar_counter_(0),
       process_pc_(new EllipseLioPointCloud()),
       ellipselio_pc_(new EllipseLioPointCloud()),
       lidar_time_offset_(0, 0) {
-  lidar_callback_group_ =
-      node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  lidar_callback_group_ = node_->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive);
 
   rclcpp::SubscriptionOptions lidar_opt;
   lidar_opt.callback_group = lidar_callback_group_;
@@ -28,7 +28,8 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution, rclcpp::Nod
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_sizes_ = std::vector<std::atomic<int>>(num_bins_);
   bin_octrees_ = std::vector<iOctree::Octree>(num_bins_);
-  bin_idxs_ = std::vector<std::vector<int>>(num_bins_, std::vector<int>(kMaxScanPoints));
+  bin_idxs_ = std::vector<std::vector<int>>(num_bins_,
+                                            std::vector<int>(kMaxScanPoints));
   bin_pcs_ = std::vector<EllipseLioPointCloud>(num_bins_);
   bin_min_times_ = std::vector<rclcpp::Time>(num_bins_);
   bin_max_times_ = std::vector<rclcpp::Time>(num_bins_);
@@ -80,21 +81,25 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution, rclcpp::Nod
 
   sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
       params.topic, rclcpp::SensorDataQoS(),
-      std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1), lidar_opt);
+      std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
+      lidar_opt);
 }
 
-// Callback for lidar point clouds
-void LidarProcess::LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in) {
-  sensor_msgs::msg::PointCloud2::SharedPtr msg(new sensor_msgs::msg::PointCloud2(*msg_in));
+void LidarProcess::LidarCallback(
+    const sensor_msgs::msg::PointCloud2::UniquePtr msg_in) {
+  sensor_msgs::msg::PointCloud2::SharedPtr msg(
+      new sensor_msgs::msg::PointCloud2(*msg_in));
 
   lidar_counter_++;
 
   lidar_time_offset_ = rclcpp::Duration(0, 0);
   if (rclcpp::Time(msg->header.stamp) < lidar_end_time_) {
     rcl_duration_t time_offset;
-    time_offset.nanoseconds = (lidar_end_time_ - rclcpp::Time(msg->header.stamp)).nanoseconds();
+    time_offset.nanoseconds =
+        (lidar_end_time_ - rclcpp::Time(msg->header.stamp)).nanoseconds();
     lidar_time_offset_ = rclcpp::Duration(time_offset);
-    RCLCPP_ERROR_STREAM_ONCE(node_->get_logger(), "WARNING: Lidar time offset detected!");
+    RCLCPP_ERROR_STREAM_ONCE(node_->get_logger(),
+                             "WARNING: Lidar time offset detected!");
   }
 
   lidar_mutex_.lock();
@@ -102,7 +107,6 @@ void LidarProcess::LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr 
   lidar_mutex_.unlock();
 }
 
-// Process the lidar point cloud
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   auto& clk = *node_->get_clock();
 
@@ -138,7 +142,8 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
       bin_octrees_[i].SetBucketSize(1);
       bin_octrees_[i].SetMinExtent(octree_resolutions_[fmax(i, start_bin_)]);
-      bin_octrees_[i].Update(*process_pc_, bin_sizes_[i], bin_idxs_[i], added_idxs, new_idxs);
+      bin_octrees_[i].Update(*process_pc_, bin_sizes_[i], bin_idxs_[i],
+                             added_idxs, new_idxs);
 
       if (!added_idxs.size()) continue;
       bin_pcs_[i] = EllipseLioPointCloud(*process_pc_, added_idxs);
@@ -185,7 +190,6 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   lidar_has_data_ = true;
 }
 
-// Clear the point cloud bins
 void LidarProcess::ClearBins() {
 #pragma omp parallel for
   for (size_t i = 0; i < num_bins_; i++) {
@@ -196,7 +200,6 @@ void LidarProcess::ClearBins() {
   }
 }
 
-// Clear the combined point cloud
 void LidarProcess::ClearPointCloud() {
   lidar_mutex_.lock();
   ClearBins();
@@ -204,10 +207,11 @@ void LidarProcess::ClearPointCloud() {
   lidar_mutex_.unlock();
 }
 
-// Get the current combined point cloud
-bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time* start_time,
-                                 rclcpp::Time* end_time, Eigen::ArrayXi* bin_pcs_sizes,
-                                 int* start_bin, int* mean_bin) {
+bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc,
+                                 rclcpp::Time* start_time,
+                                 rclcpp::Time* end_time,
+                                 Eigen::ArrayXi* bin_pcs_sizes, int* start_bin,
+                                 int* mean_bin) {
   if (!lidar_has_data_) return false;
 
   lidar_mutex_.lock();
@@ -226,7 +230,6 @@ bool LidarProcess::GetPointCloud(EllipseLioPointCloudPtr pc, rclcpp::Time* start
   return true;
 }
 
-// Get the start and end times for the current point cloud bin
 void LidarProcess::SetMinMaxTime(int bin_idx) {
   rclcpp::Time pt1_time, pt2_time;
 
@@ -243,16 +246,15 @@ void LidarProcess::SetMinMaxTime(int bin_idx) {
   }
 }
 
-// Set the point intensity and time for livox points
 void LidarProcess::SetPoint(const LivoxPoint& in_pt0, const LivoxPoint& in_pt,
                             EllipseLioPoint* out_pt, rclcpp::Time* point_time) {
   out_pt->intensity = in_pt.intensity;
   *point_time = rclcpp::Time(in_pt.timestamp, RCL_ROS_TIME);
 }
 
-// Set the point intensity and time for velodyne points
-void LidarProcess::SetPoint(const VelodynePoint& in_pt0, const VelodynePoint& in_pt,
-                            EllipseLioPoint* out_pt, rclcpp::Time* point_time) {
+void LidarProcess::SetPoint(const VelodynePoint& in_pt0,
+                            const VelodynePoint& in_pt, EllipseLioPoint* out_pt,
+                            rclcpp::Time* point_time) {
   out_pt->intensity = in_pt.intensity;
   if (in_pt.time < 0.0) {
     *point_time -= rclcpp::Duration(0, fabs(in_pt.time) * 1e9);
@@ -263,27 +265,23 @@ void LidarProcess::SetPoint(const VelodynePoint& in_pt0, const VelodynePoint& in
   }
 }
 
-// Set the point intensity and time for ouster points
 void LidarProcess::SetPoint(const OusterPoint& in_pt0, const OusterPoint& in_pt,
                             EllipseLioPoint* out_pt, rclcpp::Time* point_time) {
   out_pt->intensity = in_pt.intensity;
   *point_time += rclcpp::Duration(0, in_pt.t);
 }
 
-// Set the point intensity and time for hesai points
 void LidarProcess::SetPoint(const HesaiPoint& in_pt0, const HesaiPoint& in_pt,
                             EllipseLioPoint* out_pt, rclcpp::Time* point_time) {
   out_pt->intensity = in_pt.intensity;
   *point_time = rclcpp::Time(in_pt.timestamp * 1e9, RCL_ROS_TIME);
 }
 
-// Set the point intensity and time for gazebo points
 void LidarProcess::SetPoint(const GazeboPoint& in_pt0, const GazeboPoint& in_pt,
                             EllipseLioPoint* out_pt, rclcpp::Time* point_time) {
   out_pt->intensity = in_pt.intensity;
 }
 
-// Convert the input point type to an ellipselio point
 template <typename InPtType>
 void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
                                 rclcpp::Time& point_time) {
@@ -302,9 +300,9 @@ void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
   out_pt.time_nsecs = msg_time.nanosec;
 }
 
-// Convert the point cloud to an ellipselio point cloud
 template <typename InPtType>
-void LidarProcess::PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+void LidarProcess::PointCloudHandler(
+    const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   pcl::PointCloud<InPtType> in_pc;
   pcl::fromROSMsg(*msg, in_pc);
   int num_points, proc_points;
@@ -323,8 +321,8 @@ void LidarProcess::PointCloudHandler(const sensor_msgs::msg::PointCloud2::Shared
                        process_pc_->points[i].y * process_pc_->points[i].y +
                        process_pc_->points[i].z * process_pc_->points[i].z);
 
-    if (range < params_.min_range || range > params_.max_range || std::isnan(range) ||
-        std::isinf(range)) {
+    if (range < params_.min_range || range > params_.max_range ||
+        std::isnan(range) || std::isinf(range)) {
       rej_points++;
       continue;
     }

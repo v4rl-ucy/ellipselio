@@ -2,7 +2,6 @@
 
 namespace ellipselio {
 
-// Sync lidar, imu, and camera data
 bool MappingNode::SyncPackages() {
   double velocity;
   bool got_lidar_data;
@@ -113,7 +112,6 @@ bool MappingNode::SyncPackages() {
   return true;
 }
 
-// Compute tensor voting matrix for point i and j
 void MappingNode::ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass) {
   V3F p_i = map_cloud_->points[i].getVector3fMap();
   V3F p_j = map_cloud_->points[j].getVector3fMap();
@@ -130,7 +128,6 @@ void MappingNode::ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass) {
   *A_j = c_ij * R_ij * K_j * Rp_ij;
 }
 
-// Compute tensor eigenvalues and eigenvectors for point i
 void MappingNode::ComputeTensorEigen(int i, M3F* tensor, bool first_pass) {
   V3F eig_val, sali_val;
   M3F eig_vec, tensor_i2;
@@ -183,7 +180,6 @@ void MappingNode::ComputeTensorEigen(int i, M3F* tensor, bool first_pass) {
   }
 }
 
-// Compute first pass tensor voting for new points and find neighbours
 void MappingNode::TensorVotePass1(int old_map_size,
                                   std::vector<int>& added_idxs,
                                   std::vector<int>& updated_idxs) {
@@ -324,7 +320,6 @@ void MappingNode::TensorVotePass1(int old_map_size,
   updated_idxs.resize(upd_idx);
 }
 
-// Compute second pass tensor voting for new and existing points
 void MappingNode::TensorVotePass2(std::vector<int>& added_idxs,
                                   std::vector<int>& updated_idxs) {
   int total_size = added_idxs.size() + updated_idxs.size();
@@ -369,7 +364,6 @@ void MappingNode::TensorVotePass2(std::vector<int>& added_idxs,
   }
 }
 
-// Add new points to the map and update geometric primitives
 void MappingNode::MapIncremental() {
   int start_idx, end_idx;
   std::vector<int> new_idxs, updated_idxs, added_idxs, map_idxs;
@@ -474,7 +468,6 @@ void MappingNode::SplitMap(const sensor_msgs::msg::PointCloud2& input,
   }
 }
 
-// Publish map point cloud
 void MappingNode::PublishMap() {
   if (!map_counter_) return;
 
@@ -497,7 +490,6 @@ void MappingNode::PublishMap() {
   }
 }
 
-// Publish scan point cloud
 void MappingNode::PublishScan() {
   if (!map_counter_) return;
 
@@ -508,7 +500,6 @@ void MappingNode::PublishScan() {
   pub_scan_->publish(scan_msg);
 }
 
-// Publish geometric primitive markers
 void MappingNode::PublishMarkers() {
   if (!map_counter_) return;
 
@@ -590,7 +581,6 @@ void MappingNode::PublishMarkers() {
   pub_mark_->publish(marker_array);
 }
 
-// Publish odometry transform
 void MappingNode::PublishImuOdometry() {
   KfState imu_state;
   nav_msgs::msg::Odometry odom_msg;
@@ -651,7 +641,6 @@ void MappingNode::PublishImuOdometry() {
   pub_odom_->publish(odom_msg);
 }
 
-// Publish odometry transform
 void MappingNode::PublishLidarOdometry() {
   if (!map_counter_) return;
 
@@ -677,7 +666,6 @@ void MappingNode::PublishLidarOdometry() {
   odom_mutex_.unlock();
 }
 
-// Register new scan points to the map using tensor registration
 void MappingNode::TensorRegistration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   double t0, t1, res_mean;
@@ -795,13 +783,12 @@ void MappingNode::TensorRegistration(
     n_world = map_cloud_->points[map_i].getVector3fMap();
     q = p_world - n_world;
 
-    // Point to plane
     q_dash = q.dot(eigenvectors_[map_i].col(2)) * eigenvectors_[map_i].col(2);
     p_dash = scores(0) * (p_world - q_dash);
-    // Point to line
+
     q_dash = q.dot(eigenvectors_[map_i].col(0)) * eigenvectors_[map_i].col(0);
     p_dash += scores(1) * (n_world + q_dash);
-    // Point to point
+
     p_dash += scores(2) * n_world;
 
     norm_vec = p_world - p_dash;
@@ -944,7 +931,6 @@ void MappingNode::TensorRegistration(
   analytics_msg_.bin_score = ekfom_data_sb_.mean();
 }
 
-// Main mapping node
 MappingNode::MappingNode(
     const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
     : Node("mapping_node", options),
@@ -1174,7 +1160,6 @@ MappingNode::MappingNode(
 
 MappingNode::~MappingNode() {}
 
-// Initialize camera processes
 void MappingNode::InitCamProcess() {
   if (num_cams_ == 0) return;
 
@@ -1361,7 +1346,6 @@ void MappingNode::ComputeCpuUsage() {
   analytics_msg_.cpu_usage = round(cpu_percent);
 }
 
-// Main mapping loop
 void MappingNode::TimerCallback() {
   if (!initialized_) {
     initialized_ = true;

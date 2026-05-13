@@ -1,3 +1,11 @@
+/**
+ * @file map_processing.h
+ * @brief Main mapping and localization node for LiDAR-inertial odometry.
+ * @details Orchestrates sensor processing pipelines, implements tensor voting
+ * algorithm for ellipsoid representation, performs EKF state updates, and
+ * publishes odometry/map.
+ */
+
 #ifndef MAP_PROCESSING_H_
 #define MAP_PROCESSING_H_
 
@@ -31,41 +39,114 @@
 
 namespace ellipselio {
 
+/**
+ * @class MappingNode
+ * @brief Main ROS 2 node implementing LiDAR-inertial odometry with tensor
+ * voting.
+ * @details Orchestrates multi-sensor fusion, implements tensor voting algorithm
+ * for ellipsoid-based map representation, performs EKF state estimation, and
+ *          publishes odometry, map, and analytics information.
+ */
 class MappingNode : public rclcpp::Node {
  public:
+  /**
+   * @brief Construct mapping node with ROS 2 options.
+   * @param options ROS 2 node options (namespace, parameters, etc.)
+   */
   MappingNode(const rclcpp::NodeOptions& options);
+
+  /**
+   * @brief Destructor.
+   */
   ~MappingNode();
 
  private:
+  /**
+   * @brief Synchronize IMU, LiDAR, and camera measurements.
+   * @return True if synchronization successful and new measurements available
+   * @details Performs time-based alignment of multiple sensor streams.
+   */
   bool SyncPackages();
 
-  void ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass);
-  void ComputeTensorEigen(int i, M3F* tensor, bool first_pass);
-
+  /**
+   * @brief First pass of tensor voting algorithm.
+   * @param old_map_size Number of points in map before update
+   * @param added_idxs Indices of newly added points
+   * @param updated_idxs Indices of updated points
+   * @details Vote propagation and normal estimation for added points.
+   */
   void TensorVotePass1(int old_map_size, std::vector<int>& added_idxs,
                        std::vector<int>& updated_idxs);
+
+  /**
+   * @brief Second pass of tensor voting algorithm.
+   * @param added_idxs Indices of newly added points
+   * @param updated_idxs Indices of updated points
+   * @details Vote aggregation and eigenvalue decomposition.
+   */
   void TensorVotePass2(std::vector<int>& added_idxs,
                        std::vector<int>& updated_idxs);
 
+  /**
+   * @brief Compute tensor vote contribution from two points.
+   * @param i Index of voting point
+   * @param j Index of receiving point
+   * @param A_j Output: accumulated tensor at point j
+   * @param first_pass Whether this is first or second voting pass
+   */
+  void ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass);
+
+  /**
+   * @brief Compute eigendecomposition of tensor.
+   * @param i Index of point to update
+   * @param tensor In/out: normalized tensor for eigenanalysis
+   * @param first_pass Whether this is first or second pass
+   */
+  void ComputeTensorEigen(int i, M3F* tensor, bool first_pass);
+
+  /**
+   * @brief Split map into multiple point clouds.
+   * @param input Input point cloud to split
+   * @param clouds Output: vector of split point clouds
+   * @param n Number of partitions
+   */
   void SplitMap(const sensor_msgs::msg::PointCloud2& input,
                 std::vector<sensor_msgs::msg::PointCloud2>& clouds, size_t n);
 
+  /// @brief Publish current map as point cloud
   void PublishMap();
+  /// @brief Publish latest LiDAR scan with visualization markers
   void PublishScan();
+  /// @brief Publish normal/curvature/saliency as visualization markers
   void PublishMarkers();
+  /// @brief Publish LiDAR-based odometry estimate
   void PublishLidarOdometry();
+  /// @brief Publish IMU-integrated odometry estimate
   void PublishImuOdometry();
 
+  /**
+   * @brief Perform point-to-ellipsoid registration using EKF.
+   * @param s In/out: state vector to estimate
+   * @param ekfom_data In/out: EKF measurement and covariance data
+   * @details Implements tensor-voting based point-to-ellipsoid distance
+   * calculation for EKF measurement updates.
+   */
   void TensorRegistration(state_ikfom& s,
                           esekfom::dyn_share_datastruct<double>& ekfom_data);
 
+  /// @brief Main loop timer callback for odometry estimation
   void TimerCallback();
+  /// @brief Initialize camera processors from node parameters
   void InitCamProcess();
+  /// @brief Incrementally update map with new measurements
   void MapIncremental();
 
+  /// @brief Compute and publish memory usage statistics
   void ComputeRamUsage();
+  /// @brief Compute and publish CPU time statistics
   void ComputeCpuUsage();
 
+  /// @brief Synchronize raw LiDAR point cloud with IMU state
   void SyncRawCloudWithImu();
 
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;

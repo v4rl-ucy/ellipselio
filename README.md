@@ -35,16 +35,6 @@ EllipseLio is a lidar-inertial odometry approach that uses spectral decompositio
 - PCL
 - OpenCV
 
-## Code Style
-- This repository follows the Google C++ style guide via clang-format.
-- Format all C++ files:
-  - `clang-format -i include/*.h src/*.cpp`
-- Check formatting locally (no file changes):
-  - `find include src -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) ! -path 'include/IKFoM_toolkit/*' -print0 | xargs -0 clang-format -n --Werror`
-- If configured with CMake, you can also run:
-  - `cmake --build <build-dir> --target format`
-  - `cmake --build <build-dir> --target format-check`
-
 ## Project Owners
 
 Rowan Border <rborder.robots@gmail.com>
