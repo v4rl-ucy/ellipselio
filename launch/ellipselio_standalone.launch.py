@@ -1,18 +1,17 @@
-import os.path
+import os
 
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch.conditions import IfCondition
 
-from launch_ros.actions import ComposableNodeContainer, Node
-from launch_ros.descriptions import ComposableNode
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    package_path = get_package_share_directory('ellipse_lio')
+    package_path = get_package_share_directory('ellipselio')
     default_config_path = os.path.join(package_path, 'config')
     default_rviz_config_path = os.path.join(
         package_path, 'rviz', 'ellipselio.rviz')
@@ -22,6 +21,7 @@ def generate_launch_description():
     config_file = LaunchConfiguration('config_file')
     rviz_use = LaunchConfiguration('rviz')
     rviz_cfg = LaunchConfiguration('rviz_cfg')
+    container_name = LaunchConfiguration('container_name')
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time', default_value='false',
@@ -32,7 +32,7 @@ def generate_launch_description():
         description='Yaml config file path'
     )
     declare_config_file_cmd = DeclareLaunchArgument(
-        'config_file', default_value='mid360.yaml',
+        'config_file', default_value='qt64_spires.yaml',
         description='Config file'
     )
     declare_rviz_cmd = DeclareLaunchArgument(
@@ -43,40 +43,31 @@ def generate_launch_description():
         'rviz_cfg', default_value=default_rviz_config_path,
         description='RViz config file path'
     )
+    container_name_arg = DeclareLaunchArgument(
+        name='container_name',
+        default_value='ellipselio_container',
+        description='container name')
 
-    ellipse_lio_node = ComposableNode(
-        package='ellipse_lio',
-        plugin='ellipselio::MappingNode',
-        name='ellipse_lio_node',
-        parameters=[PathJoinSubstitution([config_path, config_file]),
-                    {'use_sim_time': use_sim_time}],
-        extra_arguments=[{'use_intra_process_comms': True}],
-    )
-    ellipse_lio_container = ComposableNodeContainer(
-        namespace='',
+    container = Node(
         package='rclcpp_components',
-        name='ellipse_lio_container',
         executable='component_container_mt',
-        composable_node_descriptions=[ellipse_lio_node],
-        output='screen'
+        name=container_name,
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        arguments=['-d', rviz_cfg],
-        condition=IfCondition(rviz_use),
-        output='log'
-    )
-    odom_tf_node = Node(
-        package = "tf2_ros", 
-        executable = "static_transform_publisher",
-        arguments = "-0.010 0.005 0.080 0.001 -0.001 0.701 0.713 odom_vilens odom_ellipselio".split(' ')
-    )
-    base_tf_node = Node(
-        package = "tf2_ros", 
-        executable = "static_transform_publisher",
-        arguments = "-0.005 -0.010 -0.080 -0.001 0.001 -0.701 0.713 imu_ellipselio base_ellipselio".split(' ')
+    base_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([package_path, 'launch', 'ellipselio.launch.py'])
+        ),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'config_path': config_path,
+            'config_file': config_file,
+            'rviz': rviz_use,
+            'rviz_cfg': rviz_cfg,
+            'container_name': container_name,
+        }.items(),
     )
 
     ld = LaunchDescription()
@@ -85,10 +76,8 @@ def generate_launch_description():
     ld.add_action(declare_config_file_cmd)
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_rviz_config_path_cmd)
-
-    ld.add_action(ellipse_lio_container)
-    ld.add_action(rviz_node)
-    ld.add_action(odom_tf_node)
-    ld.add_action(base_tf_node)
+    ld.add_action(container_name_arg)
+    ld.add_action(container)
+    ld.add_action(base_launch)
 
     return ld

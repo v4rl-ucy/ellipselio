@@ -1,0 +1,27 @@
+/**:
+    ros__parameters:
+
+        mapping:
+            map_resolution: 0.1
+            pub_map_n_secs: 10 
+            
+        lidar:
+            type: 3 # LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4
+            rate: 10
+            scan_lines: 64
+            vertical_fov: 42.4
+            min_range: 0.0
+            max_range: 100.0
+            topic:  "/os1_cloud_node/points"
+            t_imu_lidar: [-0.006253, 0.011775, 0.028535]
+            r_imu_lidar: [-1., 0., 0.,
+                          0., -1., 0.,
+                          0., 0., 1.]
+        
+        imu:
+            rate: 100
+            acc_noise: 0.001249
+            gyr_noise: 0.000208
+            acc_bias: 0.000106
+            gyr_bias: 0.000004
+            topic:  "/os1_cloud_node/imu"
