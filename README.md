@@ -22,7 +22,7 @@
 
 [arXivlink]: https://arxiv.org/abs/placeholder
 
-## ROS 2 Humble
+## ROS2 Humble
 
 ### Build
 
