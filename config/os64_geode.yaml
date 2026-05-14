@@ -1,0 +1,27 @@
+/**:
+    ros__parameters:
+
+        mapping:
+            map_resolution: 0.1
+            pub_map_n_secs: 10 
+            
+        lidar:
+            type: 3 # LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4
+            rate: 10
+            scan_lines: 64
+            vertical_fov: 42.4
+            min_range: 0.0
+            max_range: 100.0
+            topic:  "/ouster/points"
+            t_imu_lidar: [-0.027172, -0.034873, 0.062643]
+            r_imu_lidar: [0.998638,  0.052001, -0.004278,
+                         -0.051937,  0.998554,  0.013900,
+                          0.004994, -0.013659,  0.999894]
+        
+        imu:
+            rate: 100
+            acc_noise: 1.1118983704388789e-02
+            gyr_noise: 9.6134865171113148e-03
+            acc_bias:  1.5961182793700285e-04
+            gyr_bias: 7.9993782046705285e-05
+            topic:  "/imu/data"

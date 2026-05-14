@@ -1,0 +1,24 @@
+/**:
+    ros__parameters:
+
+        mapping:
+            map_resolution: 0.1
+            pub_map_n_secs: 10 
+
+        lidar:
+            type: 4 # LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4
+            rate: 10
+            scan_lines: 64
+            vertical_fov: 104.0
+            min_range: 0.0
+            max_range: 100.0
+            topic:  "/hesai/pandar"
+            t_imu_lidar: [-0.0078, -0.0190, 0.0705]
+            r_imu_lidar: [0.0002, -0.0018, 0.7110, 0.7032]
+        imu:
+            rate: 400
+            acc_noise: 0.0009432782069138238 
+            gyr_noise: 0.00023031229571253504
+            acc_bias: 4.981034600256154e-05 
+            gyr_bias: 4.46264879417123e-06
+            topic: "/alphasense_driver_ros/imu"

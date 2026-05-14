@@ -1,16 +1,17 @@
-#pragma once
-
-#ifndef USE_IKFOM_H
-#define USE_IKFOM_H
+#ifndef USE_IKFOM_H_
+#define USE_IKFOM_H_
 
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
-#include <IKFoM_toolkit/esekfom/esekfom.hpp>
+#include "esekfom/esekfom.hpp"
+#include "so3_math.h"
 
-typedef MTK::vect<3, double> vect3;
-typedef MTK::SO3<double> SO3;
-typedef MTK::S2<double, 98090, 10000, 1> S2;
-typedef MTK::vect<1, double> vect1;
-typedef MTK::vect<2, double> vect2;
+inline constexpr double kPi = 3.14159265358979323846;
+
+using vect3 = MTK::vect<3, double>;
+using SO3 = MTK::SO3<double>;
+using S2 = MTK::S2<double, 98090, 10000, 1>;
+using vect1 = MTK::vect<1, double>;
+using vect2 = MTK::vect<2, double>;
 
 MTK_BUILD_MANIFOLD(state_ikfom, ((vect3, pos))((SO3, rot))((SO3, offset_R_L_I))(
                                     (vect3, offset_T_L_I))((vect3, vel))(
@@ -21,25 +22,25 @@ MTK_BUILD_MANIFOLD(input_ikfom, ((vect3, acc))((vect3, gyro)));
 MTK_BUILD_MANIFOLD(process_noise_ikfom,
                    ((vect3, ng))((vect3, na))((vect3, nbg))((vect3, nba)));
 
-typedef esekfom::esekf<state_ikfom, 12, input_ikfom> Ikfom;
-typedef std::shared_ptr<Ikfom> IkfomSPtr;
+using Ikfom = esekfom::esekf<state_ikfom, 12, input_ikfom>;
+using IkfomSPtr = std::shared_ptr<Ikfom>;
 
-inline Ikfom::cov P_cov() {
+inline Ikfom::cov PCov() {
   Ikfom::cov cov;
   cov.setIdentity();
   cov *= 1e-3;
   return cov;
 }
 
-inline MTK::get_cov<process_noise_ikfom>::type process_noise_cov() {
+inline MTK::get_cov<process_noise_ikfom>::type ProcessNoiseCov() {
   MTK::get_cov<process_noise_ikfom>::type cov =
       MTK::get_cov<process_noise_ikfom>::type::Identity();
   cov *= 1e-3;
   return cov;
 }
 
-inline Eigen::Matrix<double, 24, 1> get_f(state_ikfom& s,
-                                          const input_ikfom& in) {
+inline Eigen::Matrix<double, 24, 1> GetF(state_ikfom& s,
+                                         const input_ikfom& in) {
   Eigen::Matrix<double, 24, 1> res = Eigen::Matrix<double, 24, 1>::Zero();
   vect3 omega;
   in.gyro.boxminus(omega, s.bg);
@@ -52,8 +53,8 @@ inline Eigen::Matrix<double, 24, 1> get_f(state_ikfom& s,
   return res;
 }
 
-inline Eigen::Matrix<double, 24, 23> df_dx(state_ikfom& s,
-                                           const input_ikfom& in) {
+inline Eigen::Matrix<double, 24, 23> DfDx(state_ikfom& s,
+                                          const input_ikfom& in) {
   Eigen::Matrix<double, 24, 23> cov = Eigen::Matrix<double, 24, 23>::Zero();
   cov.template block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();
   vect3 acc_;
@@ -71,8 +72,8 @@ inline Eigen::Matrix<double, 24, 23> df_dx(state_ikfom& s,
   return cov;
 }
 
-inline Eigen::Matrix<double, 24, 12> df_dw(state_ikfom& s,
-                                           const input_ikfom& in) {
+inline Eigen::Matrix<double, 24, 12> DfDw(state_ikfom& s,
+                                          const input_ikfom& in) {
   Eigen::Matrix<double, 24, 12> cov = Eigen::Matrix<double, 24, 12>::Zero();
   cov.template block<3, 3>(12, 3) = -s.rot.toRotationMatrix();
   cov.template block<3, 3>(3, 0) = -Eigen::Matrix3d::Identity();
@@ -81,7 +82,7 @@ inline Eigen::Matrix<double, 24, 12> df_dw(state_ikfom& s,
   return cov;
 }
 
-inline vect3 SO3ToEuler(const SO3& orient) {
+inline vect3 So3ToEuler(const SO3& orient) {
   Eigen::Matrix<double, 3, 1> _ang;
   Eigen::Vector4d q_data = orient.coeffs().transpose();
 
@@ -93,13 +94,13 @@ inline vect3 SO3ToEuler(const SO3& orient) {
   double test = q_data[3] * q_data[1] - q_data[2] * q_data[0];
 
   if (test > 0.49999 * unit) {
-    _ang << 2 * std::atan2(q_data[0], q_data[3]), M_PI / 2, 0;
+    _ang << 2 * std::atan2(q_data[0], q_data[3]), kPi / 2, 0;
     double temp[3] = {_ang[0] * 57.3, _ang[1] * 57.3, _ang[2] * 57.3};
     vect3 euler_ang(temp, 3);
     return euler_ang;
   }
   if (test < -0.49999 * unit) {
-    _ang << -2 * std::atan2(q_data[0], q_data[3]), -M_PI / 2, 0;
+    _ang << -2 * std::atan2(q_data[0], q_data[3]), -kPi / 2, 0;
     double temp[3] = {_ang[0] * 57.3, _ang[1] * 57.3, _ang[2] * 57.3};
     vect3 euler_ang(temp, 3);
     return euler_ang;
@@ -116,4 +117,4 @@ inline vect3 SO3ToEuler(const SO3& orient) {
   return euler_ang;
 }
 
-#endif
+#endif  // USE_IKFOM_H_

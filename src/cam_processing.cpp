@@ -1,6 +1,5 @@
-#include <cam_processing.h>
+#include "cam_processing.h"
 
-// Setup the camera process
 CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
     : node_(node), params_(params), img_buffer_(params.rate), cam_counter_(0) {
   cam_callback_group_ = node_->create_callback_group(
@@ -23,7 +22,6 @@ CamProcess::CamProcess(CamParams params, rclcpp::Node::SharedPtr node)
       params_.transport, rmw_qos_profile_sensor_data, cam_opt);
 }
 
-// Callback for camera messages
 void CamProcess::CamCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr msg) {
   cam_counter_++;
@@ -44,9 +42,8 @@ void CamProcess::CamCallback(
   cam_mutex_.unlock();
 }
 
-// Get the closest image time less than the input match time
-void CamProcess::GetMatchingImageTime(rclcpp::Time& match_time,
-                                      rclcpp::Time& img_time) {
+void CamProcess::GetMatchingImageTime(const rclcpp::Time& match_time,
+                                      rclcpp::Time* img_time) {
   int match_idx;
   double time_diff;
   bool match_flag = false;
@@ -59,7 +56,7 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time& match_time,
   time_diff = (match_time - img_buffer_.front().time).seconds();
   match_idx = std::floor(time_diff * params_.rate);
   match_idx = std::max(match_idx, 0);
-  match_idx = std::min(match_idx, (int)img_buffer_.size() - 1);
+  match_idx = std::min(match_idx, static_cast<int>(img_buffer_.size()) - 1);
 
   while (!match_flag && match_idx >= 0) {
     if (img_buffer_[match_idx].time < match_time) {
@@ -79,22 +76,21 @@ void CamProcess::GetMatchingImageTime(rclcpp::Time& match_time,
 
   if (match_idx >= 0) {
     has_img_match_ = true;
-    img_time = img_buffer_[match_idx].time;
+    *img_time = img_buffer_[match_idx].time;
     matched_img_ = img_buffer_[match_idx];
   }
 
   cam_mutex_.unlock();
 }
 
-// Project the lidar point to the camera image and get the color
-bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
+bool CamProcess::ColorPoint(V3D* pt_img, Eigen::Vector3i* pt_col) {
   float x, y;
   int cols, rows, valid_num;
   Eigen::MatrixXi pt_cols;
   Eigen::VectorXi pt_sum;
   Eigen::Vector2i x_vals, y_vals;
 
-  if (pt_img(2) <= 0) return false;
+  if ((*pt_img)(2) <= 0) return false;
 
   pt_sum = Eigen::VectorXi::Zero(4);
   pt_cols = Eigen::MatrixXi::Zero(4, 3);
@@ -102,8 +98,10 @@ bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
   cols = matched_img_.img->image.cols;
   rows = matched_img_.img->image.rows;
 
-  x = (cam_intrinsics_(0, 0) * pt_img(0) / pt_img(2)) + cam_intrinsics_(0, 2);
-  y = (cam_intrinsics_(1, 1) * pt_img(1) / pt_img(2)) + cam_intrinsics_(1, 2);
+  x = (cam_intrinsics_(0, 0) * (*pt_img)(0) / (*pt_img)(2)) +
+      cam_intrinsics_(0, 2);
+  y = (cam_intrinsics_(1, 1) * (*pt_img)(1) / (*pt_img)(2)) +
+      cam_intrinsics_(1, 2);
 
   x_vals << std::floor(x), std::ceil(x);
   y_vals << std::floor(y), std::ceil(y);
@@ -127,11 +125,11 @@ bool CamProcess::ColorPoint(V3D& pt_img, Eigen::Vector3i& pt_col) {
     }
   }
 
-  pt_col = pt_cols.colwise().sum();
+  *pt_col = pt_cols.colwise().sum();
   valid_num = pt_sum.sum();
 
   if (!valid_num) return false;
 
-  pt_col /= valid_num;
+  *pt_col /= valid_num;
   return true;
 }

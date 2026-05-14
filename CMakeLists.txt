@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
-project(ellipse_lio)
+project(ellipselio)
 
-add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
+cmake_policy(SET CMP0074 NEW)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_BUILD_TYPE Release)
@@ -72,7 +72,8 @@ PLUGIN "ellipselio::MappingNode"
 EXECUTABLE ellipselio_mapping_node
 )
 
-ament_auto_package(INSTALL_TO_SHARE
+ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR INSTALL_TO_SHARE
 launch
 rviz
+config
 )

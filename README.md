@@ -1,40 +1,66 @@
-EllipseLio
-==============================================================================
+<div align="center">
+    <h1>EllipseLIO</h1>
+    <a href="https://github.com/VIS4ROB-lab/ellipselio"><img src="https://img.shields.io/badge/-C++-blue?logo=cplusplus" /></a>
+    <a href="https://github.com/VIS4ROB-lab/ellipselio"><img src="https://img.shields.io/badge/ROS2-blue" /></a>
+    <a href="https://github.com/VIS4ROB-lab/ellipselio"><img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" /></a>
+    <a href="https://github.com/VIS4ROB-lab/ellipselio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+    <br />
+    <br />
+    <a href="https://www.youtube.com/watch?v=placeholder">Video</a>
+    <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+    <a href="https://github.com/VIS4ROB-lab/ellipselio/blob/main/README.md">Install</a>
+    <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+    <a href="https://arxiv.org/abs/placeholder">Paper</a>
+    <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+    <a href="https://github.com/VIS4ROB-lab/ellipselio/issues">Report Issues</a>
+  <br />
+  <br />
+  <p align="center"><img src=ellipselio.gif alt="animated" /></p>
 
-## Description
+  [EllipseLIO][arXivlink] is an **Adaptive LiDAR Inertial Odometry Approach with an Ellipsoid Representation**
+</div>
 
-EllipseLio is a lidar-inertial odometry approach that uses spectral decomposition to derive geometric primitives from points in a map. These primitives are used to perform scan-to-map registration.
+[arXivlink]: https://arxiv.org/abs/placeholder
 
-## Installation (Ubuntu 22.04)
+## ROS2 Humble
 
-- Install ROS2 Humble (includes PCL)
-  - https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html (use full desktop install)
-- Create a colcon workspace
-  - mkdir -p ~/ros2_ws/src
-- Clone EllipseLio into your colcon workspace
-  - cd ~/ros2_ws/src && git clone git@github.com:VIS4ROB-lab/ellipse_lio.git
-- Clone the dataset_tools and raw_image_pipeline repositories to easily run the Oxford Spires dataset
-  - cd ~/ros2_ws/src && git clone git@github.com:VIS4ROB-lab/dataset_tools.git
-  - cd ~/ros2_ws/src && git clone git@github.com:VIS4ROB-lab/raw_image_pipeline.git
-- Build EllipseLio with colcon build
-  - cd ~/ros2_ws
-  - colcon build --symlink-install
-- Source the colcon workspace in your shell
-  - echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
+### Build
 
-## Post installation testing
-- Download a rosbag2 sequence from the Oxford Spires dataset (e.g., observatory-quarter-01) 
-    - https://ori-drs.github.io/datasets/oxford-spires/
-- Modify the dataset_name and results_folder path arguments in dataset_tools/launch/spires_dataset_{cam/no_cam}.launch.py
-- Run one of the following commands to start EllipseLio
-    - ros2 launch dataset_tools spires_dataset_cam.launch.py
-    - ros2 launch dataset_tools spires_dataset_no_cam.launch.py
+```sh
+mkdir -p ~/colcon_ws/src
+cd ~/colcon_ws/src
+git clone git@github.com:VIS4ROB-lab/ellipselio.git
+cd ..
+colcon build --packages-select ellipselio --cmake-args -DCMAKE_BUILD_TYPE=Release --symlink-install
+source ~/colcon_ws/install/setup.bash
+```
 
-## Dependencies
-- ROS2 Humble
-- PCL
-- OpenCV
+### Run with a config file
 
-## Project Owners
+```sh
+ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file_name>
+ros2 bag play <rosbag_file_name>
+```
 
-Rowan Border <rborder.robots@gmail.com>
+## :pencil: Citation
+
+If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]
+```
+@ARTICLE{placeholder
+}
+```
+
+## :pray: Acknowledgements
+
+Many thanks to the authors of [FAST-LIO2][fastliolink], [IKFoM][ikfomlink], and [i-Octree][ioctreelink] for open-sourcing their work, which made the development of EllipseLIO possible. 
+
+[fastliolink]: https://github.com/hku-mars/FAST_LIO
+[ikfomlink]: https://github.com/hku-mars/IKFoM
+[ioctreelink]: https://github.com/zhujun3753/i-octree
+
+## :mailbox: Contact information
+
+If you have any questions, please do not hesitate to contact
+* [Rowan Border][rblink] :envelope: rborder `dot` robots `at` gmail `dot` com
+
+[rblink]: https://github.com/rowanborder
