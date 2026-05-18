@@ -1,18 +1,18 @@
 <div align="center">
     <h1>EllipseLIO</h1>
-    <a href="https://github.com/VIS4ROB-lab/ellipselio"><img src="https://img.shields.io/badge/-C++-blue?logo=cplusplus" /></a>
-    <a href="https://github.com/VIS4ROB-lab/ellipselio"><img src="https://img.shields.io/badge/ROS2-blue" /></a>
-    <a href="https://github.com/VIS4ROB-lab/ellipselio"><img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" /></a>
-    <a href="https://github.com/VIS4ROB-lab/ellipselio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+    <a href="https://github.com/v4rl-ucy/ellipselio"><img src="https://img.shields.io/badge/-C++-blue?logo=cplusplus" /></a>
+    <a href="https://github.com/v4rl-ucy/ellipselio"><img src="https://img.shields.io/badge/ROS2-blue" /></a>
+    <a href="https://github.com/v4rl-ucy/ellipselio"><img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" /></a>
+    <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
     <br />
     <br />
     <a href="https://www.youtube.com/watch?v=placeholder">Video</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-    <a href="https://github.com/VIS4ROB-lab/ellipselio/blob/main/README.md">Install</a>
+    <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/README.md">Install</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://arxiv.org/abs/placeholder">Paper</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-    <a href="https://github.com/VIS4ROB-lab/ellipselio/issues">Report Issues</a>
+    <a href="https://github.com/v4rl-ucy/ellipselio/issues">Report Issues</a>
   <br />
   <br />
   <p align="center"><img src=ellipselio.gif alt="animated" /></p>
@@ -29,7 +29,7 @@
 ```sh
 mkdir -p ~/colcon_ws/src
 cd ~/colcon_ws/src
-git clone git@github.com:VIS4ROB-lab/ellipselio.git
+git clone git@github.com:v4rl-ucy/ellipselio.git
 cd ..
 colcon build --packages-select ellipselio --cmake-args -DCMAKE_BUILD_TYPE=Release --symlink-install
 source ~/colcon_ws/install/setup.bash
