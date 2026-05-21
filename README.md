@@ -6,11 +6,11 @@
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
     <br />
     <br />
-    <a href="https://www.youtube.com/watch?v=placeholder">Video</a>
+    <a href="https://youtu.be/eclNt1fDhnI">Video</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/README.md">Install</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-    <a href="https://arxiv.org/abs/placeholder">Paper</a>
+    <a href="http://arxiv.org/abs/2605.21150">Paper</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/issues">Report Issues</a>
   <br />
@@ -20,7 +20,7 @@
   [EllipseLIO][arXivlink] is an **Adaptive LiDAR Inertial Odometry Approach with an Ellipsoid Representation**
 </div>
 
-[arXivlink]: https://arxiv.org/abs/placeholder
+[arXivlink]: http://arxiv.org/abs/2605.21150
 
 ## ROS2 Humble
 
@@ -46,8 +46,14 @@ ros2 bag play <rosbag_file_name>
 
 If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]
 ```
-@ARTICLE{placeholder
+@article{border2026ellipselio,
+   author = {Border, Rowan and Chli, Margarita},
+   journal = {arXiv},
+   title = {{EllipseLIO}: Adaptive LiDAR Inertial Odometry with an Ellipsoid Representation},
+   url = {http://arxiv.org/abs/2605.21150},
+   year = {2026}
 }
+
 ```
 
 ## :pray: Acknowledgements
