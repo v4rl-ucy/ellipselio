@@ -49,7 +49,7 @@ If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]
 @article{border2026ellipselio,
    author = {Border, Rowan and Chli, Margarita},
    journal = {arXiv},
-   title = {{EllipseLIO}: Adaptive LiDAR Inertial Odometry with an Ellipsoid Representation},
+   title = {{EllipseLIO}: Adaptive {LiDAR} Inertial Odometry with an Ellipsoid Representation},
    url = {http://arxiv.org/abs/2605.21150},
    year = {2026}
 }
