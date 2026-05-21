@@ -4,12 +4,12 @@
   <version>1.0.0</version>
 
   <description>
-  EllipseLio package
+  EllipseLIO is an Adaptive LiDAR Inertial Odometry Approach with an Ellipsoid Representation.
   </description>
 
   <maintainer email="rborder.robots@gmail.com">Rowan Border</maintainer>
 
-  <license>BSD</license>
+  <license>MIT</license>
 
   <author email="rborder.robots@gmail.com">Rowan Border</author>
 

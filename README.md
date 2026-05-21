@@ -15,7 +15,7 @@
     <a href="https://github.com/v4rl-ucy/ellipselio/issues">Report Issues</a>
   <br />
   <br />
-  <p align="center"><img src=ellipselio.gif alt="animated" /></p>
+  <p align="center"><img src=https://github.com/v4rl-ucy/ellipselio/blob/main/ellipselio.gif alt="animated" /></p>
 
   [EllipseLIO][arXivlink] is an **Adaptive LiDAR Inertial Odometry Approach with an Ellipsoid Representation**
 </div>
