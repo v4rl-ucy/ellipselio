@@ -1,6 +1,6 @@
 PROJECT_NAME           = "EllipseLIO"
 PROJECT_NUMBER         = 0.1.0
-PROJECT_BRIEF          = "Efficient LiDAR-Inertial Odometry with Ellipsoid Representation"
+PROJECT_BRIEF          = "Adaptive LiDAR Inertial Odometry with an Ellipsoid Representation"
 
 OUTPUT_DIRECTORY       = docs
 CREATE_SUBDIRS         = YES
@@ -34,7 +34,7 @@ USE_MATHJAX            = YES
 MATHJAX_RELPATH        = https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/
 
 DOCSET_BUNDLE_NAME     = org.ros2.ellipselio
-DOCSET_PUBLISHER_NAME  = "VIS4ROB Lab"
+DOCSET_PUBLISHER_NAME  = "V4RL"
 DOCSET_PUBLISHER_ID    = org.ros2
 
 EXTRACT_ALL            = NO
