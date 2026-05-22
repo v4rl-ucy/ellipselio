@@ -670,7 +670,7 @@ void MappingNode::TensorRegistration(
     state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
   double t0, t1, res_mean;
   int feat_tot, reject_cnt, start_bin_scale;
-  float grav_check, poses_orth_norm;
+  float grav_check, vert_score;
   float wt_min, wt_max, wt_mean, wt_std, obs_min, obs_scale, obs_term;
   float rng_min, rng_max, rng_mean, rng_scale, rng_min_scale, rng_max_scale;
 
@@ -696,10 +696,9 @@ void MappingNode::TensorRegistration(
   poses_diff -= vel_poses_[fmax(vel_poses_.size() - 100, 0)];
   grav_check = fabs(grav_norm.dot(poses_diff));
   grav_check *= fabs(grav_norm.dot(poses_diff.normalized()));
-  grav_check = fmin(grav_check, 1.0);
 
   poses_orth = poses_diff - grav_norm * grav_norm.dot(poses_diff);
-  poses_orth_norm = (10.0 * grav_check) / poses_orth.norm();
+  vert_score = 1.0 - (((100.0 / mean_bin_) * grav_check) / poses_orth.norm());
 
   scan_cloud_grav_->resize(scan_cloud_->size());
   gq = Eigen::Quaternionf::FromTwoVectors(grav_norm, V3F::UnitZ());
@@ -773,7 +772,7 @@ void MappingNode::TensorRegistration(
     traj_diff = curr_traj_dist;
     traj_diff -= traj_dist_[map_cloud_->points[map_i].scan_idx];
     bin_scale = fmax(fmin(bin_idx / 4.0, 10.0), start_bin_scale);
-    if (map_cloud_->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
+    if (map_cloud_->points[map_i].scan_idx && grav_check > 1e-3 &&
         match_rad > bin_scale * search_rad &&
         traj_diff < match_rad / bin_scale) {
       continue;
@@ -869,14 +868,13 @@ void MappingNode::TensorRegistration(
 
   if (!ekfom_data_om_.sum()) {
     ekfom_data_om_ += fmin(fmax(obs_min, 1e-4), 1.0);
-    ekfom_data_oe_ += fmax(1.0 - (10.0 * poses_orth_norm), 1e-4);
+    ekfom_data_oe_ += fmin(fmax(vert_score, 1e-4), 1.0);
   } else {
     ekfom_data_om_[ekfom_obs_cnt_] = fmin(fmax(obs_min, 1e-4), 1.0);
-    ekfom_data_oe_[ekfom_grav_cnt_] =
-        fmax(1.0 - (10.0 * poses_orth_norm), 1e-4);
+    ekfom_data_oe_[ekfom_vert_cnt_] = fmin(fmax(vert_score, 1e-4), 1.0);
   }
   ekfom_obs_cnt_ = (ekfom_obs_cnt_ + 1) % ekfom_data_om_.size();
-  ekfom_grav_cnt_ = (ekfom_grav_cnt_ + 1) % ekfom_data_oe_.size();
+  ekfom_vert_cnt_ = (ekfom_vert_cnt_ + 1) % ekfom_data_oe_.size();
 
   obs_min =
       ekfom_data_om_.mean() * ekfom_data_oe_.mean() * ekfom_data_sb_.mean();
@@ -1289,9 +1287,9 @@ void MappingNode::SyncRawCloudWithImu() {
   raw_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
   if (!ekfom_data_sb_.sum()) {
-    ekfom_data_sb_ += fmax(start_bin_ / 10.0, 1e-4);
+    ekfom_data_sb_ += fmin(fmax(start_bin_ / 10.0, 1e-4), 1.0);
   } else {
-    ekfom_data_sb_[start_bin_cnt_] = fmax(start_bin_ / 10.0, 1e-4);
+    ekfom_data_sb_[start_bin_cnt_] = fmin(fmax(start_bin_ / 10.0, 1e-4), 1.0);
   }
   start_bin_cnt_ = (start_bin_cnt_ + 1) % ekfom_data_sb_.size();
 
