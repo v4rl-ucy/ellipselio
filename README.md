@@ -6,7 +6,7 @@
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
     <br />
     <br />
-    <a href="https://youtu.be/eclNt1fDhnI">Video</a>
+    <a href="https://youtu.be/eIZ8CK4TAuA">Video</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/README.md">Install</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
