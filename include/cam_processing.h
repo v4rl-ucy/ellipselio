@@ -8,7 +8,11 @@
 #ifndef CAM_PROCESSING_H_
 #define CAM_PROCESSING_H_
 
+#ifdef ROS_JAZZY
+#include <cv_bridge/cv_bridge.hpp>
+#else
 #include <cv_bridge/cv_bridge.h>
+#endif
 
 #include <Eigen/Eigen>
 #include <boost/circular_buffer.hpp>
