@@ -6,11 +6,11 @@
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
     <br />
     <br />
-    <a href="https://www.youtube.com/watch?v=placeholder">Video</a>
+    <a href="https://youtu.be/eIZ8CK4TAuA">Video</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/README.md">Install</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-    <a href="https://arxiv.org/abs/placeholder">Paper</a>
+    <a href="http://arxiv.org/abs/2605.21150">Paper</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/issues">Report Issues</a>
   <br />
@@ -20,9 +20,9 @@
   [EllipseLIO][arXivlink] is an **Adaptive LiDAR Inertial Odometry Approach with an Ellipsoid Representation**
 </div>
 
-[arXivlink]: https://arxiv.org/abs/placeholder
+[arXivlink]: http://arxiv.org/abs/2605.21150
 
-## ROS2 Humble
+## ROS2 Humble and Jazzy
 
 ### Build
 
@@ -35,19 +35,43 @@ colcon build --packages-select ellipselio --cmake-args -DCMAKE_BUILD_TYPE=Releas
 source ~/colcon_ws/install/setup.bash
 ```
 
-### Run with a config file
+### Run standalone with a bag file
 
 ```sh
 ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file_name>
-ros2 bag play <rosbag_file_name>
+ros2 bag play --clock <imu_rate> <bag_folder> --topics <lidar_topic> <imu_topic>
+```
+
+### Included dataset configs
+
+| Config file | Dataset |
+| --- | --- |
+| [`config/os128_ncd.yaml`](config/os128_ncd.yaml) | [`Newer College Multi-Cam`](https://ori-drs.github.io/newer-college-dataset/multi-cam/) |
+| [`config/os64_ncd.yaml`](config/os64_ncd.yaml) | [`Newer College Stereo-Cam`](https://ori-drs.github.io/newer-college-dataset/stereo-cam/) |
+| [`config/qt64_spires.yaml`](config/qt64_spires.yaml) | [`Oxford Spires`](https://dynamic.robots.ox.ac.uk/datasets/oxford-spires/) |
+| [`config/vlp16_bot.yaml`](config/vlp16_bot.yaml) | [`BotanicGarden`](https://github.com/robot-pesg/BotanicGarden) |
+| [`config/vlp16_geode.yaml`](config/vlp16_geode.yaml) | [`GEODE Alpha`](https://thisparticle.github.io/geode/) |
+| [`config/os64_geode.yaml`](config/os64_geode.yaml) | [`GEODE Beta`](https://thisparticle.github.io/geode/) |
+| [`config/vlp16_graco.yaml`](config/vlp16_graco.yaml) | [`GRACO`](https://github.com/SYSU-RoboticsLab/GrAco) |
+
+### Run standalone with live data
+
+```sh
+ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file_name> use_sim_time:=false
 ```
 
 ## :pencil: Citation
 
 If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]
 ```
-@ARTICLE{placeholder
+@article{border2026ellipselio,
+   author = {Border, Rowan and Chli, Margarita},
+   journal = {arXiv},
+   title = {{EllipseLIO}: Adaptive {LiDAR} Inertial Odometry with an Ellipsoid Representation},
+   url = {http://arxiv.org/abs/2605.21150},
+   year = {2026}
 }
+
 ```
 
 ## :pray: Acknowledgements

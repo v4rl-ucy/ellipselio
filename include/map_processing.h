@@ -187,7 +187,7 @@ class MappingNode : public rclcpp::Node {
   clock_t last_cpu_, last_sys_cpu_, last_user_cpu_;
 
   int start_bin_cnt_ = 0;
-  int ekfom_grav_cnt_ = 0;
+  int ekfom_vert_cnt_ = 0;
   int ekfom_obs_cnt_ = 0;
   int ekfom_iter_cnt_ = 0;
   int ekfom_upd_cnt_ = 0;

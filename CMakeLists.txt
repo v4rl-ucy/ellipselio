@@ -1,10 +1,11 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.15)
+
 project(ellipselio)
 
-cmake_policy(SET CMP0074 NEW)
-
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_POLICY_DEFAULT_CMP0074 NEW)
+set(CMAKE_POLICY_DEFAULT_CMP0144 NEW)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -fopenmp -fPIC")
 
 find_package(ament_cmake_auto REQUIRED)
@@ -36,6 +37,17 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 ament_export_dependencies(rosidl_default_runtime)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+if(EXISTS "/opt/ros/jazzy")
+  set(ROS_JAZZY ON CACHE BOOL "Auto-detected ROS Jazzy (/opt/ros/jazzy exists)")
+else()
+  set(ROS_JAZZY OFF CACHE BOOL "Auto-detected ROS not Jazzy (/opt/ros/jazzy not found)")
+endif()
+
+if(ROS_JAZZY)
+  message(STATUS "Auto-detected ROS Jazzy: enabling updated headers and includes")
+  add_compile_definitions(ROS_JAZZY)
+endif()
 
 set(dependencies
   cv_bridge

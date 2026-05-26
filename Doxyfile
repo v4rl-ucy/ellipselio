@@ -1,9 +1,11 @@
 PROJECT_NAME           = "EllipseLIO"
-PROJECT_NUMBER         = 0.1.0
-PROJECT_BRIEF          = "Efficient LiDAR-Inertial Odometry with Ellipsoid Representation"
+PROJECT_NUMBER         = 1.0.0
+PROJECT_BRIEF          = "Adaptive LiDAR Inertial Odometry with an Ellipsoid Representation"
 
-OUTPUT_DIRECTORY       = docs
-CREATE_SUBDIRS         = YES
+OUTPUT_DIRECTORY       = ellipselio-public
+CREATE_SUBDIRS         = NO
+
+USE_MDFILE_AS_MAINPAGE = "README.md"
 
 ALLOW_UNICODE_NAMES    = YES
 INPUT                  = include src README.md
@@ -19,13 +21,13 @@ INLINE_SOURCES         = YES
 STRIP_CODE_COMMENTS    = NO
 
 GENERATE_HTML          = YES
-HTML_OUTPUT            = html
+HTML_OUTPUT            = docs
 HTML_FILE_EXTENSION    = .html
 HTML_COLORSTYLE_HUE    = 220
 HTML_COLORSTYLE_SAT    = 100
 HTML_COLORSTYLE_GAMMA  = 80
 
-GENERATE_LATEX         = YES
+GENERATE_LATEX         = NO
 LATEX_OUTPUT           = latex
 LATEX_CMD_NAME         = latex
 MAKEINDEX_CMD_NAME     = makeindex
@@ -34,7 +36,7 @@ USE_MATHJAX            = YES
 MATHJAX_RELPATH        = https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/
 
 DOCSET_BUNDLE_NAME     = org.ros2.ellipselio
-DOCSET_PUBLISHER_NAME  = "VIS4ROB Lab"
+DOCSET_PUBLISHER_NAME  = "V4RL"
 DOCSET_PUBLISHER_ID    = org.ros2
 
 EXTRACT_ALL            = NO
