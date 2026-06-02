@@ -24,6 +24,7 @@ enum class LidType {
   kOuster = 3,    ///< Ouster OS1, OS2 (64/128 lines)
   kHesai = 4,     ///< Hesai QT/XT series
   kGazebo = 5,    ///< Gazebo simulator
+  kIsaacSim = 6   ///< Isaac Sim simulator
 };
 
 /**
@@ -182,6 +183,10 @@ class LidarProcess {
 
   /// @brief SetPoint overload for Gazebo simulator
   void SetPoint(const GazeboPoint& in_pt0, const GazeboPoint& in_pt,
+                EllipseLioPoint* out_pt, rclcpp::Time* point_time);
+
+  /// @brief SetPoint overload for Isaac Sim simulator
+  void SetPoint(const IsaacSimPoint& in_pt0, const IsaacSimPoint& in_pt,
                 EllipseLioPoint* out_pt, rclcpp::Time* point_time);
 
   /**

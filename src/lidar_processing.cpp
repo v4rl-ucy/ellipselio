@@ -126,6 +126,9 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     case LidType::kGazebo:
       PointCloudHandler<GazeboPoint>(msg);
       break;
+    case LidType::kIsaacSim:
+      PointCloudHandler<IsaacSimPoint>(msg);
+      break;
   }
 
   int end_bin = num_bins_;
@@ -280,6 +283,12 @@ void LidarProcess::SetPoint(const HesaiPoint& in_pt0, const HesaiPoint& in_pt,
 void LidarProcess::SetPoint(const GazeboPoint& in_pt0, const GazeboPoint& in_pt,
                             EllipseLioPoint* out_pt, rclcpp::Time* point_time) {
   out_pt->intensity = in_pt.intensity;
+}
+
+void LidarProcess::SetPoint(const IsaacSimPoint& in_pt0,
+                            const IsaacSimPoint& in_pt, EllipseLioPoint* out_pt,
+                            rclcpp::Time* point_time) {
+  out_pt->intensity = 0.0;
 }
 
 template <typename InPtType>
