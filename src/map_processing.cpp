@@ -677,14 +677,13 @@ void MappingNode::TensorRegistration(
   Eigen::Array3i cnts(3);
   std::atomic<int> feat_cnt;
   std::vector<std::atomic<int>> prim_cnts(3);
+  std::vector<V3D> cov_scales(lid_process_->num_bins_, V3D::Constant(1e-4));
 
-  M3F cov_mat;
-  V3D rot_obs, tran_obs, cov_scales;
+  V3D rot_obs, tran_obs;
   V3F grav_norm, poses_diff, poses_orth, grav_x, grav_y, grav_z;
 
   Eigen::Quaternionf gq;
   Eigen::Matrix4f tf_grav;
-  Eigen::Vector4f centroid = Eigen::Vector4f::Zero();
 
   feat_cnt = 0;
   prim_cnts[0] = 0;
@@ -700,7 +699,6 @@ void MappingNode::TensorRegistration(
   poses_orth = poses_diff - grav_norm * grav_norm.dot(poses_diff);
   vert_score = 1.0 - (((100.0 / mean_bin_) * grav_check) / poses_orth.norm());
 
-  scan_cloud_grav_->resize(scan_cloud_->size());
   gq = Eigen::Quaternionf::FromTwoVectors(grav_norm, V3F::UnitZ());
   gq = gq * s.rot.cast<float>() * s.offset_R_L_I.cast<float>();
 
@@ -712,17 +710,49 @@ void MappingNode::TensorRegistration(
   grav_y = gq.toRotationMatrix().col(1);
   grav_z = gq.toRotationMatrix().col(2);
 
-  pcl::transformPointCloud(*scan_cloud_, *scan_cloud_grav_, tf_grav);
-  pcl::compute3DCentroid(*scan_cloud_grav_, centroid);
-  pcl::computeCovarianceMatrixNormalized(*scan_cloud_grav_, centroid, cov_mat);
+  int start_idx = 0;
+  int end_idx = 0;
+  for (int i = 0; i < scan_cloud_bins_.size(); i++) {
+    end_idx += scan_cloud_bins_[i];
+    if (scan_cloud_bins_[i] < kMinNeighbours) {
+      start_idx = end_idx;
+      continue;
+    }
+    if (end_idx > scan_cloud_->size()) break;
 
-  float mean_bin_arc = lidar_params_.vertical_fov * kPi * mean_bin_ / 180.0;
-  float cov_score = fmin(fabs(cov_mat(2, 2)) / mean_bin_arc, 1.0);
+    M3F cov_mat;
+    Eigen::Vector4f centroid = Eigen::Vector4f::Zero();
+    scan_cloud_grav_->resize(scan_cloud_bins_[i]);
 
-  cov_scales = cov_mat.diagonal().cast<double>();
-  cov_scales(2) *= cov_score;
-  cov_scales(2) *= 180.0 / lidar_params_.vertical_fov;
-  cov_scales /= cov_scales.maxCoeff();
+    pcl::Indices bin_indices;
+    bin_indices.reserve(end_idx - start_idx);
+    for (int idx = start_idx; idx < end_idx; ++idx) {
+      bin_indices.push_back(idx);
+    }
+
+    pcl::transformPointCloud(*scan_cloud_, bin_indices, *scan_cloud_grav_,
+                             tf_grav);
+    pcl::compute3DCentroid(*scan_cloud_grav_, centroid);
+    pcl::computeCovarianceMatrixNormalized(*scan_cloud_grav_, centroid,
+                                           cov_mat);
+
+    float mean_bin_arc = lidar_params_.vertical_fov * kPi * (i + 1) / 180.0;
+    float cov_score = fmin(fabs(cov_mat(2, 2)) / mean_bin_arc, 1.0);
+
+    cov_scales[i] = cov_mat.diagonal().cast<double>();
+    // fmax(2.0 - (float(i) / lidar_params_.max_range), 0.0));
+    // cov_scales[i] = cov_scales[i].cwiseProduct(cov_scales[i]);
+    // cov_scales[i](2) *= cov_score;
+    // cov_scales[i](2) *= 180.0 / lidar_params_.vertical_fov;
+    cov_scales[i] /= cov_scales[i].maxCoeff();
+    cov_scales[i] = cov_scales[i].array().pow(2);
+
+    std::cout << "Bin " << i << ": " << scan_cloud_bins_[i]
+              << " points, cov scales: " << cov_scales[i].transpose()
+              << std::endl;
+
+    start_idx = end_idx;
+  }
 
   start_bin_scale = floor(kMaxSearchRes / lid_process_->match_radii_.front());
 
@@ -795,7 +825,7 @@ void MappingNode::TensorRegistration(
     norm_vec.normalize();
 
     time_score = 1.0 / (traj_diff + 1.0);
-    time_score *= fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
+    // time_score *= fmax(1.0 - fabs(grav_norm.dot(norm_vec)), 1e-4);
     time_score = 1.0 / fmin(fmax(time_score, 1e-4), 1.0);
 
     P_skew = SkewSymMat(p_imu);
@@ -803,7 +833,7 @@ void MappingNode::TensorRegistration(
     a_world = (s.rot * a).normalized().cast<float>();
     h_x_vec << norm_vec(0), norm_vec(1), norm_vec(2), a[0], a[1], a[2];
 
-    obs_trans = cov_scales * pow(scores(0), 2);
+    obs_trans = cov_scales[bin_idx];
     obs_trans(0) *= fabs(norm_vec.dot(grav_x));
     obs_trans(1) *= fabs(norm_vec.dot(grav_y));
     obs_trans(2) *= fabs(norm_vec.dot(grav_z));
