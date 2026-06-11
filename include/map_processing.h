@@ -189,6 +189,7 @@ class MappingNode : public rclcpp::Node {
   int start_bin_cnt_ = 0;
   int ekfom_vert_cnt_ = 0;
   int ekfom_obs_cnt_ = 0;
+  int ekfom_cov_cnt_ = 0;
   int ekfom_iter_cnt_ = 0;
   int ekfom_upd_cnt_ = 0;
 
@@ -198,6 +199,7 @@ class MappingNode : public rclcpp::Node {
   Eigen::ArrayXXi n_bins_;
 
   Eigen::ArrayXd ekfom_data_w_;
+  Eigen::ArrayXd ekfom_data_cv_;
   Eigen::ArrayXd ekfom_data_sb_;
   Eigen::ArrayXd ekfom_data_om_;
   Eigen::ArrayXd ekfom_data_oe_;
@@ -220,6 +222,9 @@ class MappingNode : public rclcpp::Node {
   std::vector<M3F> eigenvectors_;
   std::vector<V3F> eigenvalues_;
   std::vector<V3F> salivalues_;
+
+  Eigen::ArrayXXd cov_scale_bins_;
+  Eigen::ArrayXXd ctr_mean_bins_;
 
   Eigen::ArrayXi raw_cloud_bins_;
   Eigen::ArrayXi scan_cloud_bins_;
@@ -251,10 +256,10 @@ class MappingNode : public rclcpp::Node {
   EllipseLioPointCloudPtr map_cloud_;
   EllipseLioPointCloudPtr raw_cloud_;
   EllipseLioPointCloudPtr scan_cloud_;
-  EllipseLioPointCloudPtr scan_cloud_grav_;
   EllipseLioPointCloudPtr filter_cloud_;
   EllipseLioPointCloudPtr buffer_cloud_;
   EllipseLioPointCloudPtr scan_cloud_pub_;
+  std::vector<EllipseLioPointCloud> grav_bin_pcs_;
 
   iOctree::Octree ioctree_;
 

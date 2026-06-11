@@ -20,6 +20,7 @@ int64 kf_iterations
 float64 obs_score
 float64 vert_score
 float64 bin_score
+float64 cov_score
 
 int64 num_planes
 int64 num_lines
@@ -27,6 +28,7 @@ int64 num_balls
 int64 num_feats
 int64 num_reject
 
+float64 wt_ratio
 float64 wt_mean
 float64 wt_std
 float64 wt_min
