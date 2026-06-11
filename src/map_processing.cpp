@@ -737,6 +737,7 @@ void MappingNode::TensorRegistration(
     pcl::computeCovarianceMatrixNormalized(grav_bin_pcs_[i], centroid, cov_mat);
 
     cov_scale_bins_.row(i) = cov_mat.diagonal().array().cast<double>();
+    cov_scale_bins_(i, 2) *= 90.0 / lidar_params_.vertical_fov;
     cov_scale_bins_.row(i) /= cov_scale_bins_.row(i).maxCoeff();
     ctr_mean_bins_.row(i) = centroid.head(3).array().cast<double>();
 
