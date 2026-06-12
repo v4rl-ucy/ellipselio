@@ -722,6 +722,7 @@ void MappingNode::TensorRegistration(
 
     M3F cov_mat;
     int start_idx, end_idx;
+    float bin_arc, arc_ratio;
     pcl::Indices bin_indices;
     Eigen::Vector4f centroid = Eigen::Vector4f::Zero();
 
@@ -737,7 +738,11 @@ void MappingNode::TensorRegistration(
     pcl::computeCovarianceMatrixNormalized(grav_bin_pcs_[i], centroid, cov_mat);
 
     cov_scale_bins_.row(i) = cov_mat.diagonal().array().cast<double>();
-    cov_scale_bins_(i, 2) *= fmax(90.0 / lidar_params_.vertical_fov, 1.0);
+    bin_arc = lidar_params_.vertical_fov * kPi * (i + 1) / 180.0;
+    arc_ratio = fmin(cov_scale_bins_(i, 2) / bin_arc, 1.0);
+    arc_ratio *= pow(fmax(90.0 / lidar_params_.vertical_fov, 1.0), 2.0);
+
+    cov_scale_bins_(i, 2) *= arc_ratio;
     cov_scale_bins_.row(i) /= cov_scale_bins_.row(i).maxCoeff();
     ctr_mean_bins_.row(i) = centroid.head(3).array().cast<double>();
 
@@ -746,9 +751,7 @@ void MappingNode::TensorRegistration(
 
   centroid_mean = ctr_mean_bins_.colwise().sum() / bin_cnt;
   cov_scale = cov_scale_bins_.colwise().sum() / bin_cnt;
-
-  if (centroid_mean(2) > 0.0) cov_scale = cov_scale.array().pow(2.0);
-  cov_score = fmin(mean_bin_ * cov_scale.minCoeff(), 1.0);
+  cov_score = fmin(10.0 * cov_scale.minCoeff(), 1.0);
 
   start_bin_scale = floor(kMaxSearchRes / lid_process_->match_radii_.front());
 
