@@ -1,0 +1,26 @@
+/**:
+    ros__parameters:
+
+        mapping:
+            map_resolution: 0.1
+            pub_map_n_secs: 10 
+            
+        lidar:
+            type: 1 # LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4
+            rate: 10
+            scan_lines: 40
+            vertical_fov: 59.0
+            min_range: 0.0
+            max_range: 100.0
+            topic:  "/livox/lidar"
+            t_imu_lidar: [-0.011, -0.02329, 0.04412]
+            r_imu_lidar: [1., 0., 0.,
+                          0., 1., 0.,
+                          0., 0., 1.]
+        imu:
+            rate: 200
+            acc_noise: 0.1
+            gyr_noise: 0.1
+            acc_bias: 0.0001
+            gyr_bias: 0.0001
+            topic:  "/livox/imu"
