@@ -788,8 +788,9 @@ void MappingNode::TensorRegistration(
 
     curr_traj_dist = traj_dist_.back();
     curr_traj_dist += (s.pos.cast<float>() - poses_.back()).norm();
-    if (inc_search_rad > curr_traj_dist) {
-      inc_search_rad = fmax(0.5 * inc_search_rad, kMinSearchRes);
+    if (inc_search_rad > curr_traj_dist && s.vel.norm() > 0.1) {
+      inc_search_rad =
+          fmax(fmin(s.vel.norm(), 1.0) * inc_search_rad, kMinSearchRes);
     }
 
     ioctree_.KnnNeighbors(p_world, 1, N_idxs, N_dst, inc_search_rad);
@@ -801,8 +802,8 @@ void MappingNode::TensorRegistration(
     traj_diff = curr_traj_dist;
     traj_diff -= traj_dist_[map_cloud_->points[map_i].scan_idx];
     bin_scale = fmax(fmin(bin_idx / 4.0, 10.0), start_bin_scale);
-    if (map_cloud_->points[map_i].scan_idx && s.vel.norm() > 0.1 &&
-        match_rad > bin_scale * search_rad &&
+    if (map_cloud_->points[map_i].scan_idx > floor(bin_idx / 10.0) &&
+        s.vel.norm() > 0.1 && match_rad > bin_scale * search_rad &&
         traj_diff < match_rad / bin_scale) {
       continue;
     }
