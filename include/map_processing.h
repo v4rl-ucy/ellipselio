@@ -180,51 +180,47 @@ class MappingNode : public rclcpp::Node {
   double start_time_;
   bool initialized_ = false;
 
-  double map_resolution_, map_search_rad_;
   int start_bin_, mean_bin_;
+  double map_resolution_, map_search_rad_;
 
   int num_processors_;
   clock_t last_cpu_, last_sys_cpu_, last_user_cpu_;
 
-  int start_bin_cnt_ = 0;
-  int ekfom_vert_cnt_ = 0;
-  int ekfom_obs_cnt_ = 0;
-  int ekfom_cov_cnt_ = 0;
   int ekfom_iter_cnt_ = 0;
-  int ekfom_upd_cnt_ = 0;
+  int ekfom_mean_cnt_ = -1;
+  int start_mean_cnt_ = -1;
 
   Eigen::ArrayXf n_res_;
   Eigen::ArrayXi n_means_;
   Eigen::ArrayXXi n_cnts_;
   Eigen::ArrayXXi n_bins_;
 
-  Eigen::ArrayXd ekfom_data_w_;
-  Eigen::ArrayXd ekfom_data_cv_;
-  Eigen::ArrayXd ekfom_data_sb_;
-  Eigen::ArrayXd ekfom_data_om_;
-  Eigen::ArrayXd ekfom_data_oe_;
+  Eigen::ArrayXXd mean_score_wt_;
+
   Eigen::ArrayXXd ekfom_data_ot_;
   Eigen::ArrayXXd ekfom_data_or_;
+
+  Eigen::ArrayXd ekfom_data_w_;
   Eigen::VectorXd ekfom_data_h_;
   Eigen::ArrayXd ekfom_data_w_x_;
+  Eigen::ArrayXd ekfom_data_h_v_;
   Eigen::MatrixXd ekfom_data_h_x_;
   Eigen::MatrixXd ekfom_data_h_x_r_;
-  Eigen::ArrayXd ekfom_data_h_v_;
   Eigen::MatrixXd ekfom_data_h_x_v_;
 
   std::vector<float> traj_dist_;
-  std::vector<Eigen::Vector3f> vel_poses_;
   std::vector<Eigen::Vector3f> poses_;
   std::vector<Eigen::Quaternionf> rotes_;
+  std::vector<Eigen::Vector3f> vel_poses_;
 
   std::vector<M3F> tensors_p1_;
   std::vector<M3F> tensors_p2_;
-  std::vector<M3F> eigenvectors_;
-  std::vector<V3F> eigenvalues_;
   std::vector<V3F> salivalues_;
+  std::vector<V3F> eigenvalues_;
+  std::vector<M3F> eigenvectors_;
 
-  Eigen::ArrayXXd cov_scale_bins_;
   Eigen::ArrayXXd ctr_mean_bins_;
+  Eigen::ArrayXXd cov_scale_bins_;
 
   Eigen::ArrayXi raw_cloud_bins_;
   Eigen::ArrayXi scan_cloud_bins_;

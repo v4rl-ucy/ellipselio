@@ -671,7 +671,7 @@ void MappingNode::TensorRegistration(
   double t0, t1, res_mean;
   int feat_tot, reject_cnt, start_bin_scale;
   float grav_check, vert_score, cov_score;
-  float wt_min, wt_max, wt_mean, wt_std, wt_ratio, obs_min, obs_scale, obs_term;
+  float wt_min, wt_max, wt_mean, wt_std, wt_score, obs_min, obs_scale, obs_term;
   float rng_min, rng_max, rng_mean, rng_scale, rng_min_scale, rng_max_scale;
 
   Eigen::Array3i cnts(3);
@@ -869,8 +869,8 @@ void MappingNode::TensorRegistration(
   wt_max = ekfom_data_w_.head(feat_tot).maxCoeff();
   wt_mean = ekfom_data_w_.head(feat_tot).mean();
   wt_std = (ekfom_data_w_.head(feat_tot) - wt_mean).square().sum();
-  wt_std = sqrt(wt_std / (feat_tot - 1));
-  wt_ratio = fmax(2.0 - fmin(fmax(wt_std / 1e3, 1.0), 2.0), 0.1);
+  wt_std = sqrt(wt_std / fmax(feat_tot - 1, 1));
+  wt_score = 2.0 - fmin(fmax(wt_std / 1e3, 1.0), 2.0);
 
   rng_min = wt_mean - wt_std;
   rng_min = fmax(rng_min, wt_min);
@@ -878,14 +878,12 @@ void MappingNode::TensorRegistration(
   rng_mean = wt_mean - rng_min;
   rng_max = wt_max - rng_min;
   rng_max = fmin(rng_mean + wt_std, rng_max);
-  rng_max_scale = rng_max / ((wt_max * rng_min_scale) - rng_min);
+  rng_max_scale = rng_max / fmax((wt_max * rng_min_scale) - rng_min, 1e-4);
 
-  if (wt_std) {
-    ekfom_data_w_.head(feat_tot) *= rng_min_scale;
-    ekfom_data_w_.head(feat_tot) -= rng_min;
-    ekfom_data_w_.head(feat_tot) *= rng_max_scale;
-    ekfom_data_w_.head(feat_tot) += 1.0;
-  }
+  ekfom_data_w_.head(feat_tot) *= rng_min_scale;
+  ekfom_data_w_.head(feat_tot) -= rng_min;
+  ekfom_data_w_.head(feat_tot) *= rng_max_scale;
+  ekfom_data_w_.head(feat_tot) += 1.0;
 
   tran_obs = ekfom_data_ot_.topRows(feat_tot).colwise().sum() + 1e-4;
   rot_obs = ekfom_data_or_.topRows(feat_tot).colwise().sum() + 1e-4;
@@ -895,73 +893,67 @@ void MappingNode::TensorRegistration(
 
   obs_min = 1e4 * rot_obs.minCoeff() * tran_obs.minCoeff();
 
-  if (!ekfom_data_om_.sum()) {
-    ekfom_data_om_ += fmin(fmax(obs_min, 1e-4), 1.0);
-    ekfom_data_oe_ += fmin(fmax(vert_score, 1e-4), 1.0);
-    ekfom_data_cv_ += fmin(fmax(cov_score, 1e-4), 1.0);
-
+  if (ekfom_mean_cnt_ < 0) {
+    mean_score_wt_.col(0) += fmin(fmax(obs_min, 1e-4), 1.0);
+    mean_score_wt_.col(1) += fmin(fmax(vert_score, 1e-4), 1.0);
+    mean_score_wt_.col(2) += fmin(fmax(cov_score, 1e-4), 1.0);
+    mean_score_wt_.col(3) += fmin(fmax(wt_score, 1e-4), 1.0);
   } else {
-    ekfom_data_om_[ekfom_obs_cnt_] = fmin(fmax(obs_min, 1e-4), 1.0);
-    ekfom_data_oe_[ekfom_vert_cnt_] = fmin(fmax(vert_score, 1e-4), 1.0);
-    ekfom_data_cv_[ekfom_cov_cnt_] = fmin(fmax(cov_score, 1e-4), 1.0);
+    mean_score_wt_.col(0)(ekfom_mean_cnt_) = fmin(fmax(obs_min, 1e-4), 1.0);
+    mean_score_wt_.col(1)(ekfom_mean_cnt_) = fmin(fmax(vert_score, 1e-4), 1.0);
+    mean_score_wt_.col(2)(ekfom_mean_cnt_) = fmin(fmax(cov_score, 1e-4), 1.0);
+    mean_score_wt_.col(3)(ekfom_mean_cnt_) = fmin(fmax(wt_score, 1e-4), 1.0);
   }
-  ekfom_obs_cnt_ = (ekfom_obs_cnt_ + 1) % ekfom_data_om_.size();
-  ekfom_vert_cnt_ = (ekfom_vert_cnt_ + 1) % ekfom_data_oe_.size();
-  ekfom_cov_cnt_ = (ekfom_cov_cnt_ + 1) % ekfom_data_cv_.size();
+  ekfom_mean_cnt_ = (ekfom_mean_cnt_ + 1) % mean_score_wt_.rows();
 
-  obs_min = ekfom_data_om_.mean() * ekfom_data_oe_.mean() *
-            ekfom_data_sb_.mean() * ekfom_data_cv_.mean();
-  obs_min = fmax(fmin(obs_min, wt_ratio), 0.1);
+  obs_min = fmax(fmin(mean_score_wt_.colwise().mean().prod(), 1.0), 0.1);
+
   ekfom_data_w_.head(feat_tot) = ekfom_data_w_.head(feat_tot).pow(obs_min);
   ekfom_data_h_.block(0, 0, feat_tot, 1) = ekfom_data_h_v_.head(feat_tot);
   ekfom_data_w_x_.block(0, 0, feat_tot, 1) = ekfom_data_w_.head(feat_tot);
   ekfom_data_h_x_.block(0, 0, feat_tot, 6) =
       ekfom_data_h_x_v_.topRows(feat_tot);
+  ekfom_data_h_x_r_.leftCols(feat_tot) =
+      (ekfom_data_h_x_.topRows(feat_tot).array().colwise() *
+       ekfom_data_w_x_.head(feat_tot))
+          .transpose();
+  ekfom_data.h = ekfom_data_h_.head(feat_tot);
+  ekfom_data.h_x = ekfom_data_h_x_.topRows(feat_tot);
+  ekfom_data.h_x_R = ekfom_data_h_x_r_.leftCols(feat_tot);
+
+  res_mean = -ekfom_data_h_.head(feat_tot).sum() / feat_tot;
+
+  analytics_msg_.num_planes = cnts(0);
+  analytics_msg_.num_lines = cnts(1);
+  analytics_msg_.num_balls = cnts(2);
+
+  analytics_msg_.obs_min = obs_min;
+  analytics_msg_.res_mean = res_mean;
+  analytics_msg_.num_feats = feat_tot;
+  analytics_msg_.num_reject = reject_cnt;
+
+  analytics_msg_.obs_score = mean_score_wt_.col(0).mean();
+  analytics_msg_.vert_score = mean_score_wt_.col(1).mean();
+  analytics_msg_.cov_score = mean_score_wt_.col(2).mean();
+  analytics_msg_.wt_score = mean_score_wt_.col(3).mean();
+
+  analytics_msg_.og_wt_std = wt_std;
+  analytics_msg_.og_wt_min = wt_min;
+  analytics_msg_.og_wt_max = wt_max;
+  analytics_msg_.og_wt_mean = wt_mean;
 
   wt_min = ekfom_data_w_.head(feat_tot).minCoeff();
   wt_max = ekfom_data_w_.head(feat_tot).maxCoeff();
   wt_mean = ekfom_data_w_.head(feat_tot).mean();
   wt_std = (ekfom_data_w_.head(feat_tot) - wt_mean).square().sum();
-  wt_std = sqrt(wt_std / (feat_tot - 1));
+  wt_std = sqrt(wt_std / fmax(feat_tot - 1, 1));
 
-  rng_min = 1;
-  rng_max += 1;
-  rng_mean += 1;
-
-  ekfom_data_h_x_r_.leftCols(feat_tot) =
-      (ekfom_data_h_x_.topRows(feat_tot).array().colwise() *
-       ekfom_data_w_x_.head(feat_tot))
-          .transpose();
-
-  res_mean = -ekfom_data_h_.head(feat_tot).sum() / feat_tot;
-  ekfom_data.h = ekfom_data_h_.head(feat_tot);
-  ekfom_data.h_x = ekfom_data_h_x_.topRows(feat_tot);
-  ekfom_data.h_x_R = ekfom_data_h_x_r_.leftCols(feat_tot);
+  analytics_msg_.sc_wt_std = wt_std;
+  analytics_msg_.sc_wt_min = wt_min;
+  analytics_msg_.sc_wt_max = wt_max;
+  analytics_msg_.sc_wt_mean = wt_mean;
 
   ekfom_iter_cnt_++;
-
-  analytics_msg_.num_planes = cnts(0);
-  analytics_msg_.num_lines = cnts(1);
-  analytics_msg_.num_balls = cnts(2);
-  analytics_msg_.wt_std = wt_std;
-  analytics_msg_.wt_min = wt_min;
-  analytics_msg_.wt_max = wt_max;
-  analytics_msg_.wt_ratio = wt_ratio;
-  analytics_msg_.obs_min = obs_min;
-  analytics_msg_.wt_mean = wt_mean;
-  analytics_msg_.rng_min = rng_min;
-  analytics_msg_.rng_max = rng_max;
-  analytics_msg_.rng_mean = rng_mean;
-  analytics_msg_.res_mean = res_mean;
-  analytics_msg_.mean_bin = mean_bin_;
-  analytics_msg_.start_bin = start_bin_;
-  analytics_msg_.num_feats = feat_tot;
-  analytics_msg_.num_reject = reject_cnt;
-  analytics_msg_.kf_iterations = ekfom_iter_cnt_;
-  analytics_msg_.obs_score = ekfom_data_om_.mean();
-  analytics_msg_.vert_score = ekfom_data_oe_.mean();
-  analytics_msg_.bin_score = ekfom_data_sb_.mean();
-  analytics_msg_.cov_score = ekfom_data_cv_.mean();
 }
 
 MappingNode::MappingNode(
@@ -1067,13 +1059,12 @@ MappingNode::MappingNode(
   ioctree_.SetMaxNewPoints(kMaxProcPoints);
   ioctree_.SetMinExtent(map_resolution_);
 
-  ekfom_data_sb_ = Eigen::ArrayXd::Zero(100);
-  ekfom_data_om_ = Eigen::ArrayXd::Zero(100);
-  ekfom_data_oe_ = Eigen::ArrayXd::Zero(100);
-  ekfom_data_cv_ = Eigen::ArrayXd::Zero(100);
-  ekfom_data_w_ = Eigen::ArrayXd(kMaxProcPoints);
+  mean_score_wt_ = Eigen::ArrayXXd::Zero(100, 5);
+
   ekfom_data_ot_ = Eigen::ArrayXXd(kMaxProcPoints, 3);
   ekfom_data_or_ = Eigen::ArrayXXd(kMaxProcPoints, 3);
+
+  ekfom_data_w_ = Eigen::ArrayXd(kMaxProcPoints);
   ekfom_data_h_ = Eigen::VectorXd(kMaxProcPoints);
   ekfom_data_w_x_ = Eigen::ArrayXd(kMaxProcPoints);
   ekfom_data_h_x_ = Eigen::MatrixXd(kMaxProcPoints, 6);
@@ -1251,6 +1242,7 @@ void MappingNode::InitCamProcess() {
 
 void MappingNode::SyncRawCloudWithImu() {
   int total_size;
+  float bin_score;
   std::atomic<int> scan_idx = 0, filter_idx = 0;
 
   imu_time_offset_ = 0;
@@ -1315,22 +1307,26 @@ void MappingNode::SyncRawCloudWithImu() {
     }
   }
 
+  bin_score = start_bin_ / 10.0;
+  if (start_mean_cnt_ < 0) {
+    mean_score_wt_.col(4) += fmin(fmax(bin_score, 1e-4), 1.0);
+  } else {
+    mean_score_wt_.col(4)(start_mean_cnt_) = fmin(fmax(bin_score, 1e-4), 1.0);
+  }
+  start_mean_cnt_ = (start_mean_cnt_ + 1) % mean_score_wt_.rows();
+
   raw_cloud_->clear();
   raw_cloud_bins_.setZero();
   raw_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   raw_end_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  if (!ekfom_data_sb_.sum()) {
-    ekfom_data_sb_ += fmin(fmax(start_bin_ / 10.0, 1e-4), 1.0);
-  } else {
-    ekfom_data_sb_[start_bin_cnt_] = fmin(fmax(start_bin_ / 10.0, 1e-4), 1.0);
-  }
-  start_bin_cnt_ = (start_bin_cnt_ + 1) % ekfom_data_sb_.size();
-
+  analytics_msg_.mean_bin = mean_bin_;
+  analytics_msg_.start_bin = start_bin_;
   analytics_msg_.imu_offset = imu_time_offset_;
   analytics_msg_.lid_offset = lid_time_offset_;
   analytics_msg_.scan_size = scan_cloud_->size();
   analytics_msg_.buffer_size = buffer_cloud_->size();
+  analytics_msg_.bin_score = mean_score_wt_.col(4).mean();
   analytics_msg_.scan_time = (scan_end_time_ - scan_start_time_).seconds();
 }
 
@@ -1423,6 +1419,7 @@ void MappingNode::TimerCallback() {
       ekfom_iter_cnt_ = 0;
       imu_process_->UpdateStatesWithLidar(&kf_state_, scan_end_time_,
                                           0.5 / lidar_params_.rate);
+      analytics_msg_.kf_iterations = ekfom_iter_cnt_;
     }
 
     t3 = omp_get_wtime();
