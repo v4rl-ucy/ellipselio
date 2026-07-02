@@ -801,7 +801,7 @@ void MappingNode::TensorRegistration(
 
     traj_diff = curr_traj_dist;
     traj_diff -= traj_dist_[map_cloud_->points[map_i].scan_idx];
-    bin_scale = fmax(fmin(0.25 * bin_idx, kMaxStartBin), start_bin_scale);
+    bin_scale = fmax(fmin(0.1 * bin_idx, kMaxStartBin), start_bin_scale);
     if (map_cloud_->points[map_i].scan_idx > floor(bin_idx / kMaxStartBin) &&
         s.vel.norm() > 0.1 && match_rad > bin_scale * search_rad &&
         traj_diff < match_rad / bin_scale) {
