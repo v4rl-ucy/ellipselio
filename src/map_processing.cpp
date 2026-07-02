@@ -801,8 +801,8 @@ void MappingNode::TensorRegistration(
 
     traj_diff = curr_traj_dist;
     traj_diff -= traj_dist_[map_cloud_->points[map_i].scan_idx];
-    bin_scale = fmax(fmin(bin_idx / 4.0, 10.0), start_bin_scale);
-    if (map_cloud_->points[map_i].scan_idx > floor(bin_idx / 10.0) &&
+    bin_scale = fmax(fmin(0.25 * bin_idx, kMaxStartBin), start_bin_scale);
+    if (map_cloud_->points[map_i].scan_idx > floor(bin_idx / kMaxStartBin) &&
         s.vel.norm() > 0.1 && match_rad > bin_scale * search_rad &&
         traj_diff < match_rad / bin_scale) {
       continue;
@@ -1308,7 +1308,7 @@ void MappingNode::SyncRawCloudWithImu() {
     }
   }
 
-  bin_score = start_bin_ / 10.0;
+  bin_score = start_bin_ / kMaxStartBin;
   if (start_mean_cnt_ < 0) {
     mean_score_wt_.col(4) += fmin(fmax(bin_score, 1e-4), 1.0);
   } else {

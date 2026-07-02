@@ -22,7 +22,6 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
 
   num_bins_ = ceil(params_.max_range + 1);
   scan_res_ = kPi * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
-  max_octree_res_ = 10;
 
   bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
@@ -133,7 +132,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
   int end_bin = num_bins_;
   int prev_start_bin = -1;
-  while (start_bin_ > prev_start_bin && prev_start_bin < max_octree_res_) {
+  while (start_bin_ > prev_start_bin && prev_start_bin < kMaxStartBin) {
 #pragma omp parallel for
     for (size_t i = 0; i < end_bin; i++) {
       std::vector<int> new_idxs, added_idxs;
@@ -169,7 +168,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
     prev_start_bin = start_bin_;
     mean_bin_ = floor(mean_bin / mean_num);
-    start_bin_ = fmin(mean_bin_, max_octree_res_);
+    start_bin_ = fmin(mean_bin_, kMaxStartBin);
     end_bin = start_bin_;
   }
 
@@ -352,5 +351,5 @@ void LidarProcess::PointCloudHandler(
   }
 
   mean_bin_ = floor(mean_bin / mean_num);
-  start_bin_ = fmin(mean_bin_, max_octree_res_);
+  start_bin_ = fmin(mean_bin_, kMaxStartBin);
 }

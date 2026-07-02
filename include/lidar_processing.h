@@ -102,8 +102,6 @@ class LidarProcess {
   float min_scan_res_;
   /// @brief Maximum search radius for neighbor queries in meters
   float max_search_rad_;
-  /// @brief Maximum octree resolution for finest subdivision
-  float max_octree_res_;
 
   /// @brief Frame counter (incremented per received scan)
   std::atomic<int> lidar_counter_;
