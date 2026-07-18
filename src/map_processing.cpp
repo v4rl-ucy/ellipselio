@@ -112,7 +112,7 @@ bool MappingNode::SyncPackages() {
   return true;
 }
 
-void MappingNode::ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass) {
+void MappingNode::ComputeTensorVote(int i, int j, M3F& A_j, bool first_pass) {
   V3F p_i = map_cloud_->points[i].getVector3fMap();
   V3F p_j = map_cloud_->points[j].getVector3fMap();
   const int& bin_idx = map_cloud_->points[i].bin_idx;
@@ -125,17 +125,23 @@ void MappingNode::ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass) {
   M3F Rp_ij = (Eye3f - 0.5 * rrt) * R_ij;
   M3F K_j = Eye3f;
   if (!first_pass) K_j = tensors_p2_[j];
-  *A_j = c_ij * R_ij * K_j * Rp_ij;
+  A_j = c_ij * R_ij * K_j * Rp_ij;
 }
 
-void MappingNode::ComputeTensorEigen(int i, M3F* tensor, bool first_pass) {
+void MappingNode::ComputeTensorEigen(int i, M3F& tensor, bool first_pass) {
   V3F eig_val, sali_val;
   M3F eig_vec, tensor_i2;
   Eigen::SelfAdjointEigenSolver<M3F> eig_solver;
 
-  eig_solver.computeDirect(*tensor);
+  eig_solver.computeDirect(tensor);
+  if (eig_solver.info() != Eigen::ComputationInfo::Success) {
+    RCLCPP_ERROR(this->get_logger(), "Eigen solve failed");
+    filters_[i][!first_pass] = false;
+    return;
+  }
+
   eig_vec = eig_solver.eigenvectors();
-  eig_val = eig_solver.eigenvalues().cwiseAbs();
+  eig_val = eig_solver.eigenvalues().cwiseAbs().cwiseMax(1e-3);
 
   const int& bin_idx = map_cloud_->points[i].bin_idx;
   const float& search_rad = lid_process_->search_radii_[bin_idx];
@@ -152,13 +158,14 @@ void MappingNode::ComputeTensorEigen(int i, M3F* tensor, bool first_pass) {
     sali_val(1) = eig_val(1) - eig_val(0);
     sali_val(2) = eig_val(0);
     sali_val.maxCoeff(&saliency_idxs_[i]);
+    salivalues_[i] = sali_val / sali_val.sum();
 
-    filters_[i][1] = true;
-    salivalues_[i] = sali_val;
-    eigenvalues_[i] = (1.0 / (eig_val.array() + 1e-10)).matrix().normalized();
+    eigenvalues_[i] = eig_val.cwiseInverse().normalized();
     eigenvalues_[i] *= search_rad;
     eigenvectors_[i] = eig_vec;
-    map_cloud_->points[i].prim_type = (saliency_idxs_[i] + 1) * 85;
+
+    filters_[i][1] = true;
+
     if (num_cams_) return;
     switch (saliency_idxs_[i]) {
       case 0:
@@ -241,7 +248,7 @@ void MappingNode::TensorVotePass1(int old_map_size,
     for (int j = 0; j < loop_cnt; j++) {
       M3F A_j;
       int map_j = neighbours_[map_i][j];
-      ComputeTensorVote(map_i, map_j, &A_j, true);
+      ComputeTensorVote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
 
       if (map_j >= old_map_size) continue;
@@ -271,7 +278,7 @@ void MappingNode::TensorVotePass1(int old_map_size,
     if (!filters_[map_i][0]) continue;
 
     tensor_i1 = tensors_p1_[map_i] / float(loop_cnt);
-    ComputeTensorEigen(map_i, &tensor_i1, true);
+    ComputeTensorEigen(map_i, tensor_i1, true);
   }
 
   updated_idxs.resize(new_neighbours_idx);
@@ -305,7 +312,7 @@ void MappingNode::TensorVotePass1(int old_map_size,
       M3F A_j;
       int map_j = new_neighbours_[i][j];
       neighbours_[map_i][old_size + j] = map_j;
-      ComputeTensorVote(map_i, map_j, &A_j, true);
+      ComputeTensorVote(map_i, map_j, A_j, true);
       K.row(j) = A_j.reshaped(1, 9);
     }
 
@@ -315,7 +322,7 @@ void MappingNode::TensorVotePass1(int old_map_size,
     if (!filters_[map_i][0]) continue;
 
     tensor_i1 = tensors_p1_[map_i] / float(neighbours_[map_i].size());
-    ComputeTensorEigen(map_i, &tensor_i1, true);
+    ComputeTensorEigen(map_i, tensor_i1, true);
   }
   updated_idxs.resize(upd_idx);
 }
@@ -350,7 +357,7 @@ void MappingNode::TensorVotePass2(std::vector<int>& added_idxs,
       if (!filters_[map_j][0]) continue;
 
       M3F A_j;
-      ComputeTensorVote(map_i, map_j, &A_j, false);
+      ComputeTensorVote(map_i, map_j, A_j, false);
       K.row(j) = A_j.reshaped(1, 9);
       K_filter(j) = 1;
     }
@@ -360,7 +367,7 @@ void MappingNode::TensorVotePass2(std::vector<int>& added_idxs,
 
     tensor_i2 = K.colwise().sum().reshaped(3, 3);
     tensor_i2 /= float(filter_cnt);
-    ComputeTensorEigen(map_i, &tensor_i2, false);
+    ComputeTensorEigen(map_i, tensor_i2, false);
   }
 }
 
@@ -808,7 +815,7 @@ void MappingNode::TensorRegistration(
       continue;
     }
 
-    scores = salivalues_[map_i] / salivalues_[map_i].sum();
+    scores = salivalues_[map_i];
     n_world = map_cloud_->points[map_i].getVector3fMap();
     q = p_world - n_world;
 

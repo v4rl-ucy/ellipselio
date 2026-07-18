@@ -94,7 +94,7 @@ class MappingNode : public rclcpp::Node {
    * @param A_j Output: accumulated tensor at point j
    * @param first_pass Whether this is first or second voting pass
    */
-  void ComputeTensorVote(int i, int j, M3F* A_j, bool first_pass);
+  void ComputeTensorVote(int i, int j, M3F& A_j, bool first_pass);
 
   /**
    * @brief Compute eigendecomposition of tensor.
@@ -102,7 +102,7 @@ class MappingNode : public rclcpp::Node {
    * @param tensor In/out: normalized tensor for eigenanalysis
    * @param first_pass Whether this is first or second pass
    */
-  void ComputeTensorEigen(int i, M3F* tensor, bool first_pass);
+  void ComputeTensorEigen(int i, M3F& tensor, bool first_pass);
 
   /**
    * @brief Split map into multiple point clouds.
