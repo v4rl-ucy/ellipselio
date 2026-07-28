@@ -9,6 +9,7 @@
 #ifndef LIDAR_PROCESSING_H_
 #define LIDAR_PROCESSING_H_
 
+#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -47,6 +48,8 @@ struct LidarParams {
   double vertical_fov;
   /// @brief ROS 2 topic name for point cloud subscription
   std::string topic;
+  /// @brief Subscribe to Livox CustomMsg instead of PointCloud2
+  bool use_custom_msg;
 };
 
 /**
@@ -140,11 +143,30 @@ class LidarProcess {
   void LidarCallback(const sensor_msgs::msg::PointCloud2::UniquePtr msg_in);
 
   /**
+   * @brief ROS 2 callback for native Livox point cloud reception.
+   * @param msg Incoming Livox CustomMsg
+   * @details Preserves per-point timing using timebase and offset_time.
+   */
+  void LivoxCallback(
+      const livox_ros_driver2::msg::CustomMsg::UniquePtr msg);
+
+  /**
    * @brief Process received point cloud message.
    * @param msg PointCloud2 message to process
    * @details Converts to vendor-specific point type and calls template handler.
    */
   void Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+
+  /**
+   * @brief Process a native Livox point cloud message.
+   * @param msg Incoming Livox CustomMsg
+   */
+  void ProcessLivox(const livox_ros_driver2::msg::CustomMsg& msg);
+
+  /**
+   * @brief Build the processed scan from populated range bins.
+   */
+  void FinalizePointCloud();
 
   /**
    * @brief Set start/end timestamps for a range bin.
@@ -205,12 +227,22 @@ class LidarProcess {
   template <typename InPtType>
   void PointCloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
+  /**
+   * @brief Convert native Livox points and populate range bins.
+   * @param msg Incoming Livox CustomMsg
+   */
+  void LivoxCustomMsgHandler(
+      const livox_ros_driver2::msg::CustomMsg& msg);
+
   /// @brief Shared pointer to ROS 2 node
   rclcpp::Node::SharedPtr node_;
   /// @brief Callback group for point cloud processing
   rclcpp::CallbackGroup::SharedPtr lidar_callback_group_;
   /// @brief Subscriber for point cloud topic
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
+  /// @brief Subscriber for native Livox point cloud topic
+  rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr
+      sub_livox_;
 
   /// @brief Sizes of points in each range bin
   Eigen::ArrayXi bin_pcs_sizes_;

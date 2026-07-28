@@ -25,6 +25,7 @@ find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(livox_ros_driver2 REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED)
@@ -62,6 +63,7 @@ set(dependencies
   pcl_ros
   pcl_conversions
   image_transport
+  livox_ros_driver2
 )
 
 ament_auto_add_library(ellipselio_mapping SHARED src/map_processing.cpp src/lidar_processing.cpp src/imu_processing.cpp src/cam_processing.cpp)
