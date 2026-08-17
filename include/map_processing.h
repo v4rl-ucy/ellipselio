@@ -173,6 +173,12 @@ class MappingNode : public rclcpp::Node {
   std::string node_namespace_;
 
   int pub_map_n_secs_;
+  bool publish_map_;
+  bool publish_scan_;
+  bool publish_markers_;
+  bool publish_odometry_;
+  bool publish_analytics_;
+  bool publish_tf_;
   int vel_pose_counter_ = 0;
   int map_counter_ = 0, old_map_size_ = 0, new_map_size_ = 0,
       last_map_size_ = 0;

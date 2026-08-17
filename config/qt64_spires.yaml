@@ -5,6 +5,14 @@
             map_resolution: 0.1
             pub_map_n_secs: 10 
 
+        publish:
+            map: true
+            scan: true
+            markers: true
+            odometry: true
+            analytics: true
+            tf: true
+
         lidar:
             type: 4 # LIVOX = 1, VELODYNE = 2, OUSTER = 3, HESAI = 4
             rate: 10
