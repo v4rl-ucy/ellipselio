@@ -28,14 +28,14 @@ using IkfomSPtr = std::shared_ptr<Ikfom>;
 inline Ikfom::cov PCov() {
   Ikfom::cov cov;
   cov.setIdentity();
-  cov *= 1e-3;
+  cov *= 1e-4;
   return cov;
 }
 
 inline MTK::get_cov<process_noise_ikfom>::type ProcessNoiseCov() {
   MTK::get_cov<process_noise_ikfom>::type cov =
       MTK::get_cov<process_noise_ikfom>::type::Identity();
-  cov *= 1e-3;
+  cov *= 1e-4;
   return cov;
 }
 
