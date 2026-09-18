@@ -20,6 +20,8 @@
 
 /// @name Physical Constants
 /// @{
+/// @brief Maximum starting bin
+inline constexpr double kMaxStartBin = 10.0;
 /// @brief Minimum number of neighbors for octree operations
 inline constexpr int kMinNeighbours = 6;
 /// @brief Maximum number of neighbors for octree operations
