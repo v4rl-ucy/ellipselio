@@ -45,7 +45,7 @@ ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file
 ros2 bag play --clock <imu_rate> <bag_folder> --topics <lidar_topic> <imu_topic>
 ```
 
-When running a dataset with raw Livox LiDAR data (e.g., GEODE Gamma) you need to run a [node][converterLink] to convert the custom Livox messages to standard PointCloud2 messages.
+When running a dataset with raw Livox LiDAR data (e.g., GEODE Gamma) you also need to run a separate [node][converterLink] to convert the custom Livox messages to standard PointCloud2 messages.
 
 [converterLink]: https://github.com/v4rl-ucy/livox_to_pointcloud2
 
