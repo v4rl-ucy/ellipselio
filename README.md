@@ -113,7 +113,7 @@ changing them.
 
 ## :pencil: Citation
 
-If you use EllipseLIO please cite our RA-L [paper][IEEELink]
+If you use EllipseLIO in your work please cite our RA-L [paper][IEEELink]
 ```
 @article{border2026ellipselio,
    author = {Rowan Border and Margarita Chli},
