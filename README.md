@@ -10,7 +10,9 @@
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/README.md">Install</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-    <a href="http://arxiv.org/abs/2605.21150">Paper</a>
+    <a href="http://arxiv.org/abs/2605.21150">arXiv</a>
+    <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+    <a href="https://ieeexplore.ieee.org/document/11661668">IEEE</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/issues">Report Issues</a>
   <br />
@@ -21,6 +23,7 @@
 </div>
 
 [arXivlink]: http://arxiv.org/abs/2605.21150
+[IEEElink]: https://ieeexplore.ieee.org/document/11661668
 
 ## ROS2 Humble and Jazzy
 
@@ -42,6 +45,10 @@ ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file
 ros2 bag play --clock <imu_rate> <bag_folder> --topics <lidar_topic> <imu_topic>
 ```
 
+When running a dataset with raw Livox LiDAR data (e.g., GEODE Gamma) you need to run a [node][converterLink] to convert the custom Livox messages to standard PointCloud2 messages.
+
+[converterLink]: https://github.com/v4rl-ucy/livox_to_pointcloud2
+
 ### Included dataset configs
 
 | Config file | Dataset |
@@ -52,7 +59,11 @@ ros2 bag play --clock <imu_rate> <bag_folder> --topics <lidar_topic> <imu_topic>
 | [`config/vlp16_bot.yaml`](config/vlp16_bot.yaml) | [`BotanicGarden`](https://github.com/robot-pesg/BotanicGarden) |
 | [`config/vlp16_geode.yaml`](config/vlp16_geode.yaml) | [`GEODE Alpha`](https://thisparticle.github.io/geode/) |
 | [`config/os64_geode.yaml`](config/os64_geode.yaml) | [`GEODE Beta`](https://thisparticle.github.io/geode/) |
+| [`config/avia_geode.yaml`](config/avia_geode.yaml) | [`GEODE Gamma`](https://thisparticle.github.io/geode/) |
 | [`config/vlp16_graco.yaml`](config/vlp16_graco.yaml) | [`GRACO`](https://github.com/SYSU-RoboticsLab/GrAco) |
+| [`config/vlp16_grandtour.yaml`](config/vlp16_grandtour.yaml) | [`GrandTour VLP-16`](https://grand-tour.leggedrobotics.com/dataset) |
+| [`config/xt32_grandtour.yaml`](config/xt32_grandtour.yaml) | [`GrandTour XT-32`](https://grand-tour.leggedrobotics.com/dataset) |
+| [`config/mid360_grandtour.yaml`](config/mid360_grandtour.yaml) | [`GrandTour Mid-360`](https://grand-tour.leggedrobotics.com/dataset) |
 
 ### Run standalone with live data
 
@@ -62,13 +73,16 @@ ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file
 
 ## :pencil: Citation
 
-If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]
+If you use EllipseLIO please cite our RA-L [paper][IEEELink]
 ```
 @article{border2026ellipselio,
-   author = {Border, Rowan and Chli, Margarita},
-   journal = {arXiv},
-   title = {{EllipseLIO}: Adaptive {LiDAR} Inertial Odometry with an Ellipsoid Representation},
-   url = {http://arxiv.org/abs/2605.21150},
+   author = {Rowan Border and Margarita Chli},
+   doi = {10.1109/LRA.2026.3726372},
+   issue = {10},
+   journal = {IEEE Robotics and Automation Letters},
+   pages = {11474-11481},
+   title = {EllipseLIO: Adaptive LiDAR Inertial Odometry with an Ellipsoid Representation},
+   volume = {11},
    year = {2026}
 }
 
