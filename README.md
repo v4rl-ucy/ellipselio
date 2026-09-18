@@ -1,8 +1,3 @@
-# Changelog
-- This fork/branch is for supporting Livox LiDAR.
-- Additionally, published visualization topics are controlled through yaml files to save CPU usage.
-
-
 <div align="center">
     <h1>EllipseLIO</h1>
     <a href="https://github.com/v4rl-ucy/ellipselio"><img src="https://img.shields.io/badge/-C++-blue?logo=cplusplus" /></a>
@@ -15,7 +10,9 @@
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/blob/main/README.md">Install</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-    <a href="http://arxiv.org/abs/2605.21150">Paper</a>
+    <a href="http://arxiv.org/abs/2605.21150">arXiv</a>
+    <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+    <a href="https://ieeexplore.ieee.org/document/11661668">IEEE</a>
     <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
     <a href="https://github.com/v4rl-ucy/ellipselio/issues">Report Issues</a>
   <br />
@@ -26,23 +23,9 @@
 </div>
 
 [arXivlink]: http://arxiv.org/abs/2605.21150
+[IEEElink]: https://ieeexplore.ieee.org/document/11661668
 
 ## ROS2 Humble and Jazzy
-
-### Dependencies
-
-EllipseLIO depends on
-[`livox_ros_driver2`](https://github.com/Livox-SDK/livox_ros_driver2) for
-native Livox `CustomMsg` support. Install and build `livox_ros_driver2`
-according to its upstream instructions, then source its workspace before
-building or running EllipseLIO:
-
-```sh
-source <livox_workspace>/install/setup.bash
-```
-
-The native message path avoids an intermediate PointCloud2 converter and
-preserves each point timestamp as `timebase + offset_time`.
 
 ### Build
 
@@ -51,7 +34,6 @@ mkdir -p ~/colcon_ws/src
 cd ~/colcon_ws/src
 git clone git@github.com:v4rl-ucy/ellipselio.git
 cd ..
-source <livox_workspace>/install/setup.bash
 colcon build --packages-select ellipselio --cmake-args -DCMAKE_BUILD_TYPE=Release --symlink-install
 source ~/colcon_ws/install/setup.bash
 ```
@@ -63,39 +45,30 @@ ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file
 ros2 bag play --clock <imu_rate> <bag_folder> --topics <lidar_topic> <imu_topic>
 ```
 
+When running a dataset with raw Livox LiDAR data (e.g., GEODE Gamma) you also need to run a separate [node][converterLink] to convert the custom Livox messages to standard PointCloud2 messages.
+
+[converterLink]: https://github.com/v4rl-ucy/livox_to_pointcloud2
+
 ### Included dataset configs
 
 | Config file | Dataset |
 | --- | --- |
-| [`config/mid360.yaml`](config/mid360.yaml) | Livox MID-360 using `livox_ros_driver2/msg/CustomMsg` |
 | [`config/os128_ncd.yaml`](config/os128_ncd.yaml) | [`Newer College Multi-Cam`](https://ori-drs.github.io/newer-college-dataset/multi-cam/) |
 | [`config/os64_ncd.yaml`](config/os64_ncd.yaml) | [`Newer College Stereo-Cam`](https://ori-drs.github.io/newer-college-dataset/stereo-cam/) |
 | [`config/qt64_spires.yaml`](config/qt64_spires.yaml) | [`Oxford Spires`](https://dynamic.robots.ox.ac.uk/datasets/oxford-spires/) |
 | [`config/vlp16_bot.yaml`](config/vlp16_bot.yaml) | [`BotanicGarden`](https://github.com/robot-pesg/BotanicGarden) |
 | [`config/vlp16_geode.yaml`](config/vlp16_geode.yaml) | [`GEODE Alpha`](https://thisparticle.github.io/geode/) |
 | [`config/os64_geode.yaml`](config/os64_geode.yaml) | [`GEODE Beta`](https://thisparticle.github.io/geode/) |
+| [`config/avia_geode.yaml`](config/avia_geode.yaml) | [`GEODE Gamma`](https://thisparticle.github.io/geode/) |
 | [`config/vlp16_graco.yaml`](config/vlp16_graco.yaml) | [`GRACO`](https://github.com/SYSU-RoboticsLab/GrAco) |
+| [`config/vlp16_grandtour.yaml`](config/vlp16_grandtour.yaml) | [`GrandTour VLP-16`](https://grand-tour.leggedrobotics.com/dataset) |
+| [`config/xt32_grandtour.yaml`](config/xt32_grandtour.yaml) | [`GrandTour XT-32`](https://grand-tour.leggedrobotics.com/dataset) |
+| [`config/mid360_grandtour.yaml`](config/mid360_grandtour.yaml) | [`GrandTour Mid-360`](https://grand-tour.leggedrobotics.com/dataset) |
 
 ### Run standalone with live data
 
 ```sh
 ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file_name> use_sim_time:=false
-```
-
-For a Livox MID-360, publish `livox_ros_driver2/msg/CustomMsg` on
-`/livox/lidar` and IMU data on `/livox/imu`, then use:
-
-```sh
-ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=mid360.yaml use_sim_time:=false
-```
-
-The MID-360 config enables the native message subscriber with:
-
-```yaml
-lidar:
-    type: 1
-    topic: "/livox/lidar"
-    use_custom_msg: true
 ```
 
 ### Publication control
@@ -136,18 +109,20 @@ publish:
 ```
 
 The publication settings are read at node startup, so restart the node after
-changing them. The odometry publisher uses reliable QoS for compatibility with
-the RViz Odometry display.
+changing them.
 
 ## :pencil: Citation
 
-If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]
+If you use EllipseLIO in your work please cite our RA-L [paper][IEEELink]
 ```
 @article{border2026ellipselio,
-   author = {Border, Rowan and Chli, Margarita},
-   journal = {arXiv},
-   title = {{EllipseLIO}: Adaptive {LiDAR} Inertial Odometry with an Ellipsoid Representation},
-   url = {http://arxiv.org/abs/2605.21150},
+   author = {Rowan Border and Margarita Chli},
+   doi = {10.1109/LRA.2026.3726372},
+   issue = {10},
+   journal = {IEEE Robotics and Automation Letters},
+   pages = {11474-11481},
+   title = {EllipseLIO: Adaptive LiDAR Inertial Odometry with an Ellipsoid Representation},
+   volume = {11},
    year = {2026}
 }
 

@@ -187,6 +187,19 @@ struct EIGEN_ALIGN16 GazeboPoint {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
+/**
+ * @struct IsaacSimPoint
+ * @brief Isaac Sim simulator lidar point type.
+ * @details Point format used by Isaac Sim's ray plugin for simulation,
+ *          compatible with typical rotating LiDAR sensor models.
+ */
+struct EIGEN_ALIGN16 IsaacSimPoint {
+  /// @brief Homogeneous coordinate (X, Y, Z, unused)
+  PCL_ADD_POINT4D;
+  /// @brief Enable Eigen aligned memory operations
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
 POINT_CLOUD_REGISTER_POINT_STRUCT(
     LivoxPoint,
     (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(
@@ -213,5 +226,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
     GazeboPoint,
     (float, x, x)(float, y, y)(float, z, z)(float, intensity,
                                             intensity)(uint16_t, ring, ring))
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(IsaacSimPoint,
+                                  (float, x, x)(float, y, y)(float, z, z))
 
 #endif  // COMMON_PCL_H_

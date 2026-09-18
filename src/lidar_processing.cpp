@@ -22,7 +22,6 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
 
   num_bins_ = ceil(params_.max_range + 1);
   scan_res_ = kPi * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
-  max_octree_res_ = 10;
 
   bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
@@ -60,7 +59,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     octree_res = floor(octree_res * 100.0) / 100.0;
     octree_res = fmax(octree_res, kMinBinRes);
 
-    match_rad = fmax(10.0 * octree_res, kMinSearchRes);
+    match_rad = fmin(fmax(10.0 * octree_res, kMinSearchRes), 10.0);
     search_rad = fmin(fmax(10.0 * octree_res, kMinSearchRes), kMaxSearchRes);
 
     bucket_size = kMaxNeighbours * pow(map_resolution, 2);
@@ -79,20 +78,10 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     bin_octrees_[i].SetMaxOctants(0.1 * kMaxScanPoints);
   }
 
-  if (static_cast<LidType>(params.type) == LidType::kLivox &&
-      params.use_custom_msg) {
-    sub_livox_ =
-        node_->create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            params.topic, rclcpp::SensorDataQoS(),
-            std::bind(&LidarProcess::LivoxCallback, this,
-                      std::placeholders::_1),
-            lidar_opt);
-  } else {
-    sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
-        params.topic, rclcpp::SensorDataQoS(),
-        std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
-        lidar_opt);
-  }
+  sub_pcl_pc_ = node_->create_subscription<sensor_msgs::msg::PointCloud2>(
+      params.topic, rclcpp::SensorDataQoS(),
+      std::bind(&LidarProcess::LidarCallback, this, std::placeholders::_1),
+      lidar_opt);
 }
 
 void LidarProcess::LidarCallback(
@@ -112,19 +101,14 @@ void LidarProcess::LidarCallback(
                              "WARNING: Lidar time offset detected!");
   }
 
-  std::lock_guard<std::mutex> lock(lidar_mutex_);
+  lidar_mutex_.lock();
   Process(msg);
-}
-
-void LidarProcess::LivoxCallback(
-    const livox_ros_driver2::msg::CustomMsg::UniquePtr msg) {
-  lidar_counter_++;
-
-  std::lock_guard<std::mutex> lock(lidar_mutex_);
-  ProcessLivox(*msg);
+  lidar_mutex_.unlock();
 }
 
 void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+  auto& clk = *node_->get_clock();
+
   switch (static_cast<LidType>(params_.type)) {
     case LidType::kLivox:
       PointCloudHandler<LivoxPoint>(msg);
@@ -141,34 +125,14 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     case LidType::kGazebo:
       PointCloudHandler<GazeboPoint>(msg);
       break;
-  }
-
-  FinalizePointCloud();
-}
-
-void LidarProcess::ProcessLivox(
-    const livox_ros_driver2::msg::CustomMsg& msg) {
-  LivoxCustomMsgHandler(msg);
-  FinalizePointCloud();
-}
-
-void LidarProcess::FinalizePointCloud() {
-  bool has_valid_points = false;
-  for (const auto& bin_size : bin_sizes_) {
-    if (bin_size) {
-      has_valid_points = true;
+    case LidType::kIsaacSim:
+      PointCloudHandler<IsaacSimPoint>(msg);
       break;
-    }
-  }
-  if (!has_valid_points) {
-    ellipselio_pc_->clear();
-    lidar_has_data_ = false;
-    return;
   }
 
   int end_bin = num_bins_;
   int prev_start_bin = -1;
-  while (start_bin_ > prev_start_bin && prev_start_bin < max_octree_res_) {
+  while (start_bin_ > prev_start_bin && prev_start_bin < kMaxStartBin) {
 #pragma omp parallel for
     for (size_t i = 0; i < end_bin; i++) {
       std::vector<int> new_idxs, added_idxs;
@@ -204,7 +168,7 @@ void LidarProcess::FinalizePointCloud() {
 
     prev_start_bin = start_bin_;
     mean_bin_ = floor(mean_bin / mean_num);
-    start_bin_ = fmin(mean_bin_, max_octree_res_);
+    start_bin_ = fmin(mean_bin_, kMaxStartBin);
     end_bin = start_bin_;
   }
 
@@ -320,6 +284,12 @@ void LidarProcess::SetPoint(const GazeboPoint& in_pt0, const GazeboPoint& in_pt,
   out_pt->intensity = in_pt.intensity;
 }
 
+void LidarProcess::SetPoint(const IsaacSimPoint& in_pt0,
+                            const IsaacSimPoint& in_pt, EllipseLioPoint* out_pt,
+                            rclcpp::Time* point_time) {
+  out_pt->intensity = 0.0;
+}
+
 template <typename InPtType>
 void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
                                 rclcpp::Time& point_time) {
@@ -381,66 +351,5 @@ void LidarProcess::PointCloudHandler(
   }
 
   mean_bin_ = floor(mean_bin / mean_num);
-  start_bin_ = fmin(mean_bin_, max_octree_res_);
-}
-
-void LidarProcess::LivoxCustomMsgHandler(
-    const livox_ros_driver2::msg::CustomMsg& msg) {
-  std::atomic<int> rej_points = 0;
-  float mean_bin = 0;
-  float mean_num = 0;
-
-  std::fill(bin_sizes_.begin(), bin_sizes_.end(), 0);
-  const size_t num_points =
-      std::min({msg.points.size(), static_cast<size_t>(msg.point_num),
-                static_cast<size_t>(kMaxScanPoints)});
-
-#pragma omp parallel for
-  for (size_t i = 0; i < num_points; i++) {
-    const auto& in_pt = msg.points[i];
-    auto& out_pt = process_pc_->points[i];
-
-    out_pt.x = in_pt.x;
-    out_pt.y = in_pt.y;
-    out_pt.z = in_pt.z;
-    out_pt.intensity = in_pt.reflectivity;
-
-    const uint64_t point_time_ns =
-        msg.timebase + static_cast<uint64_t>(in_pt.offset_time);
-    const rclcpp::Time point_time(static_cast<int64_t>(point_time_ns),
-                                  RCL_ROS_TIME);
-    const builtin_interfaces::msg::Time msg_time = point_time;
-    out_pt.time_secs = msg_time.sec;
-    out_pt.time_nsecs = msg_time.nanosec;
-
-    const float range =
-        sqrt(out_pt.x * out_pt.x + out_pt.y * out_pt.y + out_pt.z * out_pt.z);
-    if (range < params_.min_range || range > params_.max_range ||
-        std::isnan(range) || std::isinf(range)) {
-      rej_points++;
-      continue;
-    }
-
-    const int bin_idx = floor(range);
-    out_pt.bin_idx = bin_idx;
-    bin_idxs_[bin_idx][bin_sizes_[bin_idx]++] = i;
-  }
-
-  const int proc_points = num_points - rej_points.load();
-  if (!proc_points) {
-    mean_bin_ = 0;
-    start_bin_ = 0;
-    return;
-  }
-
-  for (size_t i = 0; i < num_bins_; i++) {
-    if (mean_num > 0.5 * proc_points && bin_sizes_[i] < 0.01 * proc_points) {
-      break;
-    }
-    mean_num += bin_sizes_[i];
-    mean_bin += i * bin_sizes_[i];
-  }
-
-  mean_bin_ = floor(mean_bin / mean_num);
-  start_bin_ = fmin(mean_bin_, max_octree_res_);
+  start_bin_ = fmin(mean_bin_, kMaxStartBin);
 }

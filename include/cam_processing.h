@@ -9,9 +9,9 @@
 #define CAM_PROCESSING_H_
 
 #ifdef ROS_JAZZY
-  #include <cv_bridge/cv_bridge.hpp>
+#include <cv_bridge/cv_bridge.hpp>
 #else
-  #include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.h>
 #endif
 
 #include <Eigen/Eigen>
