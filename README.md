@@ -60,6 +60,46 @@ ros2 bag play --clock <imu_rate> <bag_folder> --topics <lidar_topic> <imu_topic>
 ros2 launch ellipselio ellipselio_standalone.launch.py config_file:=<config_file_name> use_sim_time:=false
 ```
 
+### Publication control
+
+Published outputs can be enabled or disabled independently in the YAML
+configuration. Disabled outputs skip their publication timers and
+message-conversion work. Internal odometry and mapping still run normally.
+
+```yaml
+publish:
+    map: true
+    scan: true
+    markers: true
+    odometry: true
+    analytics: true
+    tf: true
+```
+
+| Parameter | Output |
+| --- | --- |
+| `publish.map` | `/cloud_map` |
+| `publish.scan` | `/cloud_scan` |
+| `publish.markers` | `/visualization_marker` |
+| `publish.odometry` | `/ellipselio_odom` |
+| `publish.analytics` | `/analytics` |
+| `publish.tf` | `/tf` transforms |
+
+For example, a headless run that only publishes odometry and TF can use:
+
+```yaml
+publish:
+    map: false
+    scan: false
+    markers: false
+    odometry: true
+    analytics: false
+    tf: true
+```
+
+The publication settings are read at node startup, so restart the node after
+changing them.
+
 ## :pencil: Citation
 
 If you use EllipseLIO please cite our preprint on [arXiv][arXivLink]

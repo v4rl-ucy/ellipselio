@@ -469,16 +469,18 @@ void MappingNode::SplitMap(const sensor_msgs::msg::PointCloud2& input,
 }
 
 void MappingNode::PublishMap() {
-  if (!map_counter_) return;
+  if (!map_counter_ || (!publish_map_ && !publish_markers_)) return;
 
   sensor_msgs::msg::PointCloud2 map_msg;
   std::vector<sensor_msgs::msg::PointCloud2> map_parts;
   if (!map_cloud_->size()) return;
 
-  map_mutex_.lock();
-  PublishMarkers();
+  std::unique_lock<std::mutex> lock(map_mutex_);
+  if (publish_markers_) PublishMarkers();
+  if (!publish_map_) return;
+
   pcl::toROSMsg(*map_cloud_, map_msg);
-  map_mutex_.unlock();
+  lock.unlock();
 
   map_msg.header.stamp = kf_state_pub_.time;
   map_msg.header.frame_id = node_namespace_ + "/odom_ellipselio";
@@ -491,7 +493,7 @@ void MappingNode::PublishMap() {
 }
 
 void MappingNode::PublishScan() {
-  if (!map_counter_) return;
+  if (!publish_scan_ || !map_counter_) return;
 
   sensor_msgs::msg::PointCloud2 scan_msg;
   pcl::toROSMsg(*scan_cloud_pub_, scan_msg);
@@ -501,7 +503,7 @@ void MappingNode::PublishScan() {
 }
 
 void MappingNode::PublishMarkers() {
-  if (!map_counter_) return;
+  if (!publish_markers_ || !map_counter_) return;
 
   std::atomic<int> marker_idx = 0;
   visualization_msgs::msg::MarkerArray marker_array;
@@ -583,27 +585,31 @@ void MappingNode::PublishMarkers() {
 
 void MappingNode::PublishImuOdometry() {
   KfState imu_state;
-  nav_msgs::msg::Odometry odom_msg;
 
-  if (!map_counter_) return;
+  if ((!publish_odometry_ && !publish_tf_) || !map_counter_) return;
 
   imu_process_->GetKfState(&imu_state);
   if (last_imu_pub_time == imu_state.time) return;
   last_imu_pub_time = imu_state.time;
 
-  geometry_msgs::msg::TransformStamped trans;
-  trans.header.frame_id = node_namespace_ + "/odom_ellipselio";
-  trans.child_frame_id = node_namespace_ + "/imu_prop_ellipselio";
-  trans.header.stamp = imu_state.time;
-  trans.transform.translation.x = imu_state.state.pos(0);
-  trans.transform.translation.y = imu_state.state.pos(1);
-  trans.transform.translation.z = imu_state.state.pos(2);
-  trans.transform.rotation.x = imu_state.state.rot.coeffs()[0];
-  trans.transform.rotation.y = imu_state.state.rot.coeffs()[1];
-  trans.transform.rotation.z = imu_state.state.rot.coeffs()[2];
-  trans.transform.rotation.w = imu_state.state.rot.coeffs()[3];
-  tf_br_->sendTransform(trans);
+  if (publish_tf_) {
+    geometry_msgs::msg::TransformStamped trans;
+    trans.header.frame_id = node_namespace_ + "/odom_ellipselio";
+    trans.child_frame_id = node_namespace_ + "/imu_prop_ellipselio";
+    trans.header.stamp = imu_state.time;
+    trans.transform.translation.x = imu_state.state.pos(0);
+    trans.transform.translation.y = imu_state.state.pos(1);
+    trans.transform.translation.z = imu_state.state.pos(2);
+    trans.transform.rotation.x = imu_state.state.rot.coeffs()[0];
+    trans.transform.rotation.y = imu_state.state.rot.coeffs()[1];
+    trans.transform.rotation.z = imu_state.state.rot.coeffs()[2];
+    trans.transform.rotation.w = imu_state.state.rot.coeffs()[3];
+    tf_br_->sendTransform(trans);
+  }
 
+  if (!publish_odometry_) return;
+
+  nav_msgs::msg::Odometry odom_msg;
   odom_msg.header.frame_id = node_namespace_ + "/odom_ellipselio";
   odom_msg.child_frame_id = node_namespace_ + "/imu_prop_ellipselio";
   odom_msg.header.stamp = imu_state.time;
@@ -642,28 +648,32 @@ void MappingNode::PublishImuOdometry() {
 }
 
 void MappingNode::PublishLidarOdometry() {
-  if (!map_counter_) return;
+  if ((!publish_tf_ && !publish_analytics_ && !publish_scan_) ||
+      !map_counter_) {
+    return;
+  }
 
   if (last_opt_pub_time == kf_state_pub_.time) return;
-  odom_mutex_.lock();
+  std::lock_guard<std::mutex> lock(odom_mutex_);
   last_opt_pub_time = kf_state_pub_.time;
 
-  geometry_msgs::msg::TransformStamped trans;
-  trans.header.frame_id = node_namespace_ + "/odom_ellipselio";
-  trans.child_frame_id = node_namespace_ + "/imu_ellipselio";
-  trans.header.stamp = kf_state_pub_.time;
-  trans.transform.translation.x = kf_state_pub_.state.pos(0);
-  trans.transform.translation.y = kf_state_pub_.state.pos(1);
-  trans.transform.translation.z = kf_state_pub_.state.pos(2);
-  trans.transform.rotation.x = kf_state_pub_.state.rot.coeffs()[0];
-  trans.transform.rotation.y = kf_state_pub_.state.rot.coeffs()[1];
-  trans.transform.rotation.z = kf_state_pub_.state.rot.coeffs()[2];
-  trans.transform.rotation.w = kf_state_pub_.state.rot.coeffs()[3];
-  tf_br_->sendTransform(trans);
+  if (publish_tf_) {
+    geometry_msgs::msg::TransformStamped trans;
+    trans.header.frame_id = node_namespace_ + "/odom_ellipselio";
+    trans.child_frame_id = node_namespace_ + "/imu_ellipselio";
+    trans.header.stamp = kf_state_pub_.time;
+    trans.transform.translation.x = kf_state_pub_.state.pos(0);
+    trans.transform.translation.y = kf_state_pub_.state.pos(1);
+    trans.transform.translation.z = kf_state_pub_.state.pos(2);
+    trans.transform.rotation.x = kf_state_pub_.state.rot.coeffs()[0];
+    trans.transform.rotation.y = kf_state_pub_.state.rot.coeffs()[1];
+    trans.transform.rotation.z = kf_state_pub_.state.rot.coeffs()[2];
+    trans.transform.rotation.w = kf_state_pub_.state.rot.coeffs()[3];
+    tf_br_->sendTransform(trans);
+  }
 
-  pub_analytics_->publish(analytics_msg_pub_);
-  PublishScan();
-  odom_mutex_.unlock();
+  if (publish_analytics_) pub_analytics_->publish(analytics_msg_pub_);
+  if (publish_scan_) PublishScan();
 }
 
 void MappingNode::TensorRegistration(
@@ -944,6 +954,13 @@ MappingNode::MappingNode(
   this->declare_parameter<int>("mapping.pub_map_n_secs", 10);
   this->declare_parameter<double>("mapping.map_resolution", 0.1);
 
+  this->declare_parameter<bool>("publish.map", true);
+  this->declare_parameter<bool>("publish.scan", true);
+  this->declare_parameter<bool>("publish.markers", true);
+  this->declare_parameter<bool>("publish.odometry", true);
+  this->declare_parameter<bool>("publish.analytics", true);
+  this->declare_parameter<bool>("publish.tf", true);
+
   this->declare_parameter<int>("imu.rate", 100);
   this->declare_parameter<double>("imu.gyr_noise", 0.1);
   this->declare_parameter<double>("imu.acc_noise", 0.1);
@@ -981,6 +998,13 @@ MappingNode::MappingNode(
   this->get_parameter_or<int>("mapping.pub_map_n_secs", pub_map_n_secs_, 10);
   this->get_parameter_or<double>("mapping.map_resolution", map_resolution_,
                                  0.1);
+
+  this->get_parameter_or<bool>("publish.map", publish_map_, true);
+  this->get_parameter_or<bool>("publish.scan", publish_scan_, true);
+  this->get_parameter_or<bool>("publish.markers", publish_markers_, true);
+  this->get_parameter_or<bool>("publish.odometry", publish_odometry_, true);
+  this->get_parameter_or<bool>("publish.analytics", publish_analytics_, true);
+  this->get_parameter_or<bool>("publish.tf", publish_tf_, true);
 
   this->get_parameter_or<int>("imu.rate", imu_params_.rate, 100);
   this->get_parameter_or<double>("imu.gyr_noise", imu_params_.gyr_noise, 0.1);
@@ -1106,7 +1130,9 @@ MappingNode::MappingNode(
   pub_odom_imu_callback_group_ =
       this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
-  tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+  if (publish_tf_) {
+    tf_br_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+  }
 
   pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>(
       node_namespace_ + "/ellipselio_odom", rclcpp::SensorDataQoS());
@@ -1123,20 +1149,26 @@ MappingNode::MappingNode(
       this, this->get_clock(),
       std::chrono::milliseconds(std::max(1000 / imu_params_.rate, 10)),
       std::bind(&MappingNode::TimerCallback, this), loop_callback_group_);
-  pub_odom_lid_timer_ = rclcpp::create_timer(
-      this, this->get_clock(),
-      std::chrono::milliseconds(std::max(1000 / lidar_params_.rate, 10)),
-      std::bind(&MappingNode::PublishLidarOdometry, this),
-      pub_odom_lid_callback_group_);
-  pub_odom_imu_timer_ = rclcpp::create_timer(
-      this, this->get_clock(),
-      std::chrono::milliseconds(std::max(1000 / imu_params_.rate, 10)),
-      std::bind(&MappingNode::PublishImuOdometry, this),
-      pub_odom_imu_callback_group_);
-  pub_map_timer_ = rclcpp::create_timer(
-      this, this->get_clock(),
-      std::chrono::milliseconds(std::max(pub_map_n_secs_ * 1000, 10)),
-      std::bind(&MappingNode::PublishMap, this), pub_map_callback_group_);
+  if (publish_tf_ || publish_analytics_ || publish_scan_) {
+    pub_odom_lid_timer_ = rclcpp::create_timer(
+        this, this->get_clock(),
+        std::chrono::milliseconds(std::max(1000 / lidar_params_.rate, 10)),
+        std::bind(&MappingNode::PublishLidarOdometry, this),
+        pub_odom_lid_callback_group_);
+  }
+  if (publish_odometry_ || publish_tf_) {
+    pub_odom_imu_timer_ = rclcpp::create_timer(
+        this, this->get_clock(),
+        std::chrono::milliseconds(std::max(1000 / imu_params_.rate, 10)),
+        std::bind(&MappingNode::PublishImuOdometry, this),
+        pub_odom_imu_callback_group_);
+  }
+  if (publish_map_ || publish_markers_) {
+    pub_map_timer_ = rclcpp::create_timer(
+        this, this->get_clock(),
+        std::chrono::milliseconds(std::max(pub_map_n_secs_ * 1000, 10)),
+        std::bind(&MappingNode::PublishMap, this), pub_map_callback_group_);
+  }
 
   char line[128];
   struct tms timeSample;
@@ -1395,40 +1427,42 @@ void MappingNode::TimerCallback() {
     map_time = t4 - t3;
     total_time = t4 - t1;
 
-    max_imu_time_ = fmax(max_imu_time_, imu_time);
-    max_state_time_ = fmax(max_state_time_, state_time);
-    max_map_time_ = fmax(max_map_time_, map_time);
-    max_total_time_ = fmax(max_total_time_, total_time);
+    if (publish_analytics_) {
+      max_imu_time_ = fmax(max_imu_time_, imu_time);
+      max_state_time_ = fmax(max_state_time_, state_time);
+      max_map_time_ = fmax(max_map_time_, map_time);
+      max_total_time_ = fmax(max_total_time_, total_time);
 
-    mean_imu_time_ += imu_time;
-    mean_state_time_ += state_time;
-    mean_map_time_ += map_time;
-    mean_total_time_ += total_time;
+      mean_imu_time_ += imu_time;
+      mean_state_time_ += state_time;
+      mean_map_time_ += map_time;
+      mean_total_time_ += total_time;
 
-    ComputeRamUsage();
-    ComputeCpuUsage();
+      ComputeRamUsage();
+      ComputeCpuUsage();
 
-    analytics_msg_.run_time = round(t4 - start_time_);
+      analytics_msg_.run_time = round(t4 - start_time_);
 
-    analytics_msg_.imu_time = imu_time;
-    analytics_msg_.state_time = state_time;
-    analytics_msg_.map_time = map_time;
-    analytics_msg_.total_time = total_time;
+      analytics_msg_.imu_time = imu_time;
+      analytics_msg_.state_time = state_time;
+      analytics_msg_.map_time = map_time;
+      analytics_msg_.total_time = total_time;
 
-    analytics_msg_.imu_mean = mean_imu_time_ / (map_counter_ + 1);
-    analytics_msg_.state_mean = mean_state_time_ / (map_counter_ + 1);
-    analytics_msg_.map_mean = mean_map_time_ / (map_counter_ + 1);
-    analytics_msg_.total_mean = mean_total_time_ / (map_counter_ + 1);
+      analytics_msg_.imu_mean = mean_imu_time_ / (map_counter_ + 1);
+      analytics_msg_.state_mean = mean_state_time_ / (map_counter_ + 1);
+      analytics_msg_.map_mean = mean_map_time_ / (map_counter_ + 1);
+      analytics_msg_.total_mean = mean_total_time_ / (map_counter_ + 1);
 
-    analytics_msg_.imu_max = max_imu_time_;
-    analytics_msg_.state_max = max_state_time_;
-    analytics_msg_.map_max = max_map_time_;
-    analytics_msg_.total_max = max_total_time_;
+      analytics_msg_.imu_max = max_imu_time_;
+      analytics_msg_.state_max = max_state_time_;
+      analytics_msg_.map_max = max_map_time_;
+      analytics_msg_.total_max = max_total_time_;
+    }
 
     odom_mutex_.lock();
     kf_state_pub_ = kf_state_;
-    *scan_cloud_pub_ = *scan_cloud_;
-    analytics_msg_pub_ = analytics_msg_;
+    if (publish_scan_) *scan_cloud_pub_ = *scan_cloud_;
+    if (publish_analytics_) analytics_msg_pub_ = analytics_msg_;
     odom_mutex_.unlock();
 
     map_counter_++;
