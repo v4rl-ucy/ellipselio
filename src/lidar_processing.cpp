@@ -22,7 +22,6 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
 
   num_bins_ = ceil(params_.max_range + 1);
   scan_res_ = kPi * (params_.vertical_fov / (params_.scan_lines - 1)) / 180.0;
-  max_octree_res_ = 10;
 
   bin_pcs_i_ = Eigen::ArrayXi::Zero(num_bins_);
   bin_pcs_sizes_ = Eigen::ArrayXi::Zero(num_bins_);
@@ -60,7 +59,7 @@ LidarProcess::LidarProcess(LidarParams params, float map_resolution,
     octree_res = floor(octree_res * 100.0) / 100.0;
     octree_res = fmax(octree_res, kMinBinRes);
 
-    match_rad = fmax(10.0 * octree_res, kMinSearchRes);
+    match_rad = fmin(fmax(10.0 * octree_res, kMinSearchRes), 10.0);
     search_rad = fmin(fmax(10.0 * octree_res, kMinSearchRes), kMaxSearchRes);
 
     bucket_size = kMaxNeighbours * pow(map_resolution, 2);
@@ -126,11 +125,14 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     case LidType::kGazebo:
       PointCloudHandler<GazeboPoint>(msg);
       break;
+    case LidType::kIsaacSim:
+      PointCloudHandler<IsaacSimPoint>(msg);
+      break;
   }
 
   int end_bin = num_bins_;
   int prev_start_bin = -1;
-  while (start_bin_ > prev_start_bin && prev_start_bin < max_octree_res_) {
+  while (start_bin_ > prev_start_bin && prev_start_bin < kMaxStartBin) {
 #pragma omp parallel for
     for (size_t i = 0; i < end_bin; i++) {
       std::vector<int> new_idxs, added_idxs;
@@ -166,7 +168,7 @@ void LidarProcess::Process(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
     prev_start_bin = start_bin_;
     mean_bin_ = floor(mean_bin / mean_num);
-    start_bin_ = fmin(mean_bin_, max_octree_res_);
+    start_bin_ = fmin(mean_bin_, kMaxStartBin);
     end_bin = start_bin_;
   }
 
@@ -282,6 +284,12 @@ void LidarProcess::SetPoint(const GazeboPoint& in_pt0, const GazeboPoint& in_pt,
   out_pt->intensity = in_pt.intensity;
 }
 
+void LidarProcess::SetPoint(const IsaacSimPoint& in_pt0,
+                            const IsaacSimPoint& in_pt, EllipseLioPoint* out_pt,
+                            rclcpp::Time* point_time) {
+  out_pt->intensity = 0.0;
+}
+
 template <typename InPtType>
 void LidarProcess::ConvertPoint(pcl::PointCloud<InPtType>& in_pc, int pt_idx,
                                 rclcpp::Time& point_time) {
@@ -343,5 +351,5 @@ void LidarProcess::PointCloudHandler(
   }
 
   mean_bin_ = floor(mean_bin / mean_num);
-  start_bin_ = fmin(mean_bin_, max_octree_res_);
+  start_bin_ = fmin(mean_bin_, kMaxStartBin);
 }
