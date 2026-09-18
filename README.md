@@ -94,7 +94,7 @@ publish:
 | `publish.markers` | `/visualization_marker` |
 | `publish.odometry` | `/ellipselio_odom` |
 | `publish.analytics` | `/analytics` |
-| `publish.tf` | `/tf` transforms |
+| `publish.tf` | `/tf` |
 
 For example, a headless run that only publishes odometry and TF can use:
 
